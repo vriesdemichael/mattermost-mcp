@@ -242,3 +242,21 @@ func structured(t *testing.T, result *mcp.CallToolResult, out any) {
 	check(t, err)
 	check(t, json.Unmarshal(raw, out))
 }
+
+// eventually retries check until it reports done or the deadline passes, for
+// what Mattermost does asynchronously, such as indexing a post for search
+// (ADR-008). It never sleeps a fixed time in place of waiting for the result.
+func eventually(t *testing.T, within time.Duration, check func() (bool, string)) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		done, seen := check()
+		if done {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("not done within %s; last saw: %s", within, seen)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}

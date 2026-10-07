@@ -106,6 +106,7 @@ func AllSpecs() []Spec {
 		listChannelsSpec(),
 		readChannelSpec(),
 		readThreadSpec(),
+		searchPostsSpec(),
 	}
 }
 

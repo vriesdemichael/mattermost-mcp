@@ -86,3 +86,26 @@ func (c *Client) UserByUsername(ctx context.Context, username string) (*model.Us
 func (c *Client) SearchUsers(ctx context.Context, search *model.UserSearch) ([]*model.User, error) {
 	return result(c.api.SearchUsers(ctx, search))
 }
+
+// Search asks Mattermost's post search.
+type Search struct {
+	// TeamID limits the search to one team; empty searches every team.
+	TeamID     string
+	Terms      string
+	MatchAny   bool
+	Page       int
+	PerPage    int
+	TimeOffset int
+}
+
+// SearchPosts is the posts a search finds, in Mattermost's order. With a team,
+// SearchPosts; without one, SearchPostsInAllTeams.
+func (c *Client) SearchPosts(ctx context.Context, search Search) (*model.PostList, error) {
+	return result(c.api.SearchPostsWithParams(ctx, search.TeamID, &model.SearchParameter{
+		Terms:          &search.Terms,
+		IsOrSearch:     &search.MatchAny,
+		TimeZoneOffset: &search.TimeOffset,
+		Page:           &search.Page,
+		PerPage:        &search.PerPage,
+	}))
+}
