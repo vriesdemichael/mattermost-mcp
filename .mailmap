@@ -1,0 +1,4 @@
+# Canonical identities for `git shortlog`, `git log --author` and GitHub's
+# contributor graph. The maintainer's name is spelled two ways across the
+# projects, depending on the machine's configured user.name.
+Michaël de Vries <vriesdemichael@gmail.com> Michael de Vries <vriesdemichael@gmail.com>

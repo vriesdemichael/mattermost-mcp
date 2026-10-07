@@ -1,0 +1,22 @@
+# Git hooks, run by lefthook (ADR-010). Recommended rather than required: CI runs
+# the same gates on every pull request, and a hook only tells you sooner. Install
+# with `lefthook install`. Do not skip one with --no-verify.
+#
+# The live suite runs in neither hook. It needs Docker, and CI starts an instance
+# for every pull request (ADR-014). Run `task test:live` yourself when a change
+# reaches Mattermost.
+pre-commit:
+  parallel: false
+  commands:
+    unit-tests:
+      run: task test:unit
+
+pre-push:
+  parallel: false
+  commands:
+    01-quality-verify:
+      run: task quality:verify
+    02-live-compile:
+      run: task test:live:compile
+    03-docs-validate:
+      run: task docs:validate

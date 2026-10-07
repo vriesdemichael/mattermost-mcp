@@ -1,0 +1,64 @@
+name: Bug report
+description: A tool did something other than what it says it does. For features, questions or design discussion, use a blank issue instead.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is only for mm-mcp behaving incorrectly.
+
+        **Anything else — a feature, a question, an idea worth arguing about — belongs in a
+        [blank issue](https://github.com/vriesdemichael/mattermost-mcp/issues/new).**
+        Those are welcome and deliberately unstructured.
+
+        **Found a security vulnerability?** Do not file it here. Use
+        [private vulnerability reporting](https://github.com/vriesdemichael/mattermost-mcp/security/advisories/new)
+        so it stays private until a fix ships.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead?
+      placeholder: |
+        get_me failed with "Mattermost answered 401" although the token works with curl.
+        I expected my user.
+    validations:
+      required: true
+
+  - type: textarea
+    id: call
+    attributes:
+      label: The tool call, or how you started the server
+      description: >
+        The tool and its arguments as the client shows them, or the command and
+        configuration you start mm-mcp with. **Remove your token.**
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: mm-mcp-version
+    attributes:
+      label: mm-mcp version
+      description: Output of `mm-mcp version`.
+      placeholder: mm-mcp 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Desktop 1.4, over stdio
+    validations:
+      required: true
+
+  - type: input
+    id: mattermost-version
+    attributes:
+      label: Mattermost version
+      description: >
+        In Mattermost, **Help → About**. Leave blank if you cannot see it.
+      placeholder: "11.7.11"
+    validations:
+      required: false

@@ -1,0 +1,276 @@
+version: '3'
+
+# Every workflow in this repository is a task, and CI runs the same tasks a
+# developer does (ADR-002). The coverage thresholds and the pinned tool versions
+# each have one home, which this file loads and CI reads, so a local run and a CI
+# run cannot disagree about a gate (ADR-014).
+dotenv: ['.github/coverage-thresholds.env', '.github/tool-versions.env']
+
+env:
+  # Material for MkDocs prints an advisory about MkDocs 2.0 on every build. The
+  # docs pin MkDocs 1.6, and Dependabot leaves a major bump for review.
+  NO_MKDOCS_2_WARNING: "1"
+
+vars:
+  # Which stack a stack or live task acts on: latest or esr (ADR-025).
+  STACK: '{{.STACK | default "latest"}}'
+  # A Mattermost release to run instead of the stack's own, beside it (ADR-007).
+  RELEASE: '{{.RELEASE | default ""}}'
+  STACK_ARGS: '-stack {{.STACK}}{{if .RELEASE}} -release {{.RELEASE}}{{end}}'
+  # How many live tests run at once. Each owns its fixtures (ADR-008), so the
+  # limit is what the instance can take, not what the tests can.
+  LIVE_PARALLEL: '{{.LIVE_PARALLEL | default "8"}}'
+  # The branch a change is measured against, which is the branch it targets (ADR-011).
+  COVERAGE_BASE_REF: '{{.COVERAGE_BASE_REF | default "origin/next"}}'
+  PACKAGES: ./cmd/... ./internal/... ./tools/...
+  MCPB: '@anthropic-ai/mcpb@2.1.2'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmd: task --list
+
+  # ------------------------------------------------------------------ quality
+
+  quality:verify:
+    desc: Every gate that needs no Mattermost. The pre-push hook and CI run the same set (ADR-014)
+    cmds:
+      - task: quality:format:verify
+      - task: quality:line-endings:verify
+      - task: quality:decisions
+      - task: docs:adr-index:verify
+      - task: openapi:verify
+      - task: quality:lint
+
+  quality:format:
+    desc: Format the Go tree with the pinned toolchain's gofmt
+    cmd: '"$(go env GOROOT)/bin/gofmt" -w ./cmd ./internal ./tools ./tests'
+
+  quality:format:verify:
+    desc: Verify the Go tree is gofmt-clean
+    # The pinned toolchain's gofmt, not the first on PATH: its output changes
+    # between Go releases, so an older installed Go would fail a tree CI passes.
+    cmd: |
+      unformatted=$("$(go env GOROOT)/bin/gofmt" -l ./cmd ./internal ./tools ./tests)
+      if [ -n "$unformatted" ]; then
+        echo "Not gofmt-clean:" >&2
+        echo "$unformatted" >&2
+        echo "Fix with: task quality:format" >&2
+        exit 1
+      fi
+
+  quality:line-endings:verify:
+    desc: Verify no committed file contains a carriage return
+    # The committed blobs, not the working tree: .gitattributes pins every
+    # checkout to LF, so a CR in the index means something wrote around git.
+    cmd: |
+      offenders=$(git grep --cached -I -l "$(printf '\r')" -- . || true)
+      if [ -n "$offenders" ]; then
+        echo "Committed files contain carriage returns:" >&2
+        echo "$offenders" >&2
+        echo "Fix with: git add --renormalize ." >&2
+        exit 1
+      fi
+
+  quality:lint:
+    desc: Run the pinned golangci-lint
+    # A binary on PATH when it is the pinned version built with the pinned Go,
+    # and `go run` otherwise, so a stray binary cannot lint by other rules.
+    cmd: |
+      pinned="${GOLANGCI_LINT_VERSION#v}"
+      if command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -F "$pinned" | grep -qF "built with $(go env GOVERSION) "; then
+        exec golangci-lint run ./cmd/... ./internal/... ./tools/... ./tests/...
+      fi
+      exec go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run ./cmd/... ./internal/... ./tools/... ./tests/...
+
+  tools:golangci-lint:
+    desc: Install the pinned golangci-lint, built with the pinned Go
+    status:
+      - command -v golangci-lint >/dev/null 2>&1 && golangci-lint version 2>&1 | grep -F "${GOLANGCI_LINT_VERSION#v}" | grep -qF "built with $(go env GOVERSION) "
+    cmd: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+
+  quality:vulncheck:
+    desc: Report known vulnerabilities in this module and its dependencies
+    cmd: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
+
+  quality:decisions:
+    desc: Check every decision record's shape and numbering
+    cmd: go run ./tools/adr validate
+
+  quality:coverage:
+    desc: The full coverage gate, as CI runs it. Needs Docker
+    cmds:
+      - task: test:unit:coverage
+      - task: test:live:coverage
+      - task: quality:coverage:gates
+
+  quality:coverage:gates:
+    desc: Apply the coverage thresholds to the profiles already in .tmp/, in seconds
+    cmd: >-
+      go run ./tools/coverage
+      -profiles .tmp/coverage.unit.out,.tmp/coverage.live.out
+      -base-ref {{.COVERAGE_BASE_REF}}
+      -min-global ${CI_COVERAGE_MIN_GLOBAL}
+      -min-patch ${CI_COVERAGE_MIN_PATCH}
+      -write-merged .tmp/coverage.merged.out
+
+  # ------------------------------------------------------------------ tests
+
+  test:unit:
+    desc: The unit suite. Needs nothing beyond this machine (ADR-009)
+    cmd: go test {{.PACKAGES}}
+
+  test:unit:race:
+    desc: The unit suite under the race detector (needs cgo and a C toolchain)
+    cmd: go test -race {{.PACKAGES}}
+
+  test:unit:coverage:
+    desc: The unit suite with a coverage profile in .tmp/
+    # -coverpkg so a test that exercises another package counts for it.
+    cmds:
+      - mkdir -p .tmp
+      - go test -covermode=atomic -coverpkg=./cmd/...,./internal/... -coverprofile=.tmp/coverage.unit.out {{.PACKAGES}}
+
+  test:live:
+    desc: The live suite against this checkout's instance, which it starts first (ADR-004)
+    deps: [stack:up]
+    env:
+      MM_LIVE_STACK: '{{.STACK}}'
+      MM_LIVE_RELEASE: '{{.RELEASE}}'
+    cmd: go test -tags=live -count=1 -timeout 15m -parallel {{.LIVE_PARALLEL}} ./tests/live/
+
+  test:live:coverage:
+    desc: The live suite with a coverage profile in .tmp/
+    deps: [stack:up]
+    env:
+      MM_LIVE_STACK: '{{.STACK}}'
+      MM_LIVE_RELEASE: '{{.RELEASE}}'
+    cmds:
+      - mkdir -p .tmp
+      - go test -tags=live -count=1 -timeout 15m -parallel {{.LIVE_PARALLEL}} -covermode=atomic -coverpkg=./cmd/...,./internal/... -coverprofile=.tmp/coverage.live.out ./tests/live/
+
+  test:live:compile:
+    desc: Build the live suite without running it, so a break shows in seconds
+    # It catches a live test that no longer compiles, not one whose assertion has
+    # gone stale; only running it does that. -c builds the test binary and runs
+    # nothing, not even TestMain, which would look for an instance.
+    cmd: go test -tags=live -c -o .tmp/live.test ./tests/live
+
+  # ------------------------------------------------------------------ local stack
+
+  stack:up:
+    desc: Start this checkout's Mattermost (STACK=latest|esr, RELEASE=x.y.z) and bootstrap it (ADR-007)
+    cmd: go run ./tools/stack up {{.STACK_ARGS}}
+
+  stack:down:
+    desc: Stop this checkout's instance, keeping its data
+    cmd: go run ./tools/stack down {{.STACK_ARGS}}
+
+  stack:reset:
+    desc: Delete this checkout's instance's data and start it again
+    cmd: go run ./tools/stack reset {{.STACK_ARGS}}
+
+  stack:status:
+    desc: This checkout's instance, and every live-test instance on this machine
+    cmd: go run ./tools/stack status {{.STACK_ARGS}}
+
+  stack:logs:
+    desc: The last lines of this checkout's Mattermost log
+    cmd: go run ./tools/stack logs {{.STACK_ARGS}}
+
+  stack:prune:
+    desc: Take down other checkouts' stopped instances, and remove deleted worktrees' data
+    cmd: go run ./tools/stack prune
+
+  # ------------------------------------------------------------------ specification
+
+  openapi:refresh:
+    desc: Vendor the OpenAPI specification of each stack's release (ADR-026). Needs the network
+    cmd: go run ./tools/openapi-spec refresh
+
+  openapi:verify:
+    desc: Fail when a vendored specification is not the release its stack runs
+    cmd: go run ./tools/openapi-spec check
+
+  # ------------------------------------------------------------------ docs
+
+  docs:validate:
+    desc: Build the documentation site strictly, as CI does
+    dir: docs
+    cmd: uv run --frozen mkdocs build --strict --config-file ../mkdocs.yml --site-dir ../.tmp/site
+
+  docs:serve:
+    desc: Serve the documentation site with live reload
+    dir: docs
+    cmd: uv run --frozen mkdocs serve --config-file ../mkdocs.yml
+
+  docs:adr-index:
+    desc: Regenerate docs/site/adr/index.md from the records
+    cmd: go run ./tools/adr index
+
+  docs:adr-index:verify:
+    cmd: go run ./tools/adr index -check
+
+  docs:deploy-version:
+    desc: Publish a release's docs to GitHub Pages under its line (ADR-016). Release workflow only
+    requires:
+      vars: [VERSION]
+    dir: docs
+    # A release deploys to its line: its major from 1.0, its minor before. The
+    # full version is an alias, and latest follows the newest line.
+    cmd: |
+      version="{{.VERSION}}"
+      bare="${version#v}"
+      major="${bare%%.*}"
+      rest="${bare#*.}"
+      minor="${rest%%.*}"
+      if [ "$major" = "0" ]; then line="v0.${minor}"; else line="v${major}"; fi
+      uv run --frozen mike deploy --config-file ../mkdocs.yml --push --update-aliases --title "$version" "$line" "$version" latest
+      uv run --frozen mike set-default --config-file ../mkdocs.yml --push latest
+
+  # ------------------------------------------------------------------ build
+
+  build:
+    desc: Build mm-mcp for this machine into .tmp/
+    cmd: go build -trimpath -o .tmp/ ./cmd/mm-mcp
+
+  release:snapshot:
+    desc: Build every release artifact into dist/ as a release would, publishing nothing (ADR-013)
+    # GoReleaser builds, archives, packages, checksums and scans; tools/mcpb
+    # makes the bundles from its binaries. SNAPSHOT_SKIP leaves out what needs a
+    # tool this machine may not have: cosign for signing, syft for the SBOMs.
+    # CI keeps the SBOMs and checks them with release:sbom:verify.
+    vars:
+      SNAPSHOT_SKIP: '{{.SNAPSHOT_SKIP | default "sign,sbom"}}'
+    env:
+      # syft reads the licences from the module cache the build used.
+      GOMODCACHE:
+        sh: go env GOMODCACHE
+    cmds:
+      - go run "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}" release --snapshot --clean --skip={{.SNAPSHOT_SKIP}}
+      - go run ./tools/mcpb bundle -version v0.0.0
+
+  release:sbom:verify:
+    desc: Hold every SBOM in dist/ to the binary in its archive. Needs a build with SBOMs
+    cmd: go run ./tools/sbom-check -artifacts dist/artifacts.json -version {{.VERSION | default "v0.0.0"}}
+
+  release:bundles:verify:
+    desc: Unpack a built bundle with the official mcpb tool and validate its manifest. Needs Node
+    cmds:
+      - npx --yes {{.MCPB}} unpack dist/mm-mcp_0.0.0_linux_amd64.mcpb .tmp/mcpb-check
+      - npx --yes {{.MCPB}} validate .tmp/mcpb-check/manifest.json
+
+  pr:rebase:
+    desc: Bring the branch up to date with next (ADR-011)
+    cmds:
+      - git fetch origin
+      - git rebase origin/next
+
+  release:promote:check:
+    desc: Say whether next may be fast-forwarded onto main (ADR-011). Needs gh
+    cmds:
+      - git fetch origin
+      - git merge-base --is-ancestor origin/main origin/next
+      - >-
+        gh api "repos/{owner}/{repo}/commits/$(git rev-parse origin/next)/check-runs?check_name=CI%20Complete"
+        --jq '[.check_runs[].conclusion] | if any(. == "success") then "CI Complete succeeded on next; promote with: git push origin origin/next:main" else error("CI Complete has not succeeded on the tip of next") end'

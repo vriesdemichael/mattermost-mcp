@@ -1,0 +1,68 @@
+site_name: mm-mcp
+site_description: An MCP server for Mattermost
+site_url: https://vriesdemichael.github.io/mattermost-mcp/
+repo_url: https://github.com/vriesdemichael/mattermost-mcp
+repo_name: vriesdemichael/mattermost-mcp
+docs_dir: docs/site
+site_dir: site
+
+theme:
+  name: material
+  icon:
+    logo: material/forum
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  features:
+    - navigation.top
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep orange
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep orange
+
+plugins:
+  - search
+
+extra:
+  version:
+    provider: mike
+
+markdown_extensions:
+  - admonition
+  - tables
+  - def_list
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Configuration: configuration.md
+  - Tools: tools.md
+  - Supported Mattermost Releases: mattermost-releases.md
+  - Decision Records: adr/index.md
+  # Linked rather than copied into docs_dir, so there is one copy to keep current.
+  - Contributing: https://github.com/vriesdemichael/mattermost-mcp/blob/main/CONTRIBUTING.md
+  - Changelog: https://github.com/vriesdemichael/mattermost-mcp/releases
+
+validation:
+  nav:
+    # The records are reached through their generated index, not the nav.
+    omitted_files: ignore

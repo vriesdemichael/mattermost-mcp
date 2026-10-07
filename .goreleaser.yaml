@@ -1,0 +1,120 @@
+# GoReleaser builds every platform's binary, archives it, writes its SPDX SBOM,
+# the Linux packages and the checksum manifest, and signs all of it with keyless
+# Sigstore bundles (ADR-013, ADR-023). The release workflow decides the version
+# and tags the commit first, and gives GoReleaser the notes tools/release wrote,
+# so the version and the notes come from one parse of the commits. What
+# GoReleaser has no notion of is this project's own: tools/sbom-check holds each
+# SBOM to the binary it describes, and tools/mcpb makes the .mcpb bundles.
+version: 2
+
+project_name: mm-mcp
+
+before:
+  hooks:
+    # Windows version information in the .exe: product, description, version,
+    # copyright and original file name. A bare Go binary with none reads to
+    # Defender's machine-learning heuristics like one built to hide, and the
+    # resource makes it look like the application it is. go build picks the
+    # .syso files up for the matching GOOS and GOARCH, and .gitignore keeps them
+    # out of git, so the build stays unmodified (vcs.modified=false).
+    - >-
+      go run github.com/tc-hib/go-winres@{{ .Env.GOWINRES_VERSION }} simply
+      --arch amd64,arm64
+      --out cmd/mm-mcp/rsrc
+      --manifest cli
+      --product-name mm-mcp
+      --file-description "mm-mcp, an MCP server for Mattermost"
+      --file-version {{ .Version }}.0
+      --product-version {{ .Version }}.0
+      --copyright "Copyright {{ .Now.Format "2006" }} Michaël de Vries"
+      --original-filename mm-mcp.exe
+
+builds:
+  - id: mm-mcp
+    main: ./cmd/mm-mcp
+    binary: mm-mcp
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # -s -w drops the symbol and debug tables and -buildid= the random build id,
+    # so the same source builds the same bytes. A binary whose hash changes on
+    # every build starts its SmartScreen and Defender reputation from nothing
+    # each release, which is how a Go binary gets flagged as Wacatac. The version
+    # is injected, never committed (ADR-013).
+    ldflags:
+      - -s -w -buildid= -X github.com/vriesdemichael/mattermost-mcp/internal/version.Version=v{{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # The binary alone: the SBOM describes one binary, so an archive with more in
+    # it ships something its SBOM does not cover, and tools/sbom-check refuses it.
+    files:
+      - none*
+
+nfpms:
+  - id: packages
+    package_name: mm-mcp
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: Michaël de Vries
+    maintainer: Michaël de Vries <vriesdemichael@gmail.com>
+    homepage: https://github.com/vriesdemichael/mattermost-mcp
+    description: An MCP server for Mattermost.
+    license: Apache-2.0
+    formats: [deb, rpm]
+    bindir: /usr/bin
+
+checksum:
+  name_template: sha256sums.txt
+
+# One SBOM per binary, scanned from the binary itself: a Go binary's contents
+# are its build information. A package installs the same binary its platform's
+# archive holds, and is attested with that SBOM.
+sboms:
+  - id: binaries
+    artifacts: binary
+    documents:
+      - "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.spdx.json"
+    env:
+      # The SBOM names the program, not a path on the build runner.
+      - SYFT_SOURCE_NAME=mm-mcp
+      - SYFT_SOURCE_VERSION=v{{ .Version }}
+      # syft's other binary catalogers add a guess at the file itself, which
+      # tools/sbom-check refuses.
+      - SYFT_DEFAULT_CATALOGERS=go-module-binary-cataloger
+      # Without the module cache a binary scan finds no licences.
+      - SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true
+      - SYFT_GOLANG_LOCAL_MOD_CACHE_DIR={{ .Env.GOMODCACHE }}
+
+# Keyless: the certificate names the release workflow on main, which is what a
+# verifier checks (SECURITY.md).
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --yes
+      - --new-bundle-format
+      - --bundle=${signature}
+      - ${artifact}
+    artifacts: all
+
+release:
+  # A repeated run updates the release rather than failing on it (ADR-013).
+  mode: replace
+  replace_existing_artifacts: true
+
+# tools/release writes the notes, from the same parse that decided the version.
+changelog:
+  disable: true
+
+snapshot:
+  version_template: "0.0.0"

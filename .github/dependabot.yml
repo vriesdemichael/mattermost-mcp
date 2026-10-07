@@ -1,0 +1,85 @@
+# Every update targets next, like every other change (ADR-011), and the
+# auto-merge workflow merges the minor and patch ones once CI passes (ADR-012).
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    target-branch: "next"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    # The Mattermost module is pinned to the commit of the newest supported
+    # release and moves with docker/latest, never on its own (ADR-024).
+    ignore:
+      - dependency-name: "github.com/mattermost/mattermost/server/public"
+    groups:
+      gomod-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "uv"
+    directory: "/docs"
+    target-branch: "next"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      docs-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "next"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # The newest Mattermost release (ADR-025). Its updates are proposed and held
+  # for a person: the image names the release mm-mcp claims to support.
+  - package-ecosystem: "docker-compose"
+    directory: "/docker/latest"
+    target-branch: "next"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # The Extended Support Release takes patch releases only. Moving to the next
+  # ESR is a decision made when Mattermost names one, not an update.
+  - package-ecosystem: "docker-compose"
+    directory: "/docker/esr"
+    target-branch: "next"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    ignore:
+      - dependency-name: "mattermost/mattermost-team-edition"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

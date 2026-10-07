@@ -1,0 +1,54 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # The live suite is linted with everything else.
+  build-tags:
+    - live
+
+linters:
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - unconvert
+    - unparam
+  settings:
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF*
+  exclusions:
+    rules:
+      # tools/ runs commands, and reads and writes the files it is told to, by design.
+      - path: ^tools/
+        linters:
+          - gosec
+        text: "(G204|G301|G304|G306|G703)"
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+
+# gofmt is the formatting gate, run by task quality:format:verify with the
+# pinned toolchain's gofmt.
+formatters:
+  enable: []
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

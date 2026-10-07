@@ -1,0 +1,63 @@
+name: Release Window
+
+# The live suite against every Mattermost release in the supported window that
+# CI does not run on every pull request (ADR-025): the newest patch of each minor
+# release between the Extended Support Release and the newest release. Weekly,
+# because a difference in between should show here before a user finds it.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  window:
+    name: List the window
+    runs-on: ubuntu-latest
+    outputs:
+      releases: ${{ steps.list.outputs.releases }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: List the releases between the ends
+        id: list
+        run: echo "releases=$(go run ./tools/window)" >> "$GITHUB_OUTPUT"
+
+  live-tests:
+    name: Live Tests (${{ matrix.release }})
+    needs: window
+    if: needs.window.outputs.releases != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.window.outputs.releases) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.48.0
+
+      - name: Run the live suite against ${{ matrix.release }}
+        run: task test:live RELEASE=${{ matrix.release }}
+
+      - name: Dump Mattermost's log on failure
+        if: failure()
+        run: task stack:logs RELEASE=${{ matrix.release }}

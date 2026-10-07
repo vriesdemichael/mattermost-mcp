@@ -1,0 +1,60 @@
+{
+  "manifest_version": "0.3",
+  "name": "mm-mcp",
+  "display_name": "Mattermost (mm-mcp)",
+  "version": "0.0.0",
+  "description": "Read, search and post in Mattermost as yourself or a bot.",
+  "long_description": "mm-mcp connects an MCP client to one Mattermost server, as the person or bot whose token it is given. It is read-only unless writes are allowed, and a tool that writes asks you before it acts.",
+  "author": {
+    "name": "Michaël de Vries",
+    "url": "https://github.com/vriesdemichael"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vriesdemichael/mattermost-mcp"
+  },
+  "homepage": "https://github.com/vriesdemichael/mattermost-mcp",
+  "documentation": "https://vriesdemichael.github.io/mattermost-mcp/",
+  "support": "https://github.com/vriesdemichael/mattermost-mcp/issues",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/mm-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/mm-mcp",
+      "args": ["serve"],
+      "env": {
+        "MM_URL": "${user_config.mattermost_url}",
+        "MM_TOKEN": "${user_config.mattermost_token}",
+        "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}"
+      }
+    }
+  },
+  "user_config": {
+    "mattermost_url": {
+      "type": "string",
+      "title": "Mattermost address",
+      "description": "The address you open Mattermost at, such as https://chat.example.com.",
+      "required": true
+    },
+    "mattermost_token": {
+      "type": "string",
+      "title": "Token",
+      "description": "A personal access token, a bot token, or a session token.",
+      "sensitive": true,
+      "required": true
+    },
+    "allow_writes": {
+      "type": "boolean",
+      "title": "Allow posting",
+      "description": "Offer the tools that post and change things. Each one still asks you before it acts.",
+      "default": false,
+      "required": false
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"]
+  },
+  "keywords": ["mattermost", "chat", "mcp"],
+  "license": "Apache-2.0"
+}

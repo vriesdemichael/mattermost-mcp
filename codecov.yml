@@ -1,0 +1,23 @@
+# Codecov keeps the coverage history and draws the README badge. It gates
+# nothing: the thresholds are enforced by CI's Coverage Gates job (ADR-014).
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+ignore:
+  - docs/**
+  - docker/**
+  - tests/**
+  - tools/**
+  - mcpb/**

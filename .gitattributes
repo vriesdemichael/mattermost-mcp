@@ -1,0 +1,23 @@
+# Line endings are LF everywhere: in the repository and in every working tree.
+#
+# Without this file `core.autocrlf` decides, a per-user setting the repository
+# cannot see. eol=lf rather than plain text=auto, because text=auto still checks
+# out CRLF on Windows, and the shell in a container, the record validator and the
+# formatter all read LF. `task quality:line-endings:verify` fails a tracked file
+# that holds a carriage return anyway.
+* text=auto eol=lf
+
+# Binary files are never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.mcpb binary
+*.whl binary
+*.woff binary
+*.woff2 binary
