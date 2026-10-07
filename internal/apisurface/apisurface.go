@@ -28,7 +28,7 @@ type Operation struct {
 	MinVersion string
 	// Params are the path, query and header parameters, by name.
 	Params map[string]Param
-	// BodyFields are the top-level fields of a JSON request body.
+	// BodyFields are the top-level fields of a JSON or multipart form request body.
 	BodyFields []string
 }
 
@@ -154,9 +154,13 @@ func bodyFields(raw json.RawMessage, schemas map[string]schema) []string {
 	if json.Unmarshal(raw, &body) != nil {
 		return nil
 	}
+	// A form's fields are the body's fields as much as a JSON object's are:
+	// file uploads and file searches take theirs as multipart/form-data.
 	content, ok := body.Content["application/json"]
 	if !ok {
-		return nil
+		if content, ok = body.Content["multipart/form-data"]; !ok {
+			return nil
+		}
 	}
 	fields := map[string]bool{}
 	collect(content.Schema, schemas, fields, 0)
