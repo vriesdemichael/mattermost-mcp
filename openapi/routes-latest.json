@@ -1,0 +1,2960 @@
+{
+ "release": "11.11.1",
+ "routes": [
+  {
+   "method": "PUT",
+   "path": "/api/v4/access_control_policies",
+   "handler": "createAccessControlPolicy"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/access_control_policies/activate",
+   "handler": "setActiveStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/access_control_policies/cel/autocomplete/fields",
+   "handler": "getFieldsAutocomplete"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/cel/check",
+   "handler": "checkExpression"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/cel/simulate_users",
+   "handler": "simulatePolicyForUsers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/cel/test",
+   "handler": "testExpression"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/cel/validate_requester",
+   "handler": "validateExpressionAgainstRequester"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/cel/visual_ast",
+   "handler": "convertToVisualAST"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/search",
+   "handler": "searchAccessControlPolicies"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/access_control_policies/{policy_id}",
+   "handler": "deleteAccessControlPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/access_control_policies/{policy_id}",
+   "handler": "getAccessControlPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/access_control_policies/{policy_id}/activate",
+   "handler": "updateActiveStatus"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/{policy_id}/assign",
+   "handler": "assignAccessPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/access_control_policies/{policy_id}/resources/channels",
+   "handler": "getChannelsForAccessControlPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/access_control_policies/{policy_id}/resources/channels/search",
+   "handler": "searchChannelsForAccessControlPolicy"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/access_control_policies/{policy_id}/unassign",
+   "handler": "unassignAccessPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/actions/dialogs/execute",
+   "handler": "executeDialogAction"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/actions/dialogs/lookup",
+   "handler": "lookupDialog"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/actions/dialogs/open",
+   "handler": "openDialog"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/actions/dialogs/submit",
+   "handler": "submitDialog"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/agents",
+   "handler": "getAgents"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/agents/status",
+   "handler": "getAgentsStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/analytics/old",
+   "handler": "getAnalytics"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/audit_logs/certificate",
+   "handler": "removeAuditLogCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/audit_logs/certificate",
+   "handler": "addAuditLogCertificate"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/audits",
+   "handler": "getAudits"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/boards",
+   "handler": "createBoard"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/bots",
+   "handler": "getBots"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/bots",
+   "handler": "createBot"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/bots/{bot_user_id}",
+   "handler": "getBot"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/bots/{bot_user_id}",
+   "handler": "patchBot"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/bots/{bot_user_id}/assign/{user_id}",
+   "handler": "assignBot"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/bots/{bot_user_id}/convert_to_user",
+   "handler": "convertBotToUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/bots/{bot_user_id}/disable",
+   "handler": "disableBot"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/bots/{bot_user_id}/enable",
+   "handler": "enableBot"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/brand/image",
+   "handler": "deleteBrandImage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/brand/image",
+   "handler": "getBrandImage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/brand/image",
+   "handler": "uploadBrandImage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/caches/invalidate",
+   "handler": "invalidateCaches"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels",
+   "handler": "getAllChannels"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels",
+   "handler": "createChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/direct",
+   "handler": "createDirectChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/group",
+   "handler": "createGroupChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/group/search",
+   "handler": "searchGroupChannels"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/members/{user_id}/direct/read",
+   "handler": "readAllMessages"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/members/{user_id}/mark_read",
+   "handler": "readMultipleChannels"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/members/{user_id}/view",
+   "handler": "viewChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/search",
+   "handler": "searchAllChannels"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/stats/member_count",
+   "handler": "getChannelsMemberCount"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/channels/{channel_id}",
+   "handler": "deleteChannel"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}",
+   "handler": "getChannel"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}",
+   "handler": "updateChannel"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/access_control/attributes",
+   "handler": "getChannelAccessControlAttributes"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/bookmarks",
+   "handler": "listChannelBookmarksForChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/bookmarks",
+   "handler": "createChannelBookmark"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/channels/{channel_id}/bookmarks/{bookmark_id}",
+   "handler": "deleteChannelBookmark"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/channels/{channel_id}/bookmarks/{bookmark_id}",
+   "handler": "updateChannelBookmark"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/bookmarks/{bookmark_id}/sort_order",
+   "handler": "updateChannelBookmarkSortOrder"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/common_teams",
+   "handler": "getDirectOrGroupMessageMembersCommonTeams"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/convert_to_channel",
+   "handler": "convertGroupMessageToChannel"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/groups",
+   "handler": "getGroupsByChannel"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/channels/{channel_id}/join_request",
+   "handler": "withdrawMyChannelJoinRequest"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/join_request",
+   "handler": "getMyChannelJoinRequest"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/join_request",
+   "handler": "requestJoinChannel"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/join_requests",
+   "handler": "getChannelJoinRequests"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/join_requests/count",
+   "handler": "countPendingChannelJoinRequests"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/channels/{channel_id}/join_requests/{request_id}",
+   "handler": "patchChannelJoinRequest"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/member_counts_by_group",
+   "handler": "channelMemberCountsByGroup"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/members",
+   "handler": "getChannelMembers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/members",
+   "handler": "addChannelMember"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/members",
+   "handler": "setChannelMembers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/members/ids",
+   "handler": "getChannelMembersByIds"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}",
+   "handler": "removeChannelMember"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}",
+   "handler": "getChannelMember"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}/autotranslation",
+   "handler": "updateChannelMemberAutotranslation"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}/notify_props",
+   "handler": "updateChannelMemberNotifyProps"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}/roles",
+   "handler": "updateChannelMemberRoles"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/members/{user_id}/schemeRoles",
+   "handler": "updateChannelMemberSchemeRoles"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/members_minus_group_members",
+   "handler": "channelMembersMinusGroupMembers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/moderations",
+   "handler": "getChannelModerations"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/moderations/patch",
+   "handler": "patchChannelModerations"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/move",
+   "handler": "moveChannel"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/patch",
+   "handler": "patchChannel"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/pinned",
+   "handler": "getPinnedPosts"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/posts",
+   "handler": "getPostsForChannel"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/privacy",
+   "handler": "updateChannelPrivacy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/restore",
+   "handler": "restoreChannel"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/channels/{channel_id}/scheme",
+   "handler": "updateChannelScheme"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/stats",
+   "handler": "getChannelStats"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/timezones",
+   "handler": "getChannelMembersTimezones"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/views",
+   "handler": "getViewsForChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/views",
+   "handler": "createView"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/channels/{channel_id}/views/{view_id}",
+   "handler": "deleteView"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/views/{view_id}",
+   "handler": "getView"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/channels/{channel_id}/views/{view_id}",
+   "handler": "updateView"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/channels/{channel_id}/views/{view_id}/posts",
+   "handler": "getPostsForView"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/channels/{channel_id}/views/{view_id}/sort_order",
+   "handler": "updateViewSortOrder"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/client_perf",
+   "handler": "submitPerformanceReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/check-cws-connection",
+   "handler": "handleCheckCWSConnection"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/customer",
+   "handler": "getCloudCustomer"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/cloud/customer",
+   "handler": "updateCloudCustomer"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/cloud/customer/address",
+   "handler": "updateCloudCustomerAddress"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/installation",
+   "handler": "getInstallation"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/limits",
+   "handler": "getCloudLimits"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/preview/modal_data",
+   "handler": "getPreviewModalData"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/products",
+   "handler": "getCloudProducts"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/subscription",
+   "handler": "getSubscription"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/subscription/invoices",
+   "handler": "getInvoicesForSubscription"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cloud/subscription/invoices/{invoice_id}/pdf",
+   "handler": "getSubscriptionInvoicePDF"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/cloud/validate-business-email",
+   "handler": "validateBusinessEmail"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/cloud/validate-workspace-business-email",
+   "handler": "validateWorkspaceBusinessEmail"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/cloud/webhook",
+   "handler": "handleCWSWebhook"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/cluster/status",
+   "handler": "getClusterStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/commands",
+   "handler": "listCommands"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/commands",
+   "handler": "createCommand"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/commands/execute",
+   "handler": "executeCommand"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/commands/{command_id}",
+   "handler": "deleteCommand"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/commands/{command_id}",
+   "handler": "getCommand"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/commands/{command_id}",
+   "handler": "updateCommand"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/commands/{command_id}/move",
+   "handler": "moveCommand"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/commands/{command_id}/regen_token",
+   "handler": "regenCommandToken"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/compliance/reports",
+   "handler": "getComplianceReports"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/compliance/reports",
+   "handler": "createComplianceReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/compliance/reports/{report_id}",
+   "handler": "getComplianceReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/compliance/reports/{report_id}/download",
+   "handler": "downloadComplianceReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/config",
+   "handler": "getConfig"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/config",
+   "handler": "updateConfig"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/config/client",
+   "handler": "getClientConfig"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/config/environment",
+   "handler": "getEnvironmentConfig"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/config/patch",
+   "handler": "patchConfig"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/config/reload",
+   "handler": "configReload"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/config",
+   "handler": "getContentFlaggingSettings"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/content_flagging/config",
+   "handler": "saveContentFlaggingSettings"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/fields",
+   "handler": "getContentFlaggingFields"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/flag/config",
+   "handler": "getFlaggingConfiguration"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/post/{post_id}",
+   "handler": "getFlaggedPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/content_flagging/post/{post_id}/assign/{content_reviewer_id}",
+   "handler": "assignFlaggedPostReviewer"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/content_flagging/post/{post_id}/exposure_report",
+   "handler": "generatePostExposureReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/post/{post_id}/field_values",
+   "handler": "getPostPropertyValues"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/content_flagging/post/{post_id}/flag",
+   "handler": "flagPost"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/content_flagging/post/{post_id}/keep",
+   "handler": "keepFlaggedPost"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/content_flagging/post/{post_id}/remove",
+   "handler": "removeFlaggedPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/content_flagging/post/{post_id}/report",
+   "handler": "generateFlaggedPostReport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/team/{team_id}/reviewers/search",
+   "handler": "searchReviewers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/content_flagging/team/{team_id}/status",
+   "handler": "getTeamPostFlaggingFeatureStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/custom_profile_attributes/fields",
+   "handler": "listCPAFields"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/custom_profile_attributes/fields",
+   "handler": "createCPAField"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/custom_profile_attributes/fields/{field_id}",
+   "handler": "deleteCPAField"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/custom_profile_attributes/fields/{field_id}",
+   "handler": "patchCPAField"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/custom_profile_attributes/group",
+   "handler": "getCPAGroup"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/custom_profile_attributes/values",
+   "handler": "patchCPAValues"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policies",
+   "handler": "getPolicies"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/data_retention/policies",
+   "handler": "createPolicy"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/data_retention/policies/{policy_id}",
+   "handler": "deletePolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policies/{policy_id}",
+   "handler": "getPolicy"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/data_retention/policies/{policy_id}",
+   "handler": "patchPolicy"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/data_retention/policies/{policy_id}/channels",
+   "handler": "removeChannelsFromPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policies/{policy_id}/channels",
+   "handler": "getChannelsForPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/data_retention/policies/{policy_id}/channels",
+   "handler": "addChannelsToPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/data_retention/policies/{policy_id}/channels/search",
+   "handler": "searchChannelsInPolicy"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/data_retention/policies/{policy_id}/teams",
+   "handler": "removeTeamsFromPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policies/{policy_id}/teams",
+   "handler": "getTeamsForPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/data_retention/policies/{policy_id}/teams",
+   "handler": "addTeamsToPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/data_retention/policies/{policy_id}/teams/search",
+   "handler": "searchTeamsInPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policies_count",
+   "handler": "getPoliciesCount"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/data_retention/policy",
+   "handler": "getGlobalPolicy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/database/recycle",
+   "handler": "databaseRecycle"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/drafts",
+   "handler": "upsertDraft"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/elasticsearch/purge_indexes",
+   "handler": "purgeElasticsearchIndexes"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/elasticsearch/test",
+   "handler": "testElasticsearch"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/email/test",
+   "handler": "testEmail"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/emoji",
+   "handler": "getEmojiList"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/emoji",
+   "handler": "createEmoji"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/emoji/autocomplete",
+   "handler": "autocompleteEmojis"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/emoji/name/{emoji_name}",
+   "handler": "getEmojiByName"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/emoji/names",
+   "handler": "getEmojisByNames"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/emoji/search",
+   "handler": "searchEmojis"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/emoji/{emoji_id}",
+   "handler": "deleteEmoji"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/emoji/{emoji_id}",
+   "handler": "getEmoji"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/emoji/{emoji_id}/image",
+   "handler": "getEmojiImage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/exports",
+   "handler": "listExports"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/exports/{export_name}",
+   "handler": "deleteExport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/exports/{export_name}",
+   "handler": "downloadExport"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/exports/{export_name}/presign-url",
+   "handler": "generatePresignURLExport"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/file/s3_test",
+   "handler": "testFileStore"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/file/test",
+   "handler": "testFileStore"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/files",
+   "handler": "uploadFileStream"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/files/search",
+   "handler": "searchFilesInAllTeams"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/files/{file_id}",
+   "handler": "getFile"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/files/{file_id}/info",
+   "handler": "getFileInfo"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/files/{file_id}/link",
+   "handler": "getFileLink"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/files/{file_id}/preview",
+   "handler": "getFilePreview"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/files/{file_id}/thumbnail",
+   "handler": "getFileThumbnail"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups",
+   "handler": "getGroups"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/groups",
+   "handler": "createGroup"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/groups/names",
+   "handler": "getGroupsByNames"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/groups/{group_id}",
+   "handler": "deleteGroup"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups/{group_id}",
+   "handler": "getGroup"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/groups/{group_id}/members",
+   "handler": "deleteGroupMembers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups/{group_id}/members",
+   "handler": "getGroupMembers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/groups/{group_id}/members",
+   "handler": "addGroupMembers"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/groups/{group_id}/patch",
+   "handler": "patchGroup"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/groups/{group_id}/restore",
+   "handler": "restoreGroup"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups/{group_id}/stats",
+   "handler": "getGroupStats"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups/{group_id}/{syncable_type}",
+   "handler": "getGroupSyncables"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/groups/{group_id}/{syncable_type}/{syncable_id}",
+   "handler": "getGroupSyncable"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/groups/{group_id}/{syncable_type}/{syncable_id}/link",
+   "handler": "unlinkGroupSyncable"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/groups/{group_id}/{syncable_type}/{syncable_id}/link",
+   "handler": "linkGroupSyncable"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/groups/{group_id}/{syncable_type}/{syncable_id}/patch",
+   "handler": "patchGroupSyncable"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/hooks/incoming",
+   "handler": "getIncomingHooks"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/hooks/incoming",
+   "handler": "createIncomingHook"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/hooks/incoming/{hook_id}",
+   "handler": "deleteIncomingHook"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/hooks/incoming/{hook_id}",
+   "handler": "getIncomingHook"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/hooks/incoming/{hook_id}",
+   "handler": "updateIncomingHook"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/hooks/outgoing",
+   "handler": "getOutgoingHooks"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/hooks/outgoing",
+   "handler": "createOutgoingHook"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/hooks/outgoing/{hook_id}",
+   "handler": "deleteOutgoingHook"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/hooks/outgoing/{hook_id}",
+   "handler": "getOutgoingHook"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/hooks/outgoing/{hook_id}",
+   "handler": "updateOutgoingHook"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/hooks/outgoing/{hook_id}/regen_token",
+   "handler": "regenOutgoingHookToken"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/hosted_customer/signup_available",
+   "handler": "handleSignupAvailable"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/image",
+   "handler": "getImage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/imports",
+   "handler": "listImports"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/imports/{import_name}",
+   "handler": "deleteImport"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/ip_filtering",
+   "handler": "getIPFilters"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ip_filtering",
+   "handler": "applyIPFilters"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/ip_filtering/my_ip",
+   "handler": "myIP"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/jobs",
+   "handler": "getJobs"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/jobs",
+   "handler": "createJob"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/jobs/type/{job_type}",
+   "handler": "getJobsByType"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/jobs/{job_id}",
+   "handler": "getJob"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/jobs/{job_id}/cancel",
+   "handler": "cancelJob"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/jobs/{job_id}/download",
+   "handler": "downloadJob"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/jobs/{job_id}/status",
+   "handler": "updateJobStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/latest_version",
+   "handler": "getLatestVersion"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/ldap/certificate/private",
+   "handler": "removeLdapPrivateCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/certificate/private",
+   "handler": "addLdapPrivateCertificate"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/ldap/certificate/public",
+   "handler": "removeLdapPublicCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/certificate/public",
+   "handler": "addLdapPublicCertificate"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/ldap/groups",
+   "handler": "getLdapGroups"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/ldap/groups/{remote_id}/link",
+   "handler": "unlinkLdapGroup"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/groups/{remote_id}/link",
+   "handler": "linkLdapGroup"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/migrateid",
+   "handler": "migrateIDLdap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/sync",
+   "handler": "syncLdap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/test",
+   "handler": "testLdap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/test_connection",
+   "handler": "testLdapConnection"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/test_diagnostics",
+   "handler": "testLdapDiagnostics"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/ldap/users/{user_id}/group_sync_memberships",
+   "handler": "addUserToGroupSyncables"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/license",
+   "handler": "removeLicense"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/license",
+   "handler": "addLicense"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/license/client",
+   "handler": "getClientLicense"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/license/load_metric",
+   "handler": "getLicenseLoadMetric"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/license/preview",
+   "handler": "previewLicense"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/limits/server",
+   "handler": "getServerLimits"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/llmservices",
+   "handler": "getLLMServices"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/logs",
+   "handler": "getLogs"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/logs",
+   "handler": "postLog"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/logs/download",
+   "handler": "downloadLogs"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/logs/query",
+   "handler": "queryLogs"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/notifications/ack",
+   "handler": "pushNotificationAck"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/notifications/test",
+   "handler": "testNotifications"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/oauth/apps",
+   "handler": "getOAuthApps"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/oauth/apps",
+   "handler": "createOAuthApp"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/oauth/apps/register",
+   "handler": "registerOAuthClient"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/oauth/apps/{app_id}",
+   "handler": "deleteOAuthApp"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/oauth/apps/{app_id}",
+   "handler": "getOAuthApp"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/oauth/apps/{app_id}",
+   "handler": "updateOAuthApp"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/oauth/apps/{app_id}/info",
+   "handler": "getOAuthAppInfo"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/oauth/apps/{app_id}/regen_secret",
+   "handler": "regenerateOAuthAppSecret"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/oauth/outgoing_connections",
+   "handler": "listOutgoingOAuthConnections"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/oauth/outgoing_connections",
+   "handler": "createOutgoingOAuthConnection"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/oauth/outgoing_connections/validate",
+   "handler": "validateOutgoingOAuthConnectionCredentials"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/oauth/outgoing_connections/{outgoing_oauth_connection_id}",
+   "handler": "deleteOutgoingOAuthConnection"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/oauth/outgoing_connections/{outgoing_oauth_connection_id}",
+   "handler": "getOutgoingOAuthConnection"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/oauth/outgoing_connections/{outgoing_oauth_connection_id}",
+   "handler": "updateOutgoingOAuthConnection"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/permissions/ancillary",
+   "handler": "appendAncillaryPermissionsPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/plugins",
+   "handler": "getPlugins"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins",
+   "handler": "uploadPlugin"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins/install_from_url",
+   "handler": "installPluginFromURL"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/plugins/marketplace",
+   "handler": "getMarketplacePlugins"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins/marketplace",
+   "handler": "installMarketplacePlugin"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/plugins/marketplace/first_admin_visit",
+   "handler": "getFirstAdminVisitMarketplaceStatus"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins/marketplace/first_admin_visit",
+   "handler": "setFirstAdminVisitMarketplaceStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/plugins/statuses",
+   "handler": "getPluginStatuses"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/plugins/webapp",
+   "handler": "getWebappPlugins"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/plugins/{plugin_id}",
+   "handler": "removePlugin"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins/{plugin_id}/disable",
+   "handler": "disablePlugin"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/plugins/{plugin_id}/enable",
+   "handler": "enablePlugin"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts",
+   "handler": "createPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/ephemeral",
+   "handler": "createEphemeralPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/ids",
+   "handler": "getPostsByIds"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/rewrite",
+   "handler": "rewriteMessage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/schedule",
+   "handler": "createSchedulePost"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/posts/schedule/{scheduled_post_id}",
+   "handler": "deleteScheduledPost"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/posts/schedule/{scheduled_post_id}",
+   "handler": "updateScheduledPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/scheduled/team/{team_id}",
+   "handler": "getTeamScheduledPosts"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/search",
+   "handler": "searchPostsInAllTeams"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/posts/{post_id}",
+   "handler": "deletePost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}",
+   "handler": "getPost"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/posts/{post_id}",
+   "handler": "updatePost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/{post_id}/actions/{action_id}",
+   "handler": "doPostAction"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/posts/{post_id}/burn",
+   "handler": "burnPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/edit_history",
+   "handler": "getEditHistoryForPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/files/info",
+   "handler": "getFileInfosForPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/info",
+   "handler": "getPostInfo"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/{post_id}/move",
+   "handler": "moveThread"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/posts/{post_id}/patch",
+   "handler": "patchPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/{post_id}/pin",
+   "handler": "pinPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/reactions",
+   "handler": "getReactions"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/{post_id}/restore/{restore_version_id}",
+   "handler": "restorePostVersion"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/reveal",
+   "handler": "revealPost"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/posts/{post_id}/thread",
+   "handler": "getPostThread"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/posts/{post_id}/unpin",
+   "handler": "unpinPost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/properties/groups/{group_name}/fields/search",
+   "handler": "searchPropertyFields"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/properties/groups/{group_name}/system/values",
+   "handler": "getSystemPropertyValues"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/properties/groups/{group_name}/system/values",
+   "handler": "patchSystemPropertyValues"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/fields",
+   "handler": "getPropertyFields"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/fields",
+   "handler": "createPropertyField"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/fields/{field_id}",
+   "handler": "deletePropertyField"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/fields/{field_id}",
+   "handler": "patchPropertyField"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/values/{target_id}",
+   "handler": "getPropertyValues"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/properties/groups/{group_name}/{object_type}/values/{target_id}",
+   "handler": "patchPropertyValues"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/reactions",
+   "handler": "saveReaction"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/recaps",
+   "handler": "getRecaps"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/recaps",
+   "handler": "createRecap"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/recaps/limit_status",
+   "handler": "getRecapLimitStatus"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/recaps/mark_viewed",
+   "handler": "markRecapsAsViewed"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/recaps/{recap_id}",
+   "handler": "deleteRecap"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/recaps/{recap_id}",
+   "handler": "getRecap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/recaps/{recap_id}/read",
+   "handler": "markRecapAsRead"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/recaps/{recap_id}/regenerate",
+   "handler": "regenerateRecap"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/redirect_location",
+   "handler": "getRedirectLocation"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/remotecluster",
+   "handler": "getRemoteClusters"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster",
+   "handler": "createRemoteCluster"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/accept_invite",
+   "handler": "remoteClusterAcceptInvite"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/confirm_invite",
+   "handler": "remoteClusterConfirmInvite"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/msg",
+   "handler": "remoteClusterAcceptMessage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/ping",
+   "handler": "remoteClusterPing"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/upload/{upload_id}",
+   "handler": "uploadRemoteData"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/remotecluster/{remote_id}",
+   "handler": "deleteRemoteCluster"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/remotecluster/{remote_id}",
+   "handler": "getRemoteCluster"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/remotecluster/{remote_id}",
+   "handler": "patchRemoteCluster"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/{remote_id}/channels/{channel_id}/invite",
+   "handler": "inviteRemoteClusterToChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/{remote_id}/channels/{channel_id}/uninvite",
+   "handler": "uninviteRemoteClusterToChannel"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/{remote_id}/generate_invite",
+   "handler": "generateRemoteClusterInvite"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/remotecluster/{remote_id}/sharedchannelremotes",
+   "handler": "getSharedChannelRemotesByRemoteCluster"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/remotecluster/{user_id}/image",
+   "handler": "remoteSetProfileImage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/reports/posts",
+   "handler": "getPostsForReporting"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/reports/users",
+   "handler": "getUsersForReporting"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/reports/users/count",
+   "handler": "getUserCountForReporting"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/reports/users/export",
+   "handler": "startUsersBatchExport"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/restart",
+   "handler": "restart"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/roles",
+   "handler": "getAllRoles"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/roles/name/{role_name}",
+   "handler": "getRoleByName"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/roles/names",
+   "handler": "getRolesByNames"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/roles/{role_id}",
+   "handler": "getRole"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/roles/{role_id}/patch",
+   "handler": "patchRole"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/saml/certificate/idp",
+   "handler": "removeSamlIdpCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/saml/certificate/idp",
+   "handler": "addSamlIdpCertificate"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/saml/certificate/private",
+   "handler": "removeSamlPrivateCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/saml/certificate/private",
+   "handler": "addSamlPrivateCertificate"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/saml/certificate/public",
+   "handler": "removeSamlPublicCertificate"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/saml/certificate/public",
+   "handler": "addSamlPublicCertificate"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/saml/certificate/status",
+   "handler": "getSamlCertificateStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/saml/metadata",
+   "handler": "getSamlMetadata"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/saml/metadatafromidp",
+   "handler": "getSamlMetadataFromIdp"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/saml/reset_auth_data",
+   "handler": "resetAuthDataToEmail"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/scheduled_recaps",
+   "handler": "getScheduledRecaps"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/scheduled_recaps",
+   "handler": "createScheduledRecap"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/scheduled_recaps/{scheduled_recap_id}",
+   "handler": "deleteScheduledRecap"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/scheduled_recaps/{scheduled_recap_id}",
+   "handler": "getScheduledRecap"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/scheduled_recaps/{scheduled_recap_id}",
+   "handler": "updateScheduledRecap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/scheduled_recaps/{scheduled_recap_id}/pause",
+   "handler": "pauseScheduledRecap"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/scheduled_recaps/{scheduled_recap_id}/resume",
+   "handler": "resumeScheduledRecap"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/schemes",
+   "handler": "getSchemes"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/schemes",
+   "handler": "createScheme"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/schemes/{scheme_id}",
+   "handler": "deleteScheme"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/schemes/{scheme_id}",
+   "handler": "getScheme"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/schemes/{scheme_id}/channels",
+   "handler": "getChannelsForScheme"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/schemes/{scheme_id}/patch",
+   "handler": "patchScheme"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/schemes/{scheme_id}/teams",
+   "handler": "getTeamsForScheme"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/server_busy",
+   "handler": "clearServerBusy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/server_busy",
+   "handler": "getServerBusyExpires"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/server_busy",
+   "handler": "setServerBusy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/sharedchannels/remote_info/{remote_id}",
+   "handler": "getRemoteClusterInfo"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/sharedchannels/users/{user_id}/can_dm/{other_user_id}",
+   "handler": "canUserDirectMessage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/sharedchannels/{channel_id}/remotes",
+   "handler": "getSharedChannelRemotes"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/sharedchannels/{team_id}",
+   "handler": "getSharedChannels"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/site_url/test",
+   "handler": "testSiteURL"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/system/e2e/ai_bridge",
+   "handler": "deleteAIBridgeTestHelper"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/e2e/ai_bridge",
+   "handler": "getAIBridgeTestHelper"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/system/e2e/ai_bridge",
+   "handler": "putAIBridgeTestHelper"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/system/notices/view",
+   "handler": "updateViewedProductNotices"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/notices/{team_id}",
+   "handler": "getProductNotices"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/onboarding/complete",
+   "handler": "getOnboarding"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/system/onboarding/complete",
+   "handler": "completeOnboarding"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/ping",
+   "handler": "getSystemPing"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/schema/version",
+   "handler": "getAppliedSchemaMigrations"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/support_packet",
+   "handler": "generateSupportPacket"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/system/timezones",
+   "handler": "getSupportedTimezones"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams",
+   "handler": "getAllTeams"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams",
+   "handler": "createTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/invite/{invite_id}",
+   "handler": "getInviteInfo"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/teams/invites/email",
+   "handler": "invalidateAllEmailInvites"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/members/invite",
+   "handler": "addUserToTeamFromInvite"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/name/{team_name}",
+   "handler": "getTeamByName"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/name/{team_name}/channels/name/{channel_name}",
+   "handler": "getChannelByNameForTeamName"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/name/{team_name}/exists",
+   "handler": "teamExists"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/search",
+   "handler": "searchTeams"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/teams/{team_id}",
+   "handler": "deleteTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}",
+   "handler": "getTeam"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}",
+   "handler": "updateTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/access_control/attributes",
+   "handler": "getTeamAccessControlAttributes"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/access_control/policy",
+   "handler": "getTeamAccessControlPolicy"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels",
+   "handler": "getPublicChannelsForTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/autocomplete",
+   "handler": "autocompleteChannelsForTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/deleted",
+   "handler": "getDeletedChannelsForTeam"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/channels/ids",
+   "handler": "getPublicChannelsByIdsForTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/managed_categories",
+   "handler": "getManagedCategories"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/name/{channel_name}",
+   "handler": "getChannelByName"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/private",
+   "handler": "getPrivateChannelsForTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/recommended",
+   "handler": "getRecommendedChannelsForTeam"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/channels/search",
+   "handler": "searchChannelsForTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/channels/search_autocomplete",
+   "handler": "autocompleteChannelsForTeamForSearch"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/commands/autocomplete",
+   "handler": "listAutocompleteCommands"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/commands/autocomplete_suggestions",
+   "handler": "listCommandAutocompleteSuggestions"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/files/search",
+   "handler": "searchFilesInTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/groups",
+   "handler": "getGroupsByTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/groups_by_channels",
+   "handler": "getGroupsAssociatedToChannelsByTeam"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/teams/{team_id}/image",
+   "handler": "removeTeamIcon"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/image",
+   "handler": "getTeamIcon"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/image",
+   "handler": "setTeamIcon"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/import",
+   "handler": "importTeam"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/invite-guests/email",
+   "handler": "inviteGuestsToChannels"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/invite/email",
+   "handler": "inviteUsersToTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/members",
+   "handler": "getTeamMembers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/members",
+   "handler": "addTeamMember"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/members/batch",
+   "handler": "addTeamMembers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/members/ids",
+   "handler": "getTeamMembersByIds"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/teams/{team_id}/members/{user_id}",
+   "handler": "removeTeamMember"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/members/{user_id}",
+   "handler": "getTeamMember"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}/members/{user_id}/roles",
+   "handler": "updateTeamMemberRoles"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}/members/{user_id}/schemeRoles",
+   "handler": "updateTeamMemberSchemeRoles"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/members_minus_group_members",
+   "handler": "teamMembersMinusGroupMembers"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}/patch",
+   "handler": "patchTeam"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/posts/search",
+   "handler": "searchPostsInTeam"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}/privacy",
+   "handler": "updateTeamPrivacy"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/regenerate_invite_id",
+   "handler": "regenerateTeamInviteId"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/teams/{team_id}/restore",
+   "handler": "restoreTeam"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/teams/{team_id}/scheme",
+   "handler": "updateTeamScheme"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/teams/{team_id}/stats",
+   "handler": "getTeamStats"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/terms_of_service",
+   "handler": "getLatestTermsOfService"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/terms_of_service",
+   "handler": "createTermsOfService"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/trial-license",
+   "handler": "requestTrialLicense"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/trial-license/prev",
+   "handler": "getPrevTrialLicense"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/upgrade_to_enterprise",
+   "handler": "upgradeToEnterprise"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/upgrade_to_enterprise/allowed",
+   "handler": "isAllowedToUpgradeToEnterprise"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/upgrade_to_enterprise/status",
+   "handler": "upgradeToEnterpriseStatus"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/uploads",
+   "handler": "createUpload"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/uploads/{upload_id}",
+   "handler": "getUpload"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/uploads/{upload_id}",
+   "handler": "uploadData"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/usage/posts",
+   "handler": "getPostsUsage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/usage/storage",
+   "handler": "getStorageUsage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/usage/teams",
+   "handler": "getTeamsUsage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users",
+   "handler": "getUsers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users",
+   "handler": "createUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/auth_data",
+   "handler": "getUserByAuthData"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/autocomplete",
+   "handler": "autocompleteUsers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/email/verify",
+   "handler": "verifyUserEmail"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/email/verify/send",
+   "handler": "sendVerificationEmail"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/email/{email}",
+   "handler": "getUserByEmail"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/group_channels",
+   "handler": "getUsersByGroupChannelIds"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/ids",
+   "handler": "getUsersByIds"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/invalid_emails",
+   "handler": "getUsersWithInvalidEmails"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/known",
+   "handler": "getKnownUsers"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login",
+   "handler": "login"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login/cws",
+   "handler": "loginCWS"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login/desktop_token",
+   "handler": "loginWithDesktopToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login/sso/code-exchange",
+   "handler": "loginSSOCodeExchange"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login/switch",
+   "handler": "switchAccountType"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/login/type",
+   "handler": "getLoginType"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/logout",
+   "handler": "logout"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/migrate_auth/ldap",
+   "handler": "migrateAuthToLDAP"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/migrate_auth/saml",
+   "handler": "migrateAuthToSaml"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/notify-admin",
+   "handler": "handleNotifyAdmin"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/password/reset",
+   "handler": "resetPassword"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/password/reset/send",
+   "handler": "sendPasswordReset"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/search",
+   "handler": "searchUsers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/sessions/attributes/manifest",
+   "handler": "getSessionAttributesManifest"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/sessions/device",
+   "handler": "handleDeviceProps"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/sessions/revoke/all",
+   "handler": "revokeAllSessionsAllUsers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/stats",
+   "handler": "getTotalUsersStats"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/stats/filtered",
+   "handler": "getFilteredUsersStats"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/status/ids",
+   "handler": "getUserStatusesByIds"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/tokens",
+   "handler": "getUserAccessTokens"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/disable",
+   "handler": "disableUserAccessToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/enable",
+   "handler": "enableUserAccessToken"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/tokens/non_compliant/count",
+   "handler": "countNonCompliantUserAccessTokens"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/non_compliant/revoke",
+   "handler": "revokeNonCompliantUserAccessTokens"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/revoke",
+   "handler": "revokeUserAccessToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/rotate",
+   "handler": "rotateUserAccessToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/tokens/search",
+   "handler": "searchUserAccessTokens"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/tokens/{token_id}",
+   "handler": "getUserAccessToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/trigger-notify-admin-posts",
+   "handler": "handleTriggerNotifyAdminPosts"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/username/{username}",
+   "handler": "getUserByUsername"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/usernames",
+   "handler": "getUsersByNames"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}",
+   "handler": "deleteUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}",
+   "handler": "getUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}",
+   "handler": "updateUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/active",
+   "handler": "updateUserActive"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/audits",
+   "handler": "getUserAudits"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/auth",
+   "handler": "updateUserAuth"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/channel_join_requests",
+   "handler": "getMyChannelJoinRequests"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/channel_members",
+   "handler": "getChannelMembersForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/channels",
+   "handler": "getChannelsForUser"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/channels/{channel_id}/drafts",
+   "handler": "deleteDraft"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/channels/{channel_id}/drafts/{thread_id}",
+   "handler": "deleteDraft"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/channels/{channel_id}/posts/unread",
+   "handler": "getPostsForChannelAroundLastUnread"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/channels/{channel_id}/unread",
+   "handler": "getChannelUnread"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/convert_to_bot",
+   "handler": "convertUserToBot"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/custom_profile_attributes",
+   "handler": "listCPAValues"
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/v4/users/{user_id}/custom_profile_attributes",
+   "handler": "patchCPAValuesForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/data_retention/channel_policies",
+   "handler": "getChannelPoliciesForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/data_retention/team_policies",
+   "handler": "getTeamPoliciesForUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/demote",
+   "handler": "demoteUserToGuest"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/email/verify/member",
+   "handler": "verifyUserEmailWithoutToken"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/groups",
+   "handler": "getGroupsByUserId"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/image",
+   "handler": "setDefaultProfileImage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/image",
+   "handler": "getProfileImage"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/image",
+   "handler": "setProfileImage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/image/default",
+   "handler": "getDefaultProfileImage"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/mfa",
+   "handler": "updateUserMfa"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/mfa/generate",
+   "handler": "generateMfaSecret"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/oauth/apps/authorized",
+   "handler": "getAuthorizedOAuthApps"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/password",
+   "handler": "updatePassword"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/patch",
+   "handler": "patchUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/posts/flagged",
+   "handler": "getFlaggedPostsForUser"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/posts/{post_id}/ack",
+   "handler": "unacknowledgePost"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/posts/{post_id}/ack",
+   "handler": "acknowledgePost"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/posts/{post_id}/reactions/{emoji_name}",
+   "handler": "deleteReaction"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/posts/{post_id}/reminder",
+   "handler": "setPostReminder"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/posts/{post_id}/set_unread",
+   "handler": "setPostUnread"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/preferences",
+   "handler": "getPreferences"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/preferences",
+   "handler": "updatePreferences"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/preferences/delete",
+   "handler": "deletePreferences"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/preferences/{category}",
+   "handler": "getPreferencesByCategory"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/preferences/{category}/name/{preference_name}",
+   "handler": "getPreferenceByCategoryAndName"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/promote",
+   "handler": "promoteGuestToUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/reset_failed_attempts",
+   "handler": "resetPasswordFailedAttempts"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/roles",
+   "handler": "updateUserRoles"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/sessions",
+   "handler": "getSessions"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/sessions/revoke",
+   "handler": "revokeSession"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/sessions/revoke/all",
+   "handler": "revokeAllSessionsForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/status",
+   "handler": "getUserStatus"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/status",
+   "handler": "updateUserStatus"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/status/custom",
+   "handler": "removeUserCustomStatus"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/status/custom",
+   "handler": "updateUserCustomStatus"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/status/custom/recent",
+   "handler": "removeUserRecentCustomStatus"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/status/custom/recent/delete",
+   "handler": "removeUserRecentCustomStatus"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams",
+   "handler": "getTeamsForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/members",
+   "handler": "getTeamMembersForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/unread",
+   "handler": "getTeamsUnreadForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels",
+   "handler": "getChannelsForTeamForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories",
+   "handler": "getCategoriesForTeamForUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories",
+   "handler": "createCategoryForTeamForUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories",
+   "handler": "updateCategoriesForTeamForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories/order",
+   "handler": "getCategoryOrderForTeamForUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories/order",
+   "handler": "updateCategoryOrderForTeamForUser"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories/{category_id}",
+   "handler": "deleteCategoryForTeamForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories/{category_id}",
+   "handler": "getCategoryForTeamForUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/categories/{category_id}",
+   "handler": "updateCategoryForTeamForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/channels/members",
+   "handler": "getChannelMembersForTeamForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/drafts",
+   "handler": "getDrafts"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/read",
+   "handler": "readAllInTeam"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads",
+   "handler": "getThreadsForUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/read",
+   "handler": "updateReadStateAllThreadsByUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/{thread_id}",
+   "handler": "getThreadForUser"
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/{thread_id}/following",
+   "handler": "unfollowThreadByUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/{thread_id}/following",
+   "handler": "followThreadByUser"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/{thread_id}/read/{timestamp}",
+   "handler": "updateReadStateThreadByUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/threads/{thread_id}/set_unread/{post_id}",
+   "handler": "setUnreadThreadByPostId"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/teams/{team_id}/unread",
+   "handler": "getTeamUnread"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/terms_of_service",
+   "handler": "getUserTermsOfService"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/terms_of_service",
+   "handler": "saveUserTermsOfService"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/tokens",
+   "handler": "getUserAccessTokensForUser"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/tokens",
+   "handler": "createUserAccessToken"
+  },
+  {
+   "method": "POST",
+   "path": "/api/v4/users/{user_id}/typing",
+   "handler": "publishUserTyping"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/users/{user_id}/uploads",
+   "handler": "getUploadsForUser"
+  },
+  {
+   "method": "GET",
+   "path": "/api/v4/{websocket}",
+   "handler": "connectWebSocket"
+  },
+  {
+   "method": "GET",
+   "path": "/files/{file_id}/public",
+   "handler": "getPublicFile"
+  },
+  {
+   "method": "GET",
+   "path": "/manualtest",
+   "handler": "manualtesting.ManualTest"
+  }
+ ]
+}

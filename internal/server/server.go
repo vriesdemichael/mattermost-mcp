@@ -33,11 +33,53 @@ func Single(client *mattermost.Client) ClientFor {
 }
 
 // Spec pairs a tool definition with the function that registers it, so the
-// catalogue can be read without a Mattermost to talk to.
+// catalogue can be read without a Mattermost to talk to, and with the
+// Mattermost operations it calls.
 type Spec struct {
 	Tool     *mcp.Tool
 	Register func(*mcp.Server, ClientFor)
+	// Uses is every operation the tool calls, with what it does with each of the
+	// operation's parameters (ADR-028). The live suite checks that the tool calls
+	// exactly these, and the governance tests that each is accounted for in full
+	// and on every supported release (ADR-027).
+	Uses []Use
 }
+
+// Use is one Mattermost operation a tool calls, by its operationId in the
+// newest release's specification.
+type Use struct {
+	Operation string
+	// Params says, for every path, query and header parameter of the operation
+	// and every field of its JSON body (written body.<field>), what the tool does
+	// with it. None may be left unsaid.
+	Params map[string]Coverage
+	// Releases says how the tool handles what differs in the oldest supported
+	// release, and is required exactly when something does (ADR-025).
+	Releases string
+}
+
+// Coverage is what a tool does with one parameter of an operation it calls.
+type Coverage struct {
+	// How is "exposed", "fixed" or "omitted".
+	How string
+	// Arg is the tool's argument that sets an exposed parameter.
+	Arg string
+	// Value is what a fixed parameter is always sent as.
+	Value string
+	// Reason says why a parameter is fixed or omitted.
+	Reason string
+}
+
+// SetBy is a parameter the tool's argument arg sets.
+func SetBy(arg string) Coverage { return Coverage{How: "exposed", Arg: arg} }
+
+// Fixed is a parameter the tool always sends as value, for reason.
+func Fixed(value, reason string) Coverage {
+	return Coverage{How: "fixed", Value: value, Reason: reason}
+}
+
+// Omitted is a parameter the tool never sends, for reason.
+func Omitted(reason string) Coverage { return Coverage{How: "omitted", Reason: reason} }
 
 // ReadOnly reports whether the tool changes nothing, as its annotation says.
 func (s Spec) ReadOnly() bool {
@@ -79,12 +121,13 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 // toolSpec binds a tool definition to a typed handler. The SDK derives the
 // input schema from In and the output schema from Out, and validates both, so
 // a handler cannot return a shape its schema does not describe.
-func toolSpec[In, Out any](tool *mcp.Tool, handler func(ClientFor) mcp.ToolHandlerFor[In, Out]) Spec {
+func toolSpec[In, Out any](tool *mcp.Tool, uses []Use, handler func(ClientFor) mcp.ToolHandlerFor[In, Out]) Spec {
 	if tool.Annotations != nil && tool.Title == "" {
 		tool.Title = tool.Annotations.Title
 	}
 	return Spec{
 		Tool: tool,
+		Uses: uses,
 		Register: func(server *mcp.Server, clientFor ClientFor) {
 			mcp.AddTool(server, tool, handler(clientFor))
 		},

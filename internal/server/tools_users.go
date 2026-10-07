@@ -45,6 +45,12 @@ func getMeSpec() Spec {
 				"channels and messages the other tools read, and under whose name anything would be posted.",
 			Annotations: readOnly("Who am I"),
 		},
+		[]Use{{
+			Operation: "GetUser",
+			Params: map[string]Coverage{
+				"user_id": Fixed("me", "get_me reads the user the credential belongs to"),
+			},
+		}},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getMeInput, UserSummary] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, _ getMeInput) (*mcp.CallToolResult, UserSummary, error) {
 				client, err := clientFor(ctx, request)

@@ -131,13 +131,13 @@ func TestNoRecordNamesAMattermostVersion(t *testing.T) {
 
 var listedTest = regexp.MustCompile("(?m)^- `(Test\\w+)`")
 
-// governanceTests are the test functions in files named governance_test.go,
-// which is where every governance test lives.
+// governanceTests are the test functions in files whose names end in
+// governance_test.go, which is where every governance test lives.
 func governanceTests(t *testing.T) []string {
 	t.Helper()
 	var names []string
 	walk(t, func(path string) {
-		if filepath.Base(path) != "governance_test.go" {
+		if !strings.HasSuffix(filepath.Base(path), "governance_test.go") {
 			return
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
