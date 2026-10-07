@@ -8,6 +8,7 @@ require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/mattermost/mattermost/server/public v0.4.4-0.20260924051158-3acb3a7f684d
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	golang.org/x/image v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
