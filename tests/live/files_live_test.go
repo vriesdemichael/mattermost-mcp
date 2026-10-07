@@ -34,11 +34,12 @@ func localSession(t *testing.T, admin *model.Client4, user *model.User, answer f
 	t.Helper()
 	downloads := t.TempDir()
 	cfg := config.Config{
-		URL:         liveURL,
-		Token:       personalAccessToken(t, admin, user.Id).Token,
-		AllowWrites: true,
-		Local:       true,
-		DownloadDir: downloads,
+		URL:             liveURL,
+		Token:           personalAccessToken(t, admin, user.Id).Token,
+		AllowWrites:     true,
+		MarkAIGenerated: true,
+		Local:           true,
+		DownloadDir:     downloads,
 	}
 	options := &mcp.ClientOptions{ElicitationHandler: func(_ context.Context, request *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		return answer(request.Params), nil
@@ -238,7 +239,7 @@ func TestAFileChangedAfterThePersonWasAskedIsNotSent(t *testing.T) {
 		return accept
 	})
 
-	_, err := tryTool(t, session, &mcp.CallToolParams{Name: "post_message", Arguments: map[string]any{
+	_, err := tryTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: map[string]any{
 		"channel_id": channel.Id, "message": "notes", "files": []map[string]any{{"path": onDisk}},
 	}})
 	var refused *jsonrpc.Error
@@ -262,7 +263,7 @@ func TestAServerNotOnThePersonsMachineAttachesNoFileFromAPath(t *testing.T) {
 	check(t, os.WriteFile(onDisk, []byte("x"), 0o600))
 	session, questions := writingSession(t, admin, user, accept)
 
-	result := callTool(t, session, &mcp.CallToolParams{Name: "post_message", Arguments: map[string]any{
+	result := callTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: map[string]any{
 		"channel_id": channel.Id, "message": "x", "files": []map[string]any{{"path": onDisk}},
 	}})
 	if !result.IsError || !strings.Contains(errorText(result), "does not run on the person's machine") {

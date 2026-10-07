@@ -17,19 +17,23 @@ const (
 	EnvToken                = "MM_TOKEN"
 	EnvAllowWrites          = "MM_MCP_ALLOW_WRITES"
 	EnvDownloadDir          = "MM_MCP_DOWNLOAD_DIR"
+	EnvMarkAIGenerated      = "MM_MCP_MARK_AI_GENERATED"
 	EnvBlockExternalNetwork = "MM_MCP_BLOCK_EXTERNAL_NETWORK"
 )
 
 // EnvironmentVariables is every variable mm-mcp reads. The unit-test seal
 // empties each of them, and a governance test fails when the source names one
 // that is not listed here (ADR-006).
-var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloadDir, EnvBlockExternalNetwork}
+var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloadDir, EnvMarkAIGenerated, EnvBlockExternalNetwork}
 
 // Config is a server's configuration.
 type Config struct {
 	URL         string
 	Token       string
 	AllowWrites bool
+	// MarkAIGenerated marks every post and edit the model writes as written
+	// with AI, as Mattermost shows it. On unless turned off.
+	MarkAIGenerated bool
 	// DownloadDir is where save_file writes; empty means the person's
 	// Downloads directory.
 	DownloadDir string
@@ -42,7 +46,7 @@ type Config struct {
 
 // String leaves the token out, so a Config can be logged or printed in an error.
 func (c Config) String() string {
-	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, DownloadDir: %q, Local: %t}", c.URL, c.AllowWrites, c.DownloadDir, c.Local)
+	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, MarkAIGenerated: %t, DownloadDir: %q, Local: %t}", c.URL, c.AllowWrites, c.MarkAIGenerated, c.DownloadDir, c.Local)
 }
 
 // GoString is String, so %#v leaves the token out too.
@@ -69,7 +73,16 @@ func FromEnv(lookup func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{URL: address, Token: token, AllowWrites: allowWrites, DownloadDir: strings.TrimSpace(lookup(EnvDownloadDir))}, nil
+	markAI := true
+	if raw := lookup(EnvMarkAIGenerated); strings.TrimSpace(raw) != "" {
+		if markAI, err = ParseBool(EnvMarkAIGenerated, raw); err != nil {
+			return Config{}, err
+		}
+	}
+	return Config{
+		URL: address, Token: token, AllowWrites: allowWrites, MarkAIGenerated: markAI,
+		DownloadDir: strings.TrimSpace(lookup(EnvDownloadDir)),
+	}, nil
 }
 
 // ParseBool reads the usual spellings of true and false; empty is false.

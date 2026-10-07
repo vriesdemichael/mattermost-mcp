@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -24,14 +23,12 @@ const (
 
 // ThreadSummary is a thread the user follows, as the threads view shows it.
 type ThreadSummary struct {
-	RootID    string `json:"root_id" jsonschema:"the post that started the thread; read_thread reads it whole"`
-	ChannelID string `json:"channel_id"`
-	Channel   string `json:"channel" jsonschema:"the channel's display name, or the other person's username for a direct message"`
-	// Started is the thread's first post.
-	Started        Post     `json:"started" jsonschema:"the post that started the thread"`
+	RootID string `json:"root_id" jsonschema:"the post that started the thread; read_post reads it with every reply"`
+	// Started is the thread's first post, with its channel and team.
+	Started        Post     `json:"started" jsonschema:"the post that started the thread, with its channel and team"`
 	ReplyCount     int64    `json:"reply_count"`
 	LastReplyAt    string   `json:"last_reply_at,omitempty"`
-	Participants   []string `json:"participants" jsonschema:"the usernames of the people who replied"`
+	Participants   []string `json:"participants" jsonschema:"the usernames of the people who took part"`
 	UnreadReplies  int64    `json:"unread_replies" jsonschema:"replies the person has not read in Mattermost"`
 	UnreadMentions int64    `json:"unread_mentions" jsonschema:"unread replies that mention the person"`
 }
@@ -49,28 +46,6 @@ type listThreadsInput struct {
 	Limit      int    `json:"limit,omitempty" jsonschema:"how many threads to return, at most 100; 20 when not given"`
 }
 
-// channelNameUses are the operations channelNames calls.
-func channelNameUses(why string) []Use {
-	return []Use{
-		{
-			Operation: "GetUser",
-			Params:    map[string]Coverage{"user_id": Fixed("me", "the user's own id tells which side of a direct message is the other person")},
-		},
-		{
-			Operation: "GetChannelsForUser",
-			Params: map[string]Coverage{
-				"user_id":         Fixed("me", why),
-				"last_delete_at":  Fixed("0", "archived channels are left out, as they are out of list_channels"),
-				"include_deleted": Omitted("archived channels are left out, as they are out of list_channels"),
-			},
-		},
-		{
-			Operation: "GetUsersByIds",
-			Params:    map[string]Coverage{"since": Omitted("the tool reads each username, whenever it changed")},
-		},
-	}
-}
-
 func listThreadsSpec() Spec {
 	return shaping(toolSpec(
 		&mcp.Tool{
@@ -80,7 +55,7 @@ func listThreadsSpec() Spec {
 				"mentions the person has not read. unread_only keeps those with unread replies. Reading them here marks nothing read.",
 			Annotations: readOnly("List threads"),
 		},
-		append([]Use{
+		uses([]Use{
 			{
 				Operation: "GetUserThreads",
 				Params: map[string]Coverage{
@@ -99,7 +74,7 @@ func listThreadsSpec() Spec {
 				Operation: "GetTeamsForUser",
 				Params:    map[string]Coverage{"user_id": Fixed("me", "without team_id, every team the user belongs to is read")},
 			},
-		}, channelNameUses("a thread names the channel it is in, from the channels the user belongs to")...),
+		}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listThreadsInput, Threads] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listThreadsInput) (*mcp.CallToolResult, Threads, error) {
 				limit := input.Limit
@@ -117,28 +92,29 @@ func listThreadsSpec() Spec {
 				if err != nil {
 					return nil, Threads{}, err
 				}
-				names, err := channelNames(ctx, client)
-				if err != nil {
-					return nil, Threads{}, err
-				}
-				authors := make([]string, 0, len(followed))
-				for _, thread := range followed {
-					authors = append(authors, thread.Post.UserId)
-				}
-				people, err := usernames(ctx, client, authors)
-				if err != nil {
-					return nil, Threads{}, err
-				}
-				out := Threads{Threads: []ThreadSummary{}}
+				var kept []*model.ThreadResponse
+				truncated := false
 				for _, thread := range followed {
 					if input.UnreadOnly && thread.UnreadReplies == 0 {
 						continue
 					}
-					if len(out.Threads) == limit {
-						out.Truncated = true
+					if len(kept) == limit {
+						truncated = true
 						break
 					}
-					out.Threads = append(out.Threads, toThreadSummary(thread, names, people))
+					kept = append(kept, thread)
+				}
+				started := make([]*model.Post, 0, len(kept))
+				for _, thread := range kept {
+					started = append(started, thread.Post)
+				}
+				posts, err := describePosts(ctx, client, started)
+				if err != nil {
+					return nil, Threads{}, err
+				}
+				out := Threads{Threads: make([]ThreadSummary, 0, len(kept)), Truncated: truncated}
+				for i, thread := range kept {
+					out.Threads = append(out.Threads, toThreadSummary(thread, posts[i]))
 				}
 				return nil, out, nil
 			}
@@ -195,23 +171,18 @@ func followedThreads(ctx context.Context, client *mattermost.Client, teamID stri
 	return threads, nil
 }
 
-// toThreadSummary is a followed thread as list_threads returns it, with authors'
-// usernames from people and from the participants Mattermost lists whole.
-func toThreadSummary(thread *model.ThreadResponse, channels, people map[string]string) ThreadSummary {
-	names := maps.Clone(people)
+// toThreadSummary is a followed thread as list_threads returns it. Mattermost's
+// extended answer carries each participant whole.
+func toThreadSummary(thread *model.ThreadResponse, started Post) ThreadSummary {
 	participants := []string{}
 	for _, user := range thread.Participants {
-		if user == nil {
-			continue
+		if user != nil {
+			participants = append(participants, user.Username)
 		}
-		names[user.Id] = user.Username
-		participants = append(participants, user.Username)
 	}
 	return ThreadSummary{
 		RootID:         thread.PostId,
-		ChannelID:      thread.Post.ChannelId,
-		Channel:        channels[thread.Post.ChannelId],
-		Started:        toPost(thread.Post, names),
+		Started:        started,
 		ReplyCount:     thread.ReplyCount,
 		LastReplyAt:    timestamp(thread.LastReplyAt),
 		Participants:   participants,

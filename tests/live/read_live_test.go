@@ -23,7 +23,7 @@ func sessionFor(t *testing.T, admin *model.Client4, user *model.User) *mcp.Clien
 func listChannels(t *testing.T, session *mcp.ClientSession, arguments map[string]any) map[string]server.Channel {
 	t.Helper()
 	var channels server.Channels
-	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "list_channels", Arguments: arguments}), &channels)
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_user_channels", Arguments: arguments}), &channels)
 	byID := map[string]server.Channel{}
 	for _, channel := range channels.Channels {
 		byID[channel.ID] = channel
@@ -38,7 +38,7 @@ func count(value *int64) int64 {
 	return *value
 }
 
-func TestListTeamsNamesTheTeamsTheUserBelongsTo(t *testing.T) {
+func TestGetUserTeamsNamesTheTeamsTheUserBelongsTo(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -46,7 +46,7 @@ func TestListTeamsNamesTheTeamsTheUserBelongsTo(t *testing.T) {
 	other := seedTeam(t, admin)
 
 	var teams server.Teams
-	structured(t, callTool(t, sessionFor(t, admin, user), &mcp.CallToolParams{Name: "list_teams", Arguments: map[string]any{}}), &teams)
+	structured(t, callTool(t, sessionFor(t, admin, user), &mcp.CallToolParams{Name: "get_user_teams", Arguments: map[string]any{}}), &teams)
 
 	var ids []string
 	for _, team := range teams.Teams {
@@ -233,37 +233,65 @@ func TestReadThreadReturnsTheRootAndEveryReplyWithReactions(t *testing.T) {
 	_, _, err := them.SaveReaction(t.Context(), &model.Reaction{UserId: other.Id, PostId: reply.Id, EmojiName: "+1"})
 	check(t, err)
 
-	var thread server.Thread
-	structured(t, callTool(t, sessionFor(t, admin, user), &mcp.CallToolParams{Name: "read_thread", Arguments: map[string]any{"post_id": reply.Id}}), &thread)
+	session := sessionFor(t, admin, user)
+	var read server.PostWithThread
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "read_post", Arguments: map[string]any{"post_id": reply.Id}}), &read)
 
 	want := []string{other.Username + ": a question", user.Username + ": an answer", other.Username + ": thanks"}
-	if got := messages(thread.Posts); thread.RootID != root.Id || !slices.Equal(got, want) {
-		t.Fatalf("got root %s and %v; want %s and %v", thread.RootID, got, root.Id, want)
+	if got := messages(read.Thread); read.RootID != root.Id || !slices.Equal(got, want) {
+		t.Fatalf("got root %s and %v; want %s and %v", read.RootID, got, root.Id, want)
 	}
-	if thread.Posts[1].Reactions["+1"] != 1 || thread.Posts[1].RootID != root.Id {
-		t.Fatalf("the answer reads as %+v; want one +1 and root %s", thread.Posts[1], root.Id)
+	answer := read.Post
+	switch {
+	case answer.ID != reply.Id || answer.RootID != root.Id:
+		t.Fatalf("the post read is %+v; want %s in %s", answer, reply.Id, root.Id)
+	case !slices.Equal(answer.Reactions["+1"], []string{other.Username}):
+		t.Errorf("the answer's reactions read %v; want +1 by %s", answer.Reactions, other.Username)
+	case answer.Channel != channel.DisplayName || answer.Team != team.DisplayName || answer.AuthorName != "Live Test":
+		t.Errorf("the answer names channel %q, team %q, author %q", answer.Channel, answer.Team, answer.AuthorName)
+	}
+
+	var alone server.PostWithThread
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "read_post", Arguments: map[string]any{"post_id": reply.Id, "include_thread": false}}), &alone)
+	if alone.Post.ID != reply.Id || alone.RootID != root.Id || len(alone.Thread) != 0 {
+		t.Fatalf("include_thread false read %+v", alone)
 	}
 }
 
-func TestGetUserFindsAUserByUsernameOrIdAndNamesOneThatDoesNotExist(t *testing.T) {
+func TestGetUsersFindsPeopleByUsernameIdOrEmailInOneCall(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user, other, third := seedUser(t, admin), seedUser(t, admin), seedUser(t, admin)
+	// Only an administrator sees email addresses by default.
+	session := mcpAs(t, admin.AuthToken)
+
+	var found server.Users
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_users", Arguments: map[string]any{
+		"users": []string{"@" + user.Username, other.Id, third.Email},
+	}}), &found)
+	var got []string
+	for _, person := range found.Users {
+		got = append(got, person.Username)
+	}
+	if want := []string{user.Username, other.Username, third.Username}; !slices.Equal(got, want) {
+		t.Fatalf("got %v; want %v, in the order asked", got, want)
+	}
+	if found.Users[0].FirstName != "Live" {
+		t.Errorf("got %+v", found.Users[0])
+	}
+}
+
+func TestGetUsersNamesTheClosestUsernamesForOneNobodyHas(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
 	session := sessionFor(t, admin, user)
 
-	for _, arguments := range []map[string]any{{"username": "@" + other.Username}, {"user_id": other.Id}} {
-		var found server.UserSummary
-		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_user", Arguments: arguments}), &found)
-		if found.ID != other.Id || found.Username != other.Username || found.FirstName != "Live" {
-			t.Errorf("%v: got %+v", arguments, found)
-		}
-	}
-	missing := callTool(t, session, &mcp.CallToolParams{Name: "get_user", Arguments: map[string]any{"username": uniqueName("nobody")}})
-	if !missing.IsError || !strings.Contains(errorText(missing), "Mattermost answered 404") {
-		t.Fatalf("an unknown username: got %s", errorText(missing))
-	}
-	if both := callTool(t, session, &mcp.CallToolParams{Name: "get_user", Arguments: map[string]any{"username": "a", "user_id": "b"}}); !both.IsError {
-		t.Fatal("a username and a user_id together were accepted")
+	// A slip in the last letter of a real username.
+	slip := other.Username[:len(other.Username)-1] + "q"
+	missing := callTool(t, session, &mcp.CallToolParams{Name: "get_users", Arguments: map[string]any{"users": []string{slip}}})
+	if !missing.IsError || !strings.Contains(errorText(missing), `"`+other.Username+`"`) {
+		t.Fatalf("an unknown username: got %s; want it to suggest %s", errorText(missing), other.Username)
 	}
 }
 

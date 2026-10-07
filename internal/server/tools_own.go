@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
@@ -120,7 +121,7 @@ func typingSpec() Spec {
 		&mcp.Tool{
 			Name: "typing",
 			Description: "Show the user as typing in a channel, or in a thread with root_id, while a message is being written there. " +
-				"The indicator stays up until post_message posts there, until stop is sent, or for one minute at most. " +
+				"The indicator stays up until create_post posts there, until stop is sent, or for one minute at most. " +
 				"Call it when you start writing a message the person asked for, not for messages you only consider.",
 			Annotations: personal("Show typing"),
 		},
@@ -151,20 +152,20 @@ func typingSpec() Spec {
 				if err != nil {
 					return nil, Typing{}, err
 				}
-				where, err := target(ctx, client, input.ChannelID, "", input.RootID)
+				channelID, rootID, err := threadOf(ctx, client, input.ChannelID, input.RootID)
 				if err != nil {
 					return nil, Typing{}, err
 				}
-				answer := Typing{ChannelID: where.channelID, RootID: where.rootID()}
+				answer := Typing{ChannelID: channelID, RootID: rootID}
 				if input.Stop {
-					stopTyping(where.channelID, where.rootID())
+					stopTyping(channelID, rootID)
 					return nil, answer, nil
 				}
 				self, err := client.Me(ctx)
 				if err != nil {
 					return nil, Typing{}, err
 				}
-				until, err := startTyping(client, self.Id, where.channelID, where.rootID())
+				until, err := startTyping(client, self.Id, channelID, rootID)
 				if err != nil {
 					return nil, Typing{}, err
 				}
@@ -241,11 +242,11 @@ func followThreadSpec() Spec {
 				if err != nil {
 					return nil, Following{}, err
 				}
-				where, err := target(ctx, client, "", "", input.PostID)
+				channelID, rootID, err := threadOf(ctx, client, "", input.PostID)
 				if err != nil {
 					return nil, Following{}, err
 				}
-				teamID, err := teamOf(ctx, client, where.channelID)
+				teamID, err := teamOf(ctx, client, channelID)
 				if err != nil {
 					return nil, Following{}, err
 				}
@@ -253,10 +254,10 @@ func followThreadSpec() Spec {
 				if err != nil {
 					return nil, Following{}, err
 				}
-				if err := client.Follow(ctx, self.Id, teamID, where.rootID(), following(input.Following)); err != nil {
+				if err := client.Follow(ctx, self.Id, teamID, rootID, following(input.Following)); err != nil {
 					return nil, Following{}, err
 				}
-				return nil, Following{RootID: where.rootID(), Following: following(input.Following)}, nil
+				return nil, Following{RootID: rootID, Following: following(input.Following)}, nil
 			}
 		},
 	), "only the user sees which threads they follow"),
@@ -350,117 +351,127 @@ func savePostSpec() Spec {
 		map[string]string{"saved": "chooses between UpdatePreferences and DeletePreferences"})
 }
 
-// Draft is a draft the user can send from Mattermost.
-type Draft struct {
-	ChannelID string `json:"channel_id"`
-	RootID    string `json:"root_id,omitempty"`
-	Message   string `json:"message"`
+// threadOf is the channel and thread a channel id or a post names: for a post,
+// its channel and the first post of its thread, which is how Mattermost names a
+// thread. GetPost.
+func threadOf(ctx context.Context, client *mattermost.Client, channelID, postID string) (string, string, error) {
+	if postID == "" {
+		if channelID == "" {
+			return "", "", fmt.Errorf("give channel_id for a channel, or root_id for a thread")
+		}
+		return channelID, "", nil
+	}
+	post, err := client.Post(ctx, postID)
+	if err != nil {
+		return "", "", err
+	}
+	if channelID != "" && channelID != post.ChannelId {
+		return "", "", fmt.Errorf("post %s is in channel %s, not %s; leave channel_id out", postID, post.ChannelId, channelID)
+	}
+	root := post.Id
+	if post.RootId != "" {
+		root = post.RootId
+	}
+	return post.ChannelId, root, nil
 }
 
-type draftMessageInput struct {
-	ChannelID string `json:"channel_id,omitempty" jsonschema:"the channel to draft a message in, as list_channels gives it"`
-	ToUser    string `json:"to_user,omitempty" jsonschema:"draft in the direct message with this username instead"`
-	RootID    string `json:"root_id,omitempty" jsonschema:"draft a reply in the thread of this post instead"`
-	Message   string `json:"message" jsonschema:"the draft's text, in Mattermost Markdown"`
+// Reminder is when Mattermost will remind the user of a post.
+type Reminder struct {
+	PostID   string `json:"post_id"`
+	RemindAt string `json:"remind_at" jsonschema:"when the reminder comes, in the person's own timezone"`
+	Timezone string `json:"timezone" jsonschema:"the timezone remind_at is in, as the person set it in Mattermost"`
 }
 
-func draftMessageSpec() Spec {
-	return unasked(toolSpec(
+type setPostReminderInput struct {
+	PostID string `json:"post_id" jsonschema:"the post to be reminded of"`
+	At     string `json:"at" jsonschema:"when, as an ISO 8601 time: with an offset, such as 2026-10-12T09:00:00+02:00, or without one, such as 2026-10-12T09:00, in the person's own timezone"`
+}
+
+func setPostReminderSpec() Spec {
+	return shaping(unasked(toolSpec(
 		&mcp.Tool{
-			Name: "draft_message",
-			Description: "Put a message in the user's message box in Mattermost, as a draft for them to read, change and send themselves. " +
-				"Nothing is sent, and only the user sees it. A channel or thread that already holds a different draft is left alone. " +
-				"Prefer it to post_message when the person wants to have the last word before anything goes out.",
-			Annotations: personal("Draft message"),
+			Name: "set_post_reminder",
+			Description: "Have Mattermost remind the user of a post at a time, as its \"Remind me\" does: a message from the system bot then. " +
+				"A time without an offset is read in the person's own timezone, as set in Mattermost. Only the user is reminded.",
+			Annotations: personal("Set post reminder"),
 		},
-		append([]Use{
+		[]Use{
 			{
-				Operation: "UpsertDraft",
+				Operation: "SetPostReminder",
 				Params: map[string]Coverage{
-					"body.channel_id": SetBy("channel_id"),
-					"body.root_id":    SetBy("root_id"),
-					"body.message":    SetBy("message"),
-					"body.file_ids":   Omitted("a draft carries text; the person attaches files in Mattermost"),
-					"body.priority":   Omitted("a message's priority is the person's to set when they send it"),
-					"body.props":      Omitted("props carry integrations' attachments and Mattermost's own settings; a draft is text"),
-					"body.type":       Omitted("a draft is an ordinary message, which is the default"),
+					"user_id":          Fixed("me", "a user is reminded for themselves"),
+					"post_id":          SetBy("post_id"),
+					"body.target_time": SetBy("at"),
 				},
-				Releases: "11.7 serves POST /api/v4/drafts, as its router shows, though its specification leaves it out; nothing differs in use",
-			},
-			{
-				Operation: "GetDrafts",
-				Params: map[string]Coverage{
-					"user_id": Fixed("me", "a user's drafts are theirs"),
-					"team_id": Fixed("the channel's team", "Mattermost files a draft under its channel's team, and a direct message's under any of the user's teams"),
-				},
-				Releases: "11.7 serves GET /api/v4/users/{user_id}/teams/{team_id}/drafts, as its router shows, though its specification leaves it out; nothing differs in use",
 			},
 			{
 				Operation: "GetPost",
 				Params: map[string]Coverage{
-					"post_id":         SetBy("root_id"),
-					"include_deleted": Omitted("a deleted post has no thread to reply in"),
+					"post_id":         SetBy("post_id"),
+					"include_deleted": Omitted("a deleted post is nothing to be reminded of"),
 				},
 			},
 			{
-				Operation: "GetChannel",
-				Params:    map[string]Coverage{"channel_id": Fixed("the draft's channel", "its team is where the draft is filed")},
-			},
-			{
-				Operation: "GetTeamsForUser",
-				Params:    map[string]Coverage{"user_id": Fixed("me", "a direct message belongs to no team, and Mattermost takes any of the user's")},
-			},
-			{
 				Operation: "GetUser",
-				Params:    map[string]Coverage{"user_id": Fixed("me", "a user's drafts are theirs")},
+				Params:    map[string]Coverage{"user_id": Fixed("me", "the user's timezone reads a time without an offset")},
 			},
-		}, targetUses()...),
-		func(clientFor ClientFor) mcp.ToolHandlerFor[draftMessageInput, Draft] {
-			return func(ctx context.Context, request *mcp.CallToolRequest, input draftMessageInput) (*mcp.CallToolResult, Draft, error) {
-				if strings.TrimSpace(input.Message) == "" {
-					return nil, Draft{}, fmt.Errorf("the message is empty")
-				}
+		},
+		func(clientFor ClientFor) mcp.ToolHandlerFor[setPostReminderInput, Reminder] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input setPostReminderInput) (*mcp.CallToolResult, Reminder, error) {
 				client, err := clientFor(ctx, request)
 				if err != nil {
-					return nil, Draft{}, err
+					return nil, Reminder{}, err
 				}
-				where, err := target(ctx, client, input.ChannelID, input.ToUser, input.RootID)
-				if err != nil {
-					return nil, Draft{}, err
+				if _, err := client.Post(ctx, input.PostID); err != nil {
+					return nil, Reminder{}, err
 				}
 				self, err := client.Me(ctx)
 				if err != nil {
-					return nil, Draft{}, err
+					return nil, Reminder{}, err
 				}
-				teamID, err := teamOf(ctx, client, where.channelID)
+				zone := userZone(self)
+				at, err := reminderTime(input.At, zone, time.Now())
 				if err != nil {
-					return nil, Draft{}, err
+					return nil, Reminder{}, err
 				}
-				if err := noOtherDraft(ctx, client, self.Id, teamID, where, input.Message); err != nil {
-					return nil, Draft{}, err
+				if err := client.Remind(ctx, self.Id, input.PostID, at); err != nil {
+					return nil, Reminder{}, err
 				}
-				draft, err := client.Draft(ctx, self.Id, where.channelID, where.rootID(), input.Message)
-				if err != nil {
-					return nil, Draft{}, err
-				}
-				return nil, Draft{ChannelID: draft.ChannelId, RootID: draft.RootId, Message: draft.Message}, nil
+				return nil, Reminder{PostID: input.PostID, RemindAt: at.In(zone).Format(time.RFC3339), Timezone: zone.String()}, nil
 			}
 		},
-	), "only the user sees a draft, and nothing is sent until they send it")
+	), "only the user is reminded"), nil)
 }
 
-// noOtherDraft refuses to replace a draft the person may be writing: a draft
-// is their unsent words, and replacing it would lose them.
-func noOtherDraft(ctx context.Context, client *mattermost.Client, userID, teamID string, where replyTarget, message string) error {
-	drafts, err := client.Drafts(ctx, userID, teamID)
-	if err != nil {
-		return err
+// userZone is the timezone the person set in Mattermost: the one their device
+// reports when they let it, or the one they chose; UTC when neither is known.
+func userZone(user *model.User) *time.Location {
+	name := user.GetPreferredTimezone()
+	if zone, err := time.LoadLocation(name); err == nil && name != "" {
+		return zone
 	}
-	for _, draft := range drafts {
-		if draft.ChannelId == where.channelID && draft.RootId == where.rootID() &&
-			strings.TrimSpace(draft.Message) != "" && draft.Message != message {
-			return fmt.Errorf("there is a draft there already, which was left as it is: “%s”. Ask the person what to do with it", excerpt(draft.Message))
+	return time.UTC
+}
+
+// reminderTime reads an ISO 8601 time: with an offset as it says, without one
+// in the person's zone. It must be in the future, and Mattermost takes it to
+// the second.
+func reminderTime(at string, zone *time.Location, now time.Time) (time.Time, error) {
+	at = strings.TrimSpace(at)
+	var parsed time.Time
+	var err error
+	if parsed, err = time.Parse(time.RFC3339, at); err != nil {
+		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04"} {
+			if parsed, err = time.ParseInLocation(layout, at, zone); err == nil {
+				break
+			}
 		}
 	}
-	return nil
+	if err != nil {
+		return time.Time{}, fmt.Errorf("at must be an ISO 8601 time such as 2026-10-12T09:00 or 2026-10-12T09:00:00+02:00, not %q", at)
+	}
+	if !parsed.After(now) {
+		return time.Time{}, fmt.Errorf("%s is not in the future; it is %s in the person's timezone now", parsed.In(zone).Format(time.RFC3339), now.In(zone).Format(time.RFC3339))
+	}
+	return parsed.Truncate(time.Second), nil
 }

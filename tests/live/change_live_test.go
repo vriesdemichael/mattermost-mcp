@@ -15,23 +15,6 @@ import (
 // edit_post, delete_post, remove_reaction and pin_post: changes others see,
 // each asked first (ADR-021), read back through the test's own client.
 
-func TestPostMessageToAUserOpensTheirDirectMessage(t *testing.T) {
-	t.Parallel()
-	admin := admin(t)
-	user, other := seedUser(t, admin), seedUser(t, admin)
-	seedTeam(t, admin, user, other)
-	session, questions := writingSession(t, admin, user, accept)
-
-	posted := postMessage(t, session, map[string]any{"to_user": "@" + other.Username, "message": "are you free at three?"})
-
-	mustContain(t, "question", questions.only(t).Message, "your direct message with @"+other.Username)
-	direct, _, err := clientAs(t, other).CreateDirectChannel(t.Context(), other.Id, user.Id)
-	check(t, err)
-	if posted.ChannelID != direct.Id {
-		t.Fatalf("posted in %s; want the direct message %s", posted.ChannelID, direct.Id)
-	}
-}
-
 func TestEditPostReplacesTheUsersOwnTextShowingTheOldAndTheNew(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
@@ -42,7 +25,7 @@ func TestEditPostReplacesTheUsersOwnTextShowingTheOldAndTheNew(t *testing.T) {
 	session, questions := writingSession(t, admin, user, accept)
 
 	var edited server.Post
-	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "edit_post", Arguments: map[string]any{
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{
 		"post_id": original.Id, "message": "Release at 4pm",
 	}}), &edited)
 
@@ -68,7 +51,7 @@ func TestEditAndDeleteRefuseAnotherPersonsPostEvenForAnAdministrator(t *testing.
 	session := mcpWriting(t, admin.AuthToken, questions.answer(accept))
 
 	for _, params := range []*mcp.CallToolParams{
-		{Name: "edit_post", Arguments: map[string]any{"post_id": theirs.Id, "message": "not my words"}},
+		{Name: "update_post", Arguments: map[string]any{"post_id": theirs.Id, "message": "not my words"}},
 		{Name: "delete_post", Arguments: map[string]any{"post_id": theirs.Id}},
 	} {
 		if result := callTool(t, session, params); !result.IsError {
@@ -127,11 +110,11 @@ func TestRemoveReactionTakesBackOnlyTheUsersOwn(t *testing.T) {
 	session, questions := writingSession(t, admin, user, accept)
 
 	if result := callTool(t, session, &mcp.CallToolParams{Name: "remove_reaction", Arguments: map[string]any{
-		"post_id": post.Id, "emoji_name": "eyes",
+		"post_id": post.Id, "emoji": "eyes",
 	}}); !result.IsError {
 		t.Error("took back a reaction the user never made")
 	}
-	callTool(t, session, &mcp.CallToolParams{Name: "remove_reaction", Arguments: map[string]any{"post_id": post.Id, "emoji_name": ":tada:"}})
+	callTool(t, session, &mcp.CallToolParams{Name: "remove_reaction", Arguments: map[string]any{"post_id": post.Id, "emoji": ":tada:"}})
 
 	mustContain(t, "question", questions.only(t).Message, ":tada:", "@"+other.Username, "Merged!")
 	reactions, _, err := admin.GetReactions(t.Context(), post.Id)
@@ -151,7 +134,7 @@ func TestPinPostPinsAndUnpinsWhatListPinnedReads(t *testing.T) {
 	session, questions := writingSession(t, admin, user, accept)
 	pinned := func() []server.Post {
 		var list server.PinnedPosts
-		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "list_pinned", Arguments: map[string]any{"channel_id": channel.Id}}), &list)
+		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "list_pinned_posts", Arguments: map[string]any{"channel_id": channel.Id}}), &list)
 		return list.Posts
 	}
 

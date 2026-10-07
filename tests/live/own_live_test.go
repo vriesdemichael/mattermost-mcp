@@ -139,7 +139,7 @@ func TestFollowThreadPutsItAmongTheThreadsWithItsUnreadReplies(t *testing.T) {
 	switch {
 	case !ok:
 		t.Fatal("the followed thread with a new reply is not among the unread threads")
-	case thread.Started.Message != "Postmortem notes" || thread.Started.Author != other.Username || thread.Channel != channel.DisplayName:
+	case thread.Started.Message != "Postmortem notes" || thread.Started.Author != other.Username || thread.Started.Channel != channel.DisplayName:
 		t.Errorf("the thread reads %+v", thread)
 	case thread.ReplyCount != 2 || thread.UnreadReplies == 0 || len(thread.Participants) == 0:
 		t.Errorf("the thread counts %d replies, %d unread, participants %v", thread.ReplyCount, thread.UnreadReplies, thread.Participants)
@@ -168,7 +168,7 @@ func TestFollowThreadInADirectMessage(t *testing.T) {
 	callTool(t, session, &mcp.CallToolParams{Name: "follow_thread", Arguments: map[string]any{"post_id": root.Id}})
 	postAs(t, author, direct.Id, root.Id, "about the invoice")
 	thread, ok := listThreads(t, session, map[string]any{})[root.Id]
-	if !ok || thread.Channel != other.Username {
+	if !ok || thread.Started.Channel != other.Username {
 		t.Fatalf("the direct message's thread is listed %v, as %+v", ok, thread)
 	}
 }
@@ -181,7 +181,7 @@ func TestSavePostKeepsItAmongTheSavedPosts(t *testing.T) {
 	channel := seedChannel(t, admin, team, user, other)
 	post := postAs(t, clientAs(t, other), channel.Id, "", "VPN setup steps: ...")
 	session, questions := writingSession(t, admin, user, accept)
-	saved := func() []server.FoundPost {
+	saved := func() []server.Post {
 		var list server.SearchResults
 		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "list_saved", Arguments: map[string]any{}}), &list)
 		return list.Posts
@@ -197,55 +197,6 @@ func TestSavePostKeepsItAmongTheSavedPosts(t *testing.T) {
 	}
 	if result := callTool(t, session, &mcp.CallToolParams{Name: "save_post", Arguments: map[string]any{"post_id": model.NewId()}}); !result.IsError {
 		t.Error("saved a post that does not exist")
-	}
-	noQuestions(t, questions)
-}
-
-// draftsOf is the user's drafts in a team, read as the user.
-func draftsOf(t *testing.T, user *model.User, teamID string) []*model.Draft {
-	t.Helper()
-	drafts, _, err := clientAs(t, user).GetDrafts(t.Context(), user.Id, teamID)
-	check(t, err)
-	return drafts
-}
-
-func TestDraftMessageLeavesADraftAndNeverReplacesAnother(t *testing.T) {
-	t.Parallel()
-	admin := admin(t)
-	user, other := seedUser(t, admin), seedUser(t, admin)
-	team := seedTeam(t, admin, user, other)
-	channel := seedChannel(t, admin, team, user, other)
-	root := postAs(t, clientAs(t, other), channel.Id, "", "Who takes the on-call shift?")
-	session, questions := writingSession(t, admin, user, accept)
-	draft := func(arguments map[string]any) *mcp.CallToolResult {
-		return callTool(t, session, &mcp.CallToolParams{Name: "draft_message", Arguments: arguments})
-	}
-
-	var drafted server.Draft
-	structured(t, draft(map[string]any{"channel_id": channel.Id, "message": "Status update: all green"}), &drafted)
-	structured(t, draft(map[string]any{"root_id": root.Id, "message": "I can take it"}), &drafted)
-	if drafted.RootID != root.Id {
-		t.Fatalf("the reply was drafted %+v", drafted)
-	}
-	if result := draft(map[string]any{"channel_id": channel.Id, "message": "something else"}); !result.IsError {
-		t.Error("replaced a draft the person had")
-	}
-	structured(t, draft(map[string]any{"to_user": other.Username, "message": "see you at standup"}), &drafted)
-
-	byPlace := map[string]string{}
-	for _, d := range draftsOf(t, user, team.Id) {
-		byPlace[d.ChannelId+"/"+d.RootId] = d.Message
-	}
-	switch {
-	case byPlace[channel.Id+"/"] != "Status update: all green":
-		t.Errorf("the channel's draft reads %q", byPlace[channel.Id+"/"])
-	case byPlace[channel.Id+"/"+root.Id] != "I can take it":
-		t.Errorf("the thread's draft reads %q", byPlace[channel.Id+"/"+root.Id])
-	case byPlace[drafted.ChannelID+"/"] != "see you at standup":
-		t.Errorf("the direct message's draft reads %q", byPlace[drafted.ChannelID+"/"])
-	}
-	if posts := messagesIn(t, admin, channel.Id); len(posts) != 1 {
-		t.Errorf("drafting posted something: the channel holds %d posts", len(posts))
 	}
 	noQuestions(t, questions)
 }

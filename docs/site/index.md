@@ -7,10 +7,9 @@ mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
 !!! warning "Early development"
-    mm-mcp is at the start of its life. One tool exists today, `get_me`, which
-    proves the connection and the credential. Reading, searching and posting are
-    being built. The [issues](https://github.com/vriesdemichael/mm-mcp/issues)
-    are the plan.
+    mm-mcp is young: its [tools](tools.md) read, search, post and handle files,
+    and are tested against a real Mattermost, but nothing is released yet. The
+    [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 
 ## What it is for
 
@@ -36,5 +35,21 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 - **Tested against a real Mattermost.** Every tool is exercised against Team
   Edition, on the current Extended Support Release and the newest release
   ([ADR-004](adr/004-live-tests-against-a-real-mattermost.md)).
+
+## Next to Mattermost's own MCP server
+
+Mattermost publishes an MCP server of its own, inside its Agents plugin. mm-mcp
+differs on purpose:
+
+- **Any edition, no plugin.** mm-mcp talks to Mattermost's REST API as a client
+  does, so it runs against Team Edition as well; the other's write tools need an
+  Enterprise licence, and it runs inside a plugin on the server.
+- **As you.** It acts with your own token or a bot's, and every post says it was
+  written with AI.
+- **Asks before every write others see**, through your MCP client, showing what
+  will be posted, where and as whom.
+- **Tools shaped for an agent** rather than one per endpoint: a post comes with
+  its author, channel, team, files and reactions, and names are found as a
+  person writes them ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
 
 Start with [Installation](installation.md).

@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
@@ -23,13 +26,16 @@ type ChannelPosts struct {
 	// MoreBefore says whether older posts may exist; read them with before set
 	// to the first post's id.
 	MoreBefore bool `json:"more_before" jsonschema:"whether older posts may exist: read them with before set to the first post's id"`
+	// MoreAfter says whether newer posts may exist, after a read from since.
+	MoreAfter bool `json:"more_after,omitempty" jsonschema:"after a read from since: whether newer posts follow; read them with after set to the last post's id"`
 }
 
 type readChannelInput struct {
-	ChannelID string `json:"channel_id" jsonschema:"the channel to read, as list_channels gives it"`
+	ChannelID string `json:"channel_id" jsonschema:"the channel to read, as get_user_channels or get_channel_info gives it"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many posts to read, at most 200; 30 when not given"`
 	Before    string `json:"before,omitempty" jsonschema:"read the posts before this post id, to page back through older ones"`
 	After     string `json:"after,omitempty" jsonschema:"read the posts after this post id, to catch up from a known point"`
+	Since     string `json:"since,omitempty" jsonschema:"read the posts written from this time on, oldest first, as an RFC 3339 time such as 2026-10-07T09:00:00Z"`
 	// CollapseThreads reads the channel as collapsed reply threads show it.
 	CollapseThreads bool `json:"collapse_threads,omitempty" jsonschema:"leave replies out, showing each thread by the post that started it with its reply count and last reply, as Mattermost shows a channel with collapsed reply threads"`
 }
@@ -38,33 +44,34 @@ func readChannelSpec() Spec {
 	return shaping(toolSpec(
 		&mcp.Tool{
 			Name: "read_channel",
-			Description: "Read a channel's messages, newest first by default and returned oldest first. Replies appear among " +
-				"the channel's messages with root_id naming the post they answer; read_thread reads one conversation whole.",
+			Description: "Read a channel's messages, oldest first: the newest ones by default, those before or after a post, or those " +
+				"written since a time. Replies appear among the channel's messages with root_id naming the post they answer; " +
+				"read_post reads one thread whole.",
 			Annotations: readOnly("Read channel"),
 		},
-		[]Use{
-			{
-				Operation: "GetPostsForChannel",
-				Params: map[string]Coverage{
-					"channel_id":      SetBy("channel_id"),
-					"per_page":        SetBy("limit"),
-					"before":          SetBy("before"),
-					"after":           SetBy("after"),
-					"page":            Fixed("0", "before and after page through a channel by post, which stays right while people post; a page number shifts with every new message"),
-					"since":           Omitted("since returns every post changed after a time, edits and deletions of old posts included, which is a sync for clients, not a reading of the conversation"),
-					"include_deleted": Omitted("deleted messages are not shown: their authors removed them"),
-					"type":            Omitted("filters by message type, for Mattermost's own clients; a person reads the conversation as it is"),
-				},
+		uses([]Use{{
+			Operation: "GetPostsForChannel",
+			Params: map[string]Coverage{
+				"channel_id":      SetBy("channel_id"),
+				"per_page":        SetBy("limit"),
+				"before":          SetBy("before"),
+				"after":           SetBy("after"),
+				"since":           SetBy("since"),
+				"page":            Fixed("0", "before and after page through a channel by post, which stays right while people post; a page number shifts with every new message"),
+				"include_deleted": Omitted("deleted messages are not shown: their authors removed them"),
+				"type":            Omitted("filters by message type, for Mattermost's own clients; a person reads the conversation as it is"),
 			},
-			{
-				Operation: "GetUsersByIds",
-				Params:    map[string]Coverage{"since": Omitted("the tool reads each author's username, whenever they changed")},
-			},
-		},
+		}}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[readChannelInput, ChannelPosts] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input readChannelInput) (*mcp.CallToolResult, ChannelPosts, error) {
-				if input.Before != "" && input.After != "" {
-					return nil, ChannelPosts{}, fmt.Errorf("give before or after, not both")
+				given := 0
+				for _, set := range []string{input.Before, input.After, input.Since} {
+					if set != "" {
+						given++
+					}
+				}
+				if given > 1 {
+					return nil, ChannelPosts{}, fmt.Errorf("give one of before, after and since")
 				}
 				limit := input.Limit
 				switch {
@@ -76,6 +83,9 @@ func readChannelSpec() Spec {
 				client, err := clientFor(ctx, request)
 				if err != nil {
 					return nil, ChannelPosts{}, err
+				}
+				if input.Since != "" {
+					return readSince(ctx, client, input, limit)
 				}
 				list, err := client.Posts(ctx, mattermost.PostsPage{
 					ChannelID: input.ChannelID, PerPage: limit, Before: input.Before, After: input.After, Collapsed: input.CollapseThreads,
@@ -95,24 +105,61 @@ func readChannelSpec() Spec {
 	})
 }
 
-// Thread is one conversation: its first post and every reply.
-type Thread struct {
-	RootID string `json:"root_id"`
-	Posts  []Post `json:"posts" jsonschema:"the first post, then every reply, oldest first"`
+// readSince reads the posts written from a time on. Mattermost answers since
+// with every post changed after it, old ones edited or deleted since included,
+// so the tool keeps those written since and not deleted, oldest first.
+func readSince(ctx context.Context, client *mattermost.Client, input readChannelInput, limit int) (*mcp.CallToolResult, ChannelPosts, error) {
+	since, err := time.Parse(time.RFC3339, input.Since)
+	if err != nil {
+		return nil, ChannelPosts{}, fmt.Errorf("since must be an RFC 3339 time such as 2026-10-07T09:00:00Z, not %q", input.Since)
+	}
+	list, err := client.PostsSince(ctx, input.ChannelID, since.UnixMilli(), input.CollapseThreads)
+	if err != nil {
+		return nil, ChannelPosts{}, err
+	}
+	var written []*model.Post
+	for _, post := range list.Posts {
+		if post.CreateAt >= since.UnixMilli() && post.DeleteAt == 0 && (!input.CollapseThreads || post.RootId == "") {
+			written = append(written, post)
+		}
+	}
+	slices.SortStableFunc(written, func(a, b *model.Post) int { return int(a.CreateAt - b.CreateAt) })
+	more := len(written) > limit
+	posts, err := describePosts(ctx, client, written[:min(limit, len(written))])
+	if err != nil {
+		return nil, ChannelPosts{}, err
+	}
+	return nil, ChannelPosts{ChannelID: input.ChannelID, Posts: posts, MoreBefore: true, MoreAfter: more}, nil
 }
 
-type readThreadInput struct {
-	PostID string `json:"post_id" jsonschema:"any post in the thread: its first post or one of the replies"`
+// PostWithThread is a post, and the thread it is in.
+type PostWithThread struct {
+	Post   Post   `json:"post"`
+	RootID string `json:"root_id" jsonschema:"the post that started the thread: the post itself when it started one"`
+	Thread []Post `json:"thread,omitempty" jsonschema:"the thread's first post, then every reply, oldest first; left out when include_thread is false"`
 }
 
-func readThreadSpec() Spec {
-	return toolSpec(
+type readPostInput struct {
+	PostID        string `json:"post_id" jsonschema:"the post to read: one that starts a thread, or a reply in one"`
+	IncludeThread *bool  `json:"include_thread,omitempty" jsonschema:"false reads the post alone; true, the default, reads the whole thread it is in"`
+}
+
+func readPostSpec() Spec {
+	return shaping(toolSpec(
 		&mcp.Tool{
-			Name:        "read_thread",
-			Description: "Read a whole thread: the post that started it and every reply, oldest first. Give any post in the thread.",
-			Annotations: readOnly("Read thread"),
+			Name: "read_post",
+			Description: "Read a post and the whole thread it is in: the post that started it and every reply, oldest first. " +
+				"Give any post in the thread. include_thread false reads the post alone.",
+			Annotations: readOnly("Read post"),
 		},
-		[]Use{
+		uses([]Use{
+			{
+				Operation: "GetPost",
+				Params: map[string]Coverage{
+					"post_id":         SetBy("post_id"),
+					"include_deleted": Omitted("a deleted post is gone for the person too"),
+				},
+			},
 			{
 				Operation: "GetPostThread",
 				Params: map[string]Coverage{
@@ -128,36 +175,52 @@ func readThreadSpec() Spec {
 					"updatesOnly":              Omitted("a sync for clients that already hold the thread"),
 				},
 			},
-			{
-				Operation: "GetUsersByIds",
-				Params:    map[string]Coverage{"since": Omitted("the tool reads each author's username, whenever they changed")},
-			},
-		},
-		func(clientFor ClientFor) mcp.ToolHandlerFor[readThreadInput, Thread] {
-			return func(ctx context.Context, request *mcp.CallToolRequest, input readThreadInput) (*mcp.CallToolResult, Thread, error) {
+		}, describeUses(true)),
+		func(clientFor ClientFor) mcp.ToolHandlerFor[readPostInput, PostWithThread] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input readPostInput) (*mcp.CallToolResult, PostWithThread, error) {
 				client, err := clientFor(ctx, request)
 				if err != nil {
-					return nil, Thread{}, err
+					return nil, PostWithThread{}, err
+				}
+				if input.IncludeThread != nil && !*input.IncludeThread {
+					post, err := client.Post(ctx, input.PostID)
+					if err != nil {
+						return nil, PostWithThread{}, err
+					}
+					posts, err := describePosts(ctx, client, []*model.Post{post})
+					if err != nil {
+						return nil, PostWithThread{}, err
+					}
+					root := post.RootId
+					if root == "" {
+						root = post.Id
+					}
+					return nil, PostWithThread{Post: posts[0], RootID: root}, nil
 				}
 				list, err := client.Thread(ctx, input.PostID)
 				if err != nil {
-					return nil, Thread{}, err
+					return nil, PostWithThread{}, err
 				}
-				posts, err := postsInOrder(ctx, client, list)
+				thread, err := postsInOrder(ctx, client, list)
 				if err != nil {
-					return nil, Thread{}, err
+					return nil, PostWithThread{}, err
 				}
-				root := input.PostID
-				if len(posts) > 0 {
-					root = posts[0].ID
-					if posts[0].RootID != "" {
-						root = posts[0].RootID
+				out := PostWithThread{Thread: thread}
+				for _, post := range thread {
+					if post.ID == input.PostID {
+						out.Post = post
 					}
 				}
-				return nil, Thread{RootID: root, Posts: posts}, nil
+				if len(thread) > 0 {
+					out.RootID = thread[0].ID
+					if thread[0].RootID != "" {
+						out.RootID = thread[0].RootID
+					}
+				}
+				return nil, out, nil
 			}
 		},
-	)
+	), map[string]string{"include_thread": "chooses between reading the post alone, GetPost, and its whole thread, GetPostThread"})
 }
 
 // PinnedPosts is a channel's pinned posts.
@@ -170,20 +233,14 @@ type listPinnedInput struct {
 	ChannelID string `json:"channel_id" jsonschema:"the channel whose pinned posts to read"`
 }
 
-func listPinnedSpec() Spec {
+func listPinnedPostsSpec() Spec {
 	return toolSpec(
 		&mcp.Tool{
-			Name:        "list_pinned",
+			Name:        "list_pinned_posts",
 			Description: "Read the posts pinned to a channel, which its members pinned for everyone to find again.",
 			Annotations: readOnly("List pinned posts"),
 		},
-		[]Use{
-			{Operation: "GetPinnedPosts", Params: map[string]Coverage{"channel_id": SetBy("channel_id")}},
-			{
-				Operation: "GetUsersByIds",
-				Params:    map[string]Coverage{"since": Omitted("the tool reads each author's username, whenever they changed")},
-			},
-		},
+		uses([]Use{{Operation: "GetPinnedPosts", Params: map[string]Coverage{"channel_id": SetBy("channel_id")}}}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listPinnedInput, PinnedPosts] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listPinnedInput) (*mcp.CallToolResult, PinnedPosts, error) {
 				client, err := clientFor(ctx, request)
@@ -221,16 +278,16 @@ func listSavedSpec() Spec {
 			Description: "Read the posts the user saved to come back to, most recently posted first, each with its channel.",
 			Annotations: readOnly("List saved posts"),
 		},
-		append([]Use{{
+		uses([]Use{{
 			Operation: "GetFlaggedPostsForUser",
 			Params: map[string]Coverage{
 				"user_id":    Fixed("me", "saved posts are the user's own"),
 				"page":       Fixed("0", "the most recent saved posts, which one page holds"),
 				"per_page":   SetBy("limit"),
-				"team_id":    Omitted("a person keeps few saved posts, and each comes back with its channel"),
-				"channel_id": Omitted("a person keeps few saved posts, and each comes back with its channel"),
+				"team_id":    Omitted("a person keeps few saved posts, and each comes back with its channel and team"),
+				"channel_id": Omitted("a person keeps few saved posts, and each comes back with its channel and team"),
 			},
-		}}, channelNameUses("a saved post names the channel it is in, from the channels the user belongs to")...),
+		}}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listSavedInput, SearchResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listSavedInput) (*mcp.CallToolResult, SearchResults, error) {
 				limit := input.Limit
@@ -249,19 +306,15 @@ func listSavedSpec() Spec {
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
+				truncated := len(list.Order) > limit
+				if truncated {
+					list.Order = list.Order[:limit]
+				}
 				posts, err := listedPosts(ctx, client, list, false)
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				names, err := channelNames(ctx, client)
-				if err != nil {
-					return nil, SearchResults{}, err
-				}
-				out := SearchResults{Posts: []FoundPost{}, Truncated: len(posts) > limit}
-				for _, post := range posts[:min(limit, len(posts))] {
-					out.Posts = append(out.Posts, FoundPost{Post: post, Channel: names[post.ChannelID]})
-				}
-				return nil, out, nil
+				return nil, SearchResults{Posts: posts, Truncated: truncated}, nil
 			}
 		},
 	)
@@ -282,7 +335,7 @@ type UnreadPosts struct {
 }
 
 type readUnreadInput struct {
-	ChannelID string `json:"channel_id" jsonschema:"the channel to catch up on, as list_channels gives it"`
+	ChannelID string `json:"channel_id" jsonschema:"the channel to catch up on, as get_user_channels gives it"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many unread posts to read, at most 200; 30 when not given"`
 }
 
@@ -294,7 +347,7 @@ func readUnreadSpec() Spec {
 				"ones they have not, oldest first. It reads only; the channel stays unread for the person until they read it themselves.",
 			Annotations: readOnly("Read unread posts"),
 		},
-		[]Use{
+		uses([]Use{
 			{
 				Operation: "GetPostsAroundLastUnread",
 				Params: map[string]Coverage{
@@ -314,15 +367,7 @@ func readUnreadSpec() Spec {
 					"user_id":    Fixed("me", "the membership holds when the user last read the channel"),
 				},
 			},
-			{
-				Operation: "GetUser",
-				Params:    map[string]Coverage{"user_id": Fixed("me", "the user's own posts are never unread to them")},
-			},
-			{
-				Operation: "GetUsersByIds",
-				Params:    map[string]Coverage{"since": Omitted("the tool reads each author's username, whenever they changed")},
-			},
-		},
+		}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[readUnreadInput, UnreadPosts] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input readUnreadInput) (*mcp.CallToolResult, UnreadPosts, error) {
 				limit := input.Limit

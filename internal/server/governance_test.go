@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -256,8 +257,15 @@ func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 		written++
 		arguments := map[string]any{}
 		schema := tool.InputSchema.(map[string]any)
-		for _, name := range schema["required"].([]any) {
-			arguments[name.(string)] = "x"
+		required, _ := schema["required"].([]any)
+		properties, _ := schema["properties"].(map[string]any)
+		for _, name := range required {
+			property, _ := properties[name.(string)].(map[string]any)
+			if types := fmt.Sprint(property["type"]); strings.Contains(types, "array") {
+				arguments[name.(string)] = []string{"x", "y"}
+			} else {
+				arguments[name.(string)] = "x"
+			}
 		}
 		_, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.Name, Arguments: arguments})
 		var refused *jsonrpc.Error
