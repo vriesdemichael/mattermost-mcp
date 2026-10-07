@@ -11,6 +11,7 @@ package apisurface
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -113,7 +114,7 @@ func LoadSpec(path string) (*Spec, error) {
 			}
 			spec.operations = append(spec.operations, operation)
 			if operation.ID != "" {
-				spec.byID[operation.ID] = operation
+				spec.byID[operation.ID] = joined(spec.byID[operation.ID], operation)
 			}
 		}
 	}
@@ -121,6 +122,29 @@ func LoadSpec(path string) (*Spec, error) {
 		return spec.operations[i].Path+spec.operations[i].Method < spec.operations[j].Path+spec.operations[j].Method
 	})
 	return spec, nil
+}
+
+// joined is one operationId the specification gives to more than one route,
+// as it does to SearchFiles with and without a team: every parameter and
+// body field of either, since a tool may call both, and the first route by
+// path, so the answer does not depend on the order the routes were read in.
+func joined(known, more Operation) Operation {
+	if known.ID == "" {
+		return more
+	}
+	first, second := known, more
+	if more.Path+more.Method < known.Path+known.Method {
+		first, second = more, known
+	}
+	params := maps.Clone(first.Params)
+	for name, param := range second.Params {
+		if _, ok := params[name]; !ok {
+			params[name] = param
+		}
+	}
+	first.Params = params
+	first.BodyFields = slices.Sorted(slices.Values(slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(first.BodyFields), second.BodyFields...))))))
+	return first
 }
 
 type operation struct {
@@ -305,7 +329,12 @@ func Differences(newest Operation, older *Spec, olderRoutes *Routes) []string {
 	if after(newest.MinVersion, older.Release) {
 		found = append(found, fmt.Sprintf("the operation arrived in %s, after %s", newest.MinVersion, older.Release))
 	}
-	old, documented := older.At(newest.Method, newest.Path)
+	// By id first, which joins the routes an id names as newest does, then by
+	// route, for an operation renamed since.
+	old, documented := older.Operation(newest.ID)
+	if !documented {
+		old, documented = older.At(newest.Method, newest.Path)
+	}
 	if !documented {
 		found = append(found, fmt.Sprintf("the %s specification does not document %s %s", older.Release, newest.Method, newest.Path))
 	}
