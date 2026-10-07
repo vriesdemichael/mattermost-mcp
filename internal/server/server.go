@@ -81,9 +81,9 @@ func local(spec Spec) Spec {
 	return spec
 }
 
-// shaping gives a spec the arguments that shape its answer.
+// shaping gives a spec the arguments that shape its answer, beside any it has.
 func shaping(spec Spec, shapes map[string]string) Spec {
-	spec.Shapes = shapes
+	spec.Shapes = withShapes(spec.Shapes, shapes)
 	return spec
 }
 
@@ -102,7 +102,7 @@ type Use struct {
 
 // Coverage is what a tool does with one parameter of an operation it calls.
 type Coverage struct {
-	// How is "exposed", "fixed" or "omitted".
+	// How is "exposed", "fixed", "omitted" or "undocumented".
 	How string
 	// Arg is the tool's argument that sets an exposed parameter.
 	Arg string
@@ -122,6 +122,14 @@ func Fixed(value, reason string) Coverage {
 
 // Omitted is a parameter the tool never sends, for reason.
 func Omitted(reason string) Coverage { return Coverage{How: "omitted", Reason: reason} }
+
+// Undocumented is a parameter the newest release's router reads though its
+// specification leaves it out, set by the argument arg, or by the tool itself
+// when arg is empty. reason says where the server reads it; the live suite
+// shows it working (ADR-028).
+func Undocumented(arg, reason string) Coverage {
+	return Coverage{How: "undocumented", Arg: arg, Reason: reason}
+}
 
 // ReadOnly reports whether the tool changes nothing, as its annotation says.
 func (s Spec) ReadOnly() bool {

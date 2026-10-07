@@ -119,10 +119,17 @@ func TestEveryParameterOfACalledOperationIsAccountedFor(t *testing.T) {
 				}
 			}
 			for name, coverage := range use.Params {
-				if !want[name] {
+				switch {
+				case coverage.How == "undocumented" && want[name]:
+					t.Errorf("%s calls %s's %s undocumented, which the specification documents; expose it, fix it or omit it", spec.Tool.Name, use.Operation, name)
+				case coverage.How != "undocumented" && !want[name]:
 					t.Errorf("%s accounts for %s, which %s does not have", spec.Tool.Name, name, use.Operation)
 				}
 				switch coverage.How {
+				case "undocumented":
+					if strings.TrimSpace(coverage.Reason) == "" {
+						t.Errorf("%s sends %s.%s, which the specification leaves out, without saying where the server reads it", spec.Tool.Name, use.Operation, name)
+					}
 				case "exposed":
 					if coverage.Arg == "" {
 						t.Errorf("%s exposes %s.%s through no argument", spec.Tool.Name, use.Operation, name)
@@ -145,7 +152,7 @@ func TestEveryToolArgumentSetsAParameterItCalls(t *testing.T) {
 		exposed := map[string]bool{}
 		for _, use := range spec.Uses {
 			for _, coverage := range use.Params {
-				if coverage.How == "exposed" {
+				if coverage.How == "exposed" || (coverage.How == "undocumented" && coverage.Arg != "") {
 					exposed[coverage.Arg] = true
 				}
 			}

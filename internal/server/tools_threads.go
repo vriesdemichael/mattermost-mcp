@@ -4,16 +4,13 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 )
-
-// How many followed threads list_threads reads from each team: Mattermost's
-// most recently active, which is where unread replies are.
-const threadsPerTeam = 100
 
 // The most threads one list_threads call returns, and how many when not told.
 const (
@@ -33,17 +30,17 @@ type ThreadSummary struct {
 	UnreadMentions int64    `json:"unread_mentions" jsonschema:"unread replies that mention the person"`
 }
 
-// Threads is the threads the user follows.
+// Threads is a page of the threads the user follows.
 type Threads struct {
 	Threads []ThreadSummary `json:"threads" jsonschema:"most recently replied to first"`
-	// Truncated says more threads matched than the limit let through.
-	Truncated bool `json:"truncated" jsonschema:"more threads matched than the limit let through"`
+	pageInfo
 }
 
 type listThreadsInput struct {
 	TeamID     string `json:"team_id,omitempty" jsonschema:"keep to one team's threads, with those in direct and group messages; every team's when not given"`
 	UnreadOnly bool   `json:"unread_only,omitempty" jsonschema:"keep the threads with replies the person has not read"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"how many threads to return, at most 100; 20 when not given"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"how many threads a page holds, at most 100; 20 when not given"`
+	pageArgs
 }
 
 func listThreadsSpec() Spec {
@@ -59,13 +56,16 @@ func listThreadsSpec() Spec {
 			{
 				Operation: "GetUserThreads",
 				Params: map[string]Coverage{
-					"user_id":     Fixed("me", "the threads are the ones the user follows"),
-					"team_id":     SetBy("team_id"),
-					"per_page":    Fixed(fmt.Sprint(threadsPerTeam), "the most recently active threads of each team, which is where unread replies are; the tool keeps the limit itself"),
-					"extended":    Fixed("true", "each thread says who took part"),
-					"since":       Omitted("a sync for clients that already hold the threads"),
-					"deleted":     Omitted("a deleted thread is gone for the person too"),
-					"page":        Omitted("the tool reads the most recently active threads, which one page holds"),
+					"user_id":  Fixed("me", "the threads are the ones the user follows"),
+					"team_id":  SetBy("team_id"),
+					"per_page": Fixed(fmt.Sprint(serverPageSize), "the tool reads every followed thread, a page of Mattermost's at a time, and pages through them itself"),
+					"before": Undocumented("", "getThreadsForUser in server/channels/api4/user.go reads before, the last thread of the page before, and pages by it; "+
+						"the specification leaves it out"),
+					"extended": Fixed("true", "each thread says who took part"),
+					"since":    Omitted("a sync for clients that already hold the threads"),
+					"deleted":  Omitted("a deleted thread is gone for the person too"),
+					"page": Omitted("the specification documents it, but getThreadsForUser does not read it: Mattermost pages threads by before, " +
+						"which the tool sends instead"),
 					"totalsOnly":  Omitted("the tool returns the threads, and counts what it returns"),
 					"threadsOnly": Omitted("Mattermost's totals come with the threads at no cost to the answer"),
 				},
@@ -77,12 +77,13 @@ func listThreadsSpec() Spec {
 		}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listThreadsInput, Threads] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listThreadsInput) (*mcp.CallToolResult, Threads, error) {
-				limit := input.Limit
-				switch {
-				case limit == 0:
-					limit = defaultThreads
-				case limit < 0 || limit > maxThreads:
-					return nil, Threads{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxThreads, limit)
+				limit, err := limitOf(input.Limit, defaultThreads, maxThreads)
+				if err != nil {
+					return nil, Threads{}, err
+				}
+				at, err := openCursor("list_threads", input, input.Cursor)
+				if err != nil {
+					return nil, Threads{}, err
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -92,18 +93,13 @@ func listThreadsSpec() Spec {
 				if err != nil {
 					return nil, Threads{}, err
 				}
-				var kept []*model.ThreadResponse
-				truncated := false
+				var matching []*model.ThreadResponse
 				for _, thread := range followed {
-					if input.UnreadOnly && thread.UnreadReplies == 0 {
-						continue
+					if !input.UnreadOnly || thread.UnreadReplies > 0 {
+						matching = append(matching, thread)
 					}
-					if len(kept) == limit {
-						truncated = true
-						break
-					}
-					kept = append(kept, thread)
 				}
+				kept, next := offsetPage(matching, at, limit)
 				started := make([]*model.Post, 0, len(kept))
 				for _, thread := range kept {
 					started = append(started, thread.Post)
@@ -112,20 +108,19 @@ func listThreadsSpec() Spec {
 				if err != nil {
 					return nil, Threads{}, err
 				}
-				out := Threads{Threads: make([]ThreadSummary, 0, len(kept)), Truncated: truncated}
+				out := Threads{Threads: make([]ThreadSummary, 0, len(kept)), pageInfo: pageInfo{NextCursor: next}}
 				for i, thread := range kept {
 					out.Threads = append(out.Threads, toThreadSummary(thread, posts[i]))
 				}
 				return nil, out, nil
 			}
 		},
-	), map[string]string{
+	), withShapes(pagingShapes, map[string]string{
 		"unread_only": "keeps the threads Mattermost counts unread replies in",
-		"limit":       "returns at most this many of the threads Mattermost listed, and says so when it cut some off",
-	})
+	}))
 }
 
-// followedThreads is the threads the user follows in one team, or in all of
+// followedThreads is every thread the user follows in one team, or in all of
 // theirs, each once, most recently replied to first. A thread in a direct or
 // group message is listed under every team, so it is kept once.
 func followedThreads(ctx context.Context, client *mattermost.Client, teamID string) ([]*model.ThreadResponse, error) {
@@ -147,26 +142,39 @@ func followedThreads(ctx context.Context, client *mattermost.Client, teamID stri
 	seen := map[string]bool{}
 	var threads []*model.ThreadResponse
 	for _, team := range teams {
-		page, err := client.Threads(ctx, self.Id, team, threadsPerTeam)
-		if err != nil {
-			return nil, err
-		}
-		for _, thread := range page.Threads {
-			if !seen[thread.PostId] && thread.Post != nil {
-				seen[thread.PostId] = true
-				threads = append(threads, thread)
+		// Every followed thread of the team, a page at a time: a page that is
+		// not full is the last.
+		for before := ""; ; {
+			page, err := client.Threads(ctx, self.Id, team, serverPageSize, before)
+			if err != nil {
+				return nil, err
 			}
+			added := 0
+			for _, thread := range page.Threads {
+				if !seen[thread.PostId] && thread.Post != nil {
+					seen[thread.PostId] = true
+					threads = append(threads, thread)
+					added++
+				}
+			}
+			if len(page.Threads) < serverPageSize {
+				break
+			}
+			// before is undocumented: should a release stop reading it, the same
+			// page would come back for ever.
+			if added == 0 {
+				return nil, fmt.Errorf("the next page of followed threads came back the same as the last: Mattermost no longer pages them by before")
+			}
+			before = page.Threads[len(page.Threads)-1].PostId
 		}
 	}
+	// Most recently replied to first, and by id between threads replied to in
+	// the same millisecond, so a page is the same slice each time.
 	slices.SortStableFunc(threads, func(a, b *model.ThreadResponse) int {
-		switch {
-		case a.LastReplyAt > b.LastReplyAt:
-			return -1
-		case a.LastReplyAt < b.LastReplyAt:
-			return 1
-		default:
-			return 0
+		if a.LastReplyAt != b.LastReplyAt {
+			return int(b.LastReplyAt - a.LastReplyAt)
 		}
+		return strings.Compare(a.PostId, b.PostId)
 	})
 	return threads, nil
 }

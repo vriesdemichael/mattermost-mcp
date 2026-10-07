@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"time"
 
@@ -60,25 +59,7 @@ func listedPosts(ctx context.Context, client *mattermost.Client, list *model.Pos
 	if list == nil {
 		return []Post{}, nil
 	}
-	posts := make([]*model.Post, 0, len(list.Order))
-	for _, id := range list.Order {
-		if post, ok := list.Posts[id]; ok {
-			posts = append(posts, post)
-		}
-	}
-	if chronological {
-		slices.SortStableFunc(posts, func(a, b *model.Post) int {
-			switch {
-			case a.CreateAt < b.CreateAt:
-				return -1
-			case a.CreateAt > b.CreateAt:
-				return 1
-			default:
-				return 0
-			}
-		})
-	}
-	return describePosts(ctx, client, posts)
+	return describePosts(ctx, client, orderedPosts(list, chronological))
 }
 
 // surroundings is what posts name, read once for all of them: the user, each

@@ -30,26 +30,45 @@ func toTeam(team *model.Team) Team {
 	return Team{ID: team.Id, Name: team.Name, DisplayName: team.DisplayName, Description: team.Description, Open: team.Type == model.TeamOpen && team.AllowOpenInvite}
 }
 
-// Teams wraps a list of teams, because a tool's answer is an object.
+// Teams is a page of teams.
 type Teams struct {
 	Teams []Team `json:"teams"`
+	pageInfo
 }
 
-type noInput struct{}
+// The most teams or channels one call returns, and how many when not told.
+const (
+	maxListed     = 200
+	defaultListed = 50
+)
+
+// listInput is the input of a tool that lists without anything to choose by.
+type listInput struct {
+	Limit int `json:"limit,omitempty" jsonschema:"how many a page holds, at most 200; 50 when not given"`
+	pageArgs
+}
 
 func getUserTeamsSpec() Spec {
-	return toolSpec(
+	return shaping(toolSpec(
 		&mcp.Tool{
 			Name:        "get_user_teams",
-			Description: "List the Mattermost teams the user belongs to. A channel belongs to a team, so start here to find where a conversation is.",
+			Description: "List the Mattermost teams the user belongs to, by name, a page at a time. A channel belongs to a team, so start here to find where a conversation is.",
 			Annotations: readOnly("List the user's teams"),
 		},
 		[]Use{{
 			Operation: "GetTeamsForUser",
 			Params:    map[string]Coverage{"user_id": Fixed("me", "the tool lists the teams of the user the credential belongs to")},
 		}},
-		func(clientFor ClientFor) mcp.ToolHandlerFor[noInput, Teams] {
-			return func(ctx context.Context, request *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, Teams, error) {
+		func(clientFor ClientFor) mcp.ToolHandlerFor[listInput, Teams] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input listInput) (*mcp.CallToolResult, Teams, error) {
+				limit, err := limitOf(input.Limit, defaultListed, maxListed)
+				if err != nil {
+					return nil, Teams{}, err
+				}
+				at, err := openCursor("get_user_teams", input, input.Cursor)
+				if err != nil {
+					return nil, Teams{}, err
+				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
 					return nil, Teams{}, err
@@ -58,15 +77,16 @@ func getUserTeamsSpec() Spec {
 				if err != nil {
 					return nil, Teams{}, err
 				}
-				out := Teams{Teams: []Team{}}
+				all := make([]Team, 0, len(teams))
 				for _, team := range teams {
-					out.Teams = append(out.Teams, toTeam(team))
+					all = append(all, toTeam(team))
 				}
-				slices.SortFunc(out.Teams, func(a, b Team) int { return strings.Compare(a.DisplayName, b.DisplayName) })
-				return nil, out, nil
+				slices.SortFunc(all, func(a, b Team) int { return strings.Compare(a.DisplayName, b.DisplayName) })
+				page, next := offsetPage(all, at, limit)
+				return nil, Teams{Teams: page, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
-	)
+	), pagingShapes)
 }
 
 type getTeamInfoInput struct {
@@ -173,10 +193,10 @@ type Channel struct {
 	Mentions *int64 `json:"mentions,omitempty" jsonschema:"unread messages that mention the user"`
 }
 
-// Channels wraps a list of channels.
+// Channels is a page of channels.
 type Channels struct {
 	Channels []Channel `json:"channels"`
-	More     bool      `json:"more,omitempty" jsonschema:"more channels follow: ask for the next page"`
+	pageInfo
 }
 
 var channelTypes = map[model.ChannelType]string{
@@ -189,6 +209,8 @@ var channelTypes = map[model.ChannelType]string{
 type getUserChannelsInput struct {
 	TeamID     string `json:"team_id,omitempty" jsonschema:"only this team's channels, with direct and group messages, which belong to no team"`
 	UnreadOnly bool   `json:"unread_only,omitempty" jsonschema:"only channels with something unread"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"how many channels a page holds, at most 200; 50 when not given"`
+	pageArgs
 }
 
 func getUserChannelsSpec() Spec {
@@ -230,6 +252,14 @@ func getUserChannelsSpec() Spec {
 		},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getUserChannelsInput, Channels] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input getUserChannelsInput) (*mcp.CallToolResult, Channels, error) {
+				limit, err := limitOf(input.Limit, defaultListed, maxListed)
+				if err != nil {
+					return nil, Channels{}, err
+				}
+				at, err := openCursor("get_user_channels", input, input.Cursor)
+				if err != nil {
+					return nil, Channels{}, err
+				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
 					return nil, Channels{}, err
@@ -248,7 +278,7 @@ func getUserChannelsSpec() Spec {
 						memberships[member.ChannelId] = member
 					}
 				}
-				out := Channels{Channels: []Channel{}}
+				var all []Channel
 				for _, channel := range mine.channels {
 					if input.TeamID != "" && channel.TeamId != "" && channel.TeamId != input.TeamID {
 						continue
@@ -262,16 +292,24 @@ func getUserChannelsSpec() Spec {
 					if input.UnreadOnly && (listed.Unread == nil || *listed.Unread == 0) && (listed.Mentions == nil || *listed.Mentions == 0) {
 						continue
 					}
-					out.Channels = append(out.Channels, listed)
+					all = append(all, listed)
 				}
-				slices.SortFunc(out.Channels, func(a, b Channel) int { return strings.Compare(b.LastPostAt, a.LastPostAt) })
-				return nil, out, nil
+				// Most recently active first, and by id between channels as recent,
+				// so a page is the same slice of the list each time it is read.
+				slices.SortFunc(all, func(a, b Channel) int {
+					if order := strings.Compare(b.LastPostAt, a.LastPostAt); order != 0 {
+						return order
+					}
+					return strings.Compare(a.ID, b.ID)
+				})
+				page, next := offsetPage(all, at, limit)
+				return nil, Channels{Channels: page, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
-	), map[string]string{
+	), withShapes(pagingShapes, map[string]string{
 		"team_id":     "keeps the channels of that team, and the direct and group messages, which belong to none",
 		"unread_only": "keeps the channels with an unread message or mention",
-	})
+	}))
 }
 
 // myChannels is the channels the user belongs to, with what names them: their
@@ -496,23 +534,20 @@ func getChannelInfoSpec() Spec {
 	)
 }
 
-// The most channels one search or listing returns, and how many when not told.
-const (
-	maxChannels     = 200
-	defaultChannels = 50
-)
-
 type searchChannelsInput struct {
 	Term   string `json:"term" jsonschema:"part of the channel's name"`
 	TeamID string `json:"team_id,omitempty" jsonschema:"search this team only; every team of the user's when not given"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"how many channels a page holds, at most 200; 50 when not given"`
+	pageArgs
 }
 
 func searchChannelsSpec() Spec {
-	return toolSpec(
+	return shaping(toolSpec(
 		&mcp.Tool{
 			Name: "search_channels",
-			Description: "Find channels by part of their name: the user's own, private ones and direct messages included, and the public " +
-				"channels of their teams they have not joined. Each says whether the user belongs to it.",
+			Description: "Find channels by part of their name, a page at a time: the user's own, private ones and direct messages included, " +
+				"and the public channels of their teams they have not joined. Each says whether the user belongs to it. Mattermost finds " +
+				"at most 50 public channels in a team for one term, so narrow the term when a team has more.",
 			Annotations: readOnly("Search channels"),
 		},
 		uses([]Use{{
@@ -528,6 +563,14 @@ func searchChannelsSpec() Spec {
 				if term == "" {
 					return nil, Channels{}, fmt.Errorf("give part of the channel's name")
 				}
+				limit, err := limitOf(input.Limit, defaultListed, maxListed)
+				if err != nil {
+					return nil, Channels{}, err
+				}
+				at, err := openCursor("search_channels", input, input.Cursor)
+				if err != nil {
+					return nil, Channels{}, err
+				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
 					return nil, Channels{}, err
@@ -541,39 +584,38 @@ func searchChannelsSpec() Spec {
 					return nil, Channels{}, err
 				}
 				lower := strings.ToLower(term)
-				out := Channels{Channels: []Channel{}}
+				var found []Channel
 				for _, candidate := range candidates {
 					if slices.ContainsFunc(candidate.names, func(n string) bool { return strings.Contains(strings.ToLower(n), lower) }) {
-						if len(out.Channels) == maxChannels {
-							out.More = true
-							break
-						}
-						out.Channels = append(out.Channels, candidate.value)
+						found = append(found, candidate.value)
 					}
 				}
-				return nil, out, nil
+				slices.SortFunc(found, func(a, b Channel) int { return strings.Compare(a.ID, b.ID) })
+				page, next := offsetPage(found, at, limit)
+				return nil, Channels{Channels: page, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
-	)
+	), pagingShapes)
 }
 
 type listTeamChannelsInput struct {
 	TeamID string `json:"team_id" jsonschema:"the team whose channels to list"`
-	Page   int    `json:"page,omitempty" jsonschema:"the page to read, from 0, when more says there are more"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"how many channels a page holds, at most 200; 50 when not given"`
+	pageArgs
 }
 
-// teamChannelsSpec is a tool that pages through one kind of a team's channels.
-func teamChannelsSpec(name, title, description, operation, why string, list func(context.Context, *mattermost.Client, string, int, int) ([]*model.Channel, error)) Spec {
-	return toolSpec(
+// teamChannelsSpec is a tool that pages through one kind of a team's channels,
+// which Mattermost gives a page at a time.
+func teamChannelsSpec(name, title, description, operation string, list func(context.Context, *mattermost.Client, string, int, int) ([]*model.Channel, error)) Spec {
+	return shaping(toolSpec(
 		&mcp.Tool{Name: name, Description: description, Annotations: readOnly(title)},
 		[]Use{
 			{
 				Operation: operation,
 				Params: map[string]Coverage{
 					"team_id":  SetBy("team_id"),
-					"page":     SetBy("page"),
-					"per_page": SetBy("limit"),
+					"page":     Fixed("each in turn", "the tool reads every page and pages through them itself, in an order Mattermost's own pages do not keep when two channels share a name"),
+					"per_page": Fixed(fmt.Sprint(serverPageSize), "the most Mattermost gives in one page"),
 				},
 			},
 			{
@@ -583,14 +625,13 @@ func teamChannelsSpec(name, title, description, operation, why string, list func
 		},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listTeamChannelsInput, Channels] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listTeamChannelsInput) (*mcp.CallToolResult, Channels, error) {
-				limit := input.Limit
-				switch {
-				case limit == 0:
-					limit = defaultChannels
-				case limit < 0 || limit > maxChannels:
-					return nil, Channels{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxChannels, limit)
-				case input.Page < 0:
-					return nil, Channels{}, fmt.Errorf("page counts from 0, not %d", input.Page)
+				limit, err := limitOf(input.Limit, defaultListed, maxListed)
+				if err != nil {
+					return nil, Channels{}, err
+				}
+				at, err := openCursor(name, input, input.Cursor)
+				if err != nil {
+					return nil, Channels{}, err
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -600,11 +641,21 @@ func teamChannelsSpec(name, title, description, operation, why string, list func
 				if err != nil {
 					return nil, Channels{}, err
 				}
-				channels, err := list(ctx, client, input.TeamID, input.Page, limit)
+				all, err := allPages(ctx, func(ctx context.Context, page, perPage int) ([]*model.Channel, error) {
+					return list(ctx, client, input.TeamID, page, perPage)
+				})
 				if err != nil {
-					return nil, Channels{}, fmt.Errorf("%s: %w", why, err)
+					return nil, Channels{}, err
 				}
-				out := Channels{Channels: []Channel{}, More: len(channels) == limit}
+				// By display name, and by id between channels named alike.
+				slices.SortStableFunc(all, func(a, b *model.Channel) int {
+					if order := strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName)); order != 0 {
+						return order
+					}
+					return strings.Compare(a.Id, b.Id)
+				})
+				channels, next := offsetPage(all, at, limit)
+				out := Channels{Channels: make([]Channel, 0, len(channels)), pageInfo: pageInfo{NextCursor: next}}
 				for _, channel := range channels {
 					listed := toChannel(channel, "", nil)
 					listed.Team = team.DisplayName
@@ -613,13 +664,13 @@ func teamChannelsSpec(name, title, description, operation, why string, list func
 				return nil, out, nil
 			}
 		},
-	)
+	), pagingShapes)
 }
 
 func listTeamChannelsSpec() Spec {
 	return teamChannelsSpec("list_team_channels", "List a team's channels",
 		"List a team's public channels, whether the user has joined them or not, by name, a page at a time.",
-		"GetPublicChannelsForTeam", "listing the team's public channels",
+		"GetPublicChannelsForTeam",
 		func(ctx context.Context, client *mattermost.Client, teamID string, page, perPage int) ([]*model.Channel, error) {
 			return client.PublicChannels(ctx, teamID, page, perPage)
 		})
@@ -629,7 +680,7 @@ func listArchivedChannelsSpec() Spec {
 	return teamChannelsSpec("list_archived_channels", "List archived channels",
 		"List a team's archived channels: public ones, and private ones the user belonged to, a page at a time. "+
 			"An archived channel can be read with read_channel but not posted in.",
-		"GetDeletedChannelsForTeam", "listing the team's archived channels",
+		"GetDeletedChannelsForTeam",
 		func(ctx context.Context, client *mattermost.Client, teamID string, page, perPage int) ([]*model.Channel, error) {
 			return client.ArchivedChannels(ctx, teamID, page, perPage)
 		})

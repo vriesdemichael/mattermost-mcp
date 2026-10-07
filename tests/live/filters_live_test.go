@@ -43,8 +43,8 @@ func TestReadChannelSinceATimeReadsWhatWasWrittenFromThenOn(t *testing.T) {
 	for _, post := range read.Posts {
 		got = append(got, post.Message)
 	}
-	if strings.Join(got, "|") != "after one|after two" || read.MoreAfter {
-		t.Fatalf("read %v (more after %v); want the two posts written since", got, read.MoreAfter)
+	if strings.Join(got, "|") != "after one|after two" || read.NextCursor != "" {
+		t.Fatalf("read %v (next cursor %q); want the two posts written since", got, read.NextCursor)
 	}
 }
 

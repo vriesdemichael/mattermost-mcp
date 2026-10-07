@@ -11,6 +11,7 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestNoToolIsOpenWorld`: no MCP tool is annotated open-world.
 - `TestAReadOnlyServerListsOnlyReadOnlyTools`: without writes allowed, no tool that writes is offered.
 - `TestAllowingWritesAddsExactlyTheToolsThatWrite`: allowing writes adds exactly the tools not annotated read-only.
+- `TestEveryListPagesByCursor`: every tool that answers with a list takes limit and cursor and answers with next_cursor, unless its input bounds it.
 - `TestEveryToolThatWritesAsksFirst`: every tool that changes what others see refuses a client that cannot be asked, before it reaches Mattermost.
 - `TestAToolThatDoesNotAskChangesNothingOfOthers`: a tool that changes Mattermost without asking says why, and is not destructive.
 - `TestOnlyALocalServerOffersTheToolsThatWriteItsFiles`: a tool that writes this machine's files is offered by a local server only, whether writes are allowed or not.

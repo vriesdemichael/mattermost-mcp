@@ -216,38 +216,45 @@ func firstWord(name string) string {
 	return string(runes[:min(3, len(runes))])
 }
 
-// The most users one search returns, and how many when not told.
+// The most users one search page holds, and how many when not told; and the
+// most matches Mattermost's user search answers with, which is as far as its
+// pages reach.
 const (
 	maxUsersPerSearch     = 100
 	defaultUsersPerSearch = 20
+	userSearchReach       = model.UserSearchMaxLimit
 )
 
 // Users wraps a list of users.
 type Users struct {
 	Users []UserSummary `json:"users"`
+	pageInfo
 }
 
 type searchUsersInput struct {
 	Term      string `json:"term" jsonschema:"part of a username, name, nickname or email address"`
 	TeamID    string `json:"team_id,omitempty" jsonschema:"only members of this team"`
 	ChannelID string `json:"channel_id,omitempty" jsonschema:"only members of this channel"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"how many users to return, at most 100; 20 when not given"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"how many users a page holds, at most 100; 20 when not given"`
+	pageArgs
 }
 
 func searchUsersSpec() Spec {
-	return toolSpec(
+	return shaping(toolSpec(
 		&mcp.Tool{
-			Name:        "search_users",
-			Description: "Find Mattermost users whose username, name, nickname or email address contains a term, optionally only in one team or channel.",
+			Name: "search_users",
+			Description: "Find Mattermost users whose username, name, nickname or email address contains a term, optionally only in one " +
+				"team or channel, a page at a time. Mattermost finds at most 1000 for one term.",
 			Annotations: readOnly("Search users"),
 		},
 		[]Use{{
 			Operation: "SearchUsers",
 			Params: map[string]Coverage{
-				"body.term":              SetBy("term"),
-				"body.team_id":           SetBy("team_id"),
-				"body.in_channel_id":     SetBy("channel_id"),
-				"body.limit":             SetBy("limit"),
+				"body.term":          SetBy("term"),
+				"body.team_id":       SetBy("team_id"),
+				"body.in_channel_id": SetBy("channel_id"),
+				"body.limit": Fixed("every match up to the end of the page asked for, at most 1000",
+					"Mattermost's user search takes no offset, so a page asks for the matches before it too and keeps its own"),
 				"body.allow_inactive":    Omitted("deactivated users cannot be messaged or mentioned, so the search leaves them out"),
 				"body.without_team":      Omitted("finding users who belong to no team is an administrator's task"),
 				"body.not_in_team_id":    Omitted("finding who is missing from a team is an administrator's task"),
@@ -258,14 +265,16 @@ func searchUsersSpec() Spec {
 		}},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchUsersInput, Users] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchUsersInput) (*mcp.CallToolResult, Users, error) {
-				limit := input.Limit
-				switch {
-				case strings.TrimSpace(input.Term) == "":
+				if strings.TrimSpace(input.Term) == "" {
 					return nil, Users{}, fmt.Errorf("give a term to search for")
-				case limit == 0:
-					limit = defaultUsersPerSearch
-				case limit < 0 || limit > maxUsersPerSearch:
-					return nil, Users{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxUsersPerSearch, limit)
+				}
+				limit, err := limitOf(input.Limit, defaultUsersPerSearch, maxUsersPerSearch)
+				if err != nil {
+					return nil, Users{}, err
+				}
+				at, err := openCursor("search_users", input, input.Cursor)
+				if err != nil {
+					return nil, Users{}, err
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -275,19 +284,20 @@ func searchUsersSpec() Spec {
 					Term:        strings.TrimPrefix(input.Term, "@"),
 					TeamId:      input.TeamID,
 					InChannelId: input.ChannelID,
-					Limit:       limit,
+					Limit:       min(at.Offset+limit+1, userSearchReach),
 				})
 				if err != nil {
 					return nil, Users{}, err
 				}
-				out := Users{Users: []UserSummary{}}
-				for _, user := range found {
+				page, next := offsetPage(found, at, limit)
+				out := Users{Users: make([]UserSummary, 0, len(page)), pageInfo: pageInfo{NextCursor: next}}
+				for _, user := range page {
 					out.Users = append(out.Users, summarise(user))
 				}
 				return nil, out, nil
 			}
 		},
-	)
+	), pagingShapes)
 }
 
 // UserStatus is whether someone is around: their presence and the status

@@ -101,30 +101,11 @@ func TestListTeamChannelsPagesThroughTheTeamsPublicChannels(t *testing.T) {
 		seedChannel(t, admin, team)
 	}
 	session := sessionFor(t, admin, user)
-	page := func(n int) server.Channels {
-		var listed server.Channels
-		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "list_team_channels", Arguments: map[string]any{
-			"team_id": team.Id, "limit": 2, "page": n,
-		}}), &listed)
-		return listed
-	}
 
-	seen := map[string]bool{}
-	for n := 0; ; n++ {
-		listed := page(n)
-		for _, channel := range listed.Channels {
-			if seen[channel.ID] || channel.Type != "public" || channel.Team != team.DisplayName {
-				t.Fatalf("page %d lists %+v", n, channel)
-			}
-			seen[channel.ID] = true
-		}
-		if !listed.More {
-			break
-		}
-	}
+	pages := everyPage(t, session, &mcp.CallToolParams{Name: "list_team_channels", Arguments: map[string]any{"team_id": team.Id}}, 2, "channels", "id")
 	// Town square and off-topic come with every team.
-	if len(seen) != 5 {
-		t.Fatalf("paged through %d channels; want 5", len(seen))
+	if got := flat(t, pages); len(got) != 5 || len(pages) != 3 {
+		t.Fatalf("paged through %v; want 5 channels on 3 pages", pages)
 	}
 }
 

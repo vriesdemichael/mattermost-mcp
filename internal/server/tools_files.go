@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -213,10 +214,10 @@ type FoundFile struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// FileResults is what a file search found.
+// FileResults is a page of files a search found.
 type FileResults struct {
-	Files     []FoundFile `json:"files" jsonschema:"newest first"`
-	Truncated bool        `json:"truncated" jsonschema:"more files matched than the limit let through: narrow the search, or raise the limit"`
+	Files []FoundFile `json:"files" jsonschema:"newest first"`
+	pageInfo
 }
 
 type searchFilesInput struct {
@@ -224,7 +225,8 @@ type searchFilesInput struct {
 	searchFilters
 	TeamID   string `json:"team_id,omitempty" jsonschema:"search one team only; every team when not given"`
 	MatchAny bool   `json:"match_any,omitempty" jsonschema:"find files matching any of the words rather than all of them"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"how many files to return, at most 100; 20 when not given"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"how many files a page holds, at most 100; 20 when not given"`
+	pageArgs
 }
 
 func searchFilesSpec() Spec {
@@ -252,12 +254,13 @@ func searchFilesSpec() Spec {
 		}, channelLookupUses("in"), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchFilesInput, FileResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchFilesInput) (*mcp.CallToolResult, FileResults, error) {
-				limit := input.Limit
-				switch {
-				case limit == 0:
-					limit = defaultPostsPerSearch
-				case limit < 0 || limit > maxPostsPerSearch:
-					return nil, FileResults{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxPostsPerSearch, limit)
+				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)
+				if err != nil {
+					return nil, FileResults{}, err
+				}
+				at, err := openCursor("search_files", input, input.Cursor)
+				if err != nil {
+					return nil, FileResults{}, err
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -273,17 +276,23 @@ func searchFilesSpec() Spec {
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				var files []*model.FileInfo
-				truncated := false
+				// The database search answers with every match at once; a page is a
+				// slice of it.
+				var all []*model.FileInfo
 				for _, id := range found.Order {
 					if file := found.FileInfos[id]; file != nil {
-						if len(files) == limit {
-							truncated = true
-							break
-						}
-						files = append(files, file)
+						all = append(all, file)
 					}
 				}
+				// Most recent first, and by id between files of the same millisecond,
+				// so a page is the same slice each time the search is run.
+				slices.SortStableFunc(all, func(a, b *model.FileInfo) int {
+					if a.CreateAt != b.CreateAt {
+						return int(b.CreateAt - a.CreateAt)
+					}
+					return strings.Compare(a.Id, b.Id)
+				})
+				files, next := offsetPage(all, at, limit)
 				// A file is named where it was posted as a post is: its channel,
 				// team and author, read once for all of them.
 				posted := make([]*model.Post, 0, len(files))
@@ -294,7 +303,7 @@ func searchFilesSpec() Spec {
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				out := FileResults{Files: make([]FoundFile, 0, len(files)), Truncated: truncated}
+				out := FileResults{Files: make([]FoundFile, 0, len(files)), pageInfo: pageInfo{NextCursor: next}}
 				for i, file := range files {
 					out.Files = append(out.Files, FoundFile{
 						Attachment: toAttachment(file),
@@ -309,9 +318,7 @@ func searchFilesSpec() Spec {
 				return nil, out, nil
 			}
 		},
-	), withShapes(searchFilterShapes, map[string]string{
-		"limit": "returns at most this many of the files Mattermost found, and says so when it cut some off",
-	}))
+	), withShapes(searchFilterShapes, pagingShapes))
 }
 
 // maxSavedFileBytes is the largest file save_file writes: Mattermost's own

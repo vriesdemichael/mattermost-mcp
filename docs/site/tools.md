@@ -9,6 +9,11 @@ Each tool also accounts for every parameter of the Mattermost endpoints it
 calls: which argument sets it, or why it is fixed or left out
 ([ADR-028](adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)).
 
+Every list pages the same way: give `limit`, and pass the `next_cursor` an
+answer ends with back as `cursor`, with the same other arguments, for the next
+page, until an answer has none
+([ADR-032](adr/032-every-list-pages-by-an-opaque-cursor.md)).
+
 Every post comes back in one shape: its author's username and name, its channel
 and team by name, its files with their ids, reactions with who reacted, whether
 it is pinned or marked as written with AI, its thread, and when it was edited.
@@ -32,6 +37,7 @@ candidate, and an unknown one with the closest names
 `search_users`: Search users
 :   Users whose username, name, nickname or email address contains a term,
     optionally only within a team or a channel. Deactivated users are left out.
+    Mattermost finds at most 1000 for one term.
 
 `get_status`: Get status
 :   Whether people are around: online, away, do not disturb or offline, when
@@ -58,14 +64,14 @@ candidate, and an unknown one with the closest names
 
 `search_channels`: Search channels
 :   Channels by part of their name: your own, and public ones you have not
-    joined.
+    joined. Mattermost finds at most 50 public channels in a team for one term.
 
 `list_team_channels`: List a team's channels
-:   A team's public channels, a page at a time.
+:   A team's public channels, by name.
 
 `list_archived_channels`: List archived channels
-:   A team's archived channels, a page at a time. An archived channel can be
-    read but not posted in.
+:   A team's archived channels. An archived channel can be read but not posted
+    in.
 
 `get_channel_stats`: Get channel stats
 :   How many people belong to a channel, how many are guests, and how many posts
@@ -74,9 +80,10 @@ candidate, and an unknown one with the closest names
 ## Reading
 
 `read_channel`: Read channel
-:   A channel's messages, the newest 30 by default and at most 200, oldest
-    first. `before` pages back from a post, `after` catches up from one, and
-    `since` reads what was written from a time on. `collapse_threads` leaves the
+:   A channel's messages, 30 a page by default and at most 200, oldest first
+    within a page: the newest, and the pages after go further back. `before`
+    starts back from a post; `after` and `since`, from a post or a time, read
+    forward. `collapse_threads` leaves the
     replies out and shows each thread by the post that started it, as Mattermost
     shows a channel with collapsed reply threads.
 
@@ -87,8 +94,8 @@ candidate, and an unknown one with the closest names
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
 
 `read_post`: Read post
-:   A post and the whole thread it is in, oldest first. Give any post in the
-    thread; `include_thread` false reads the post alone.
+:   A post and the thread it is in, oldest first, 100 posts a page by default.
+    Give any post in the thread; `include_thread` false reads the post alone.
 
 `list_threads`: List threads
 :   The threads you follow, as Mattermost's threads view lists them, most
@@ -105,9 +112,7 @@ candidate, and an unknown one with the closest names
 :   Messages you can read, across every team or one, by words, and by who wrote
     them, where and when through `from`, `in`, `before`, `after` and `on`, so no
     search syntax is needed. `@username` finds where someone was mentioned.
-    Returns at most `limit` posts, 20 by default and at most 100, and says when
-    more matched: Team Edition's search does not page, so narrow the search to
-    see the rest.
+    20 posts a page by default, at most 100.
 
 ## Files
 
