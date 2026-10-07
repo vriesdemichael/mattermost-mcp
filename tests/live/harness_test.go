@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -105,12 +106,24 @@ func check(t *testing.T, err error) {
 	}
 }
 
-// admin is a Client4 logged in as the stack's system administrator.
+// adminSession is the system administrator's one session for the whole run.
+// Mattermost claims a failed-attempt slot for every login before it checks
+// the password and frees it only once the login succeeds, so more logins of
+// one account in flight at once than it allows attempts lock the account out,
+// with the right password. Parallel tests each logging in would do that.
+var adminSession = sync.OnceValues(func() (string, error) {
+	client := model.NewAPIv4Client(liveURL)
+	_, _, err := client.Login(context.Background(), teststack.AdminUsername, teststack.AdminPassword)
+	return client.AuthToken, err
+})
+
+// admin is a Client4 acting as the stack's system administrator.
 func admin(t *testing.T) *model.Client4 {
 	t.Helper()
-	client := model.NewAPIv4Client(liveURL)
-	_, _, err := client.Login(t.Context(), teststack.AdminUsername, teststack.AdminPassword)
+	token, err := adminSession()
 	check(t, err)
+	client := model.NewAPIv4Client(liveURL)
+	client.SetToken(token)
 	return client
 }
 
