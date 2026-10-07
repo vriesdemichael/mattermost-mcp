@@ -163,3 +163,26 @@ func TestAFormBodyListsItsFields(t *testing.T) {
 		t.Fatalf("got %+v", upload)
 	}
 }
+
+// The specification gives SearchFiles to two routes; whichever is read first,
+// the operation has the parameters of both.
+func TestAnOperationIdOnTwoRoutesHasTheParametersOfBoth(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "spec.json")
+	spec := `{"info": {"version": "1.0.0"}, "paths": {
+    "/api/v4/files/search": {"post": {"operationId": "SearchFiles"}},
+    "/api/v4/teams/{team_id}/files/search": {"post": {"operationId": "SearchFiles", "parameters": [{"name": "team_id", "in": "path"}]}}}}`
+	if err := os.WriteFile(path, []byte(spec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		loaded, err := apisurface.LoadSpec(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		search, _ := loaded.Operation("SearchFiles")
+		if _, ok := search.Params["team_id"]; !ok || search.Path != "/api/v4/files/search" {
+			t.Fatalf("got %+v", search)
+		}
+	}
+}
