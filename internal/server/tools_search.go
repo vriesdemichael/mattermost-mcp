@@ -13,18 +13,26 @@ import (
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 )
 
-// The most posts one search returns, and how many when not told. 100 is also
-// what the tool asks Mattermost for: its database search, which Team Edition
-// uses, answers with every match on the first page and ignores the page size,
-// so the limit is applied to the answer.
+// The most posts a page of a search holds, and how many when not told; and
+// the most matches Mattermost's database search, which Team Edition uses,
+// answers with: the most recent searchReach, all at once whatever the page
+// size, which the tool pages through itself.
 const (
 	maxPostsPerSearch     = 100
 	defaultPostsPerSearch = 20
+	searchReach           = 100
 )
+
+// capped is what a search says when it found as many as Mattermost's search
+// gives, which means older matches may exist that no page reaches.
+type capped struct {
+	Capped bool `json:"capped,omitempty" jsonschema:"Mattermost's search answered with the most it gives, the 100 most recent matches; older ones may exist that no page reaches: narrow the search, for instance with before"`
+}
 
 // SearchResults is a page of posts a search found.
 type SearchResults struct {
 	Posts []Post `json:"posts" jsonschema:"the posts, most recent first, each with its channel and team"`
+	capped
 	pageInfo
 }
 
@@ -47,6 +55,14 @@ var searchFilterShapes = map[string]string{
 	"on":     "adds on: to the terms",
 }
 
+// fromUses are the operations that check a search's from filter names someone.
+func fromUses() []Use {
+	return []Use{
+		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("the start of an unknown username", "enough to find the usernames closest to one that is unknown"))},
+	}
+}
+
 // mattermostID is the shape of every id Mattermost gives out.
 var mattermostID = regexp.MustCompile(`^[a-z0-9]{26}$`)
 
@@ -57,12 +73,25 @@ var mattermostID = regexp.MustCompile(`^[a-z0-9]{26}$`)
 func searchTerms(ctx context.Context, client *mattermost.Client, terms, teamID string, filters searchFilters) (string, string, error) {
 	parts := []string{strings.TrimSpace(terms)}
 	if from := strings.TrimPrefix(strings.TrimSpace(filters.From), "@"); from != "" {
-		parts = append(parts, "from:"+from)
+		if strings.Contains(from, "@") {
+			return "", "", fmt.Errorf("from takes a username, not %q; get_users finds the username of an email address", from)
+		}
+		// Mattermost searches for a username nobody has and finds nothing; the
+		// tool refuses it with the closest usernames instead.
+		people, err := lookUpUsers(ctx, client, []string{from})
+		if err != nil {
+			return "", "", err
+		}
+		parts = append(parts, "from:"+people[0].Username)
 	}
 	if strings.TrimSpace(filters.In) != "" {
 		channel, err := findChannel(ctx, client, filters.In, teamID)
 		if err != nil {
 			return "", "", err
+		}
+		// Mattermost searches only the channels the person belongs to.
+		if channel.Member != nil && !*channel.Member {
+			return "", "", fmt.Errorf("%s is a channel the person does not belong to, and Mattermost searches only their own; read it with read_channel instead", oneLine(channel.DisplayName))
 		}
 		parts = append(parts, "in:"+channel.Name)
 		if channel.TeamID != "" {
@@ -101,7 +130,7 @@ func searchPostsSpec() Spec {
 			"body.is_or_search": SetBy("match_any"),
 			"body.page": Fixed("0", "Mattermost's database search, which Team Edition uses, answers the first page with every match "+
 				"and later pages with nothing; only Elasticsearch, a licensed feature, pages (the live suite shows both)"),
-			"body.per_page":                 Fixed("100", "the database search ignores it and answers with every match; the tool pages through that answer itself"),
+			"body.per_page":                 Fixed("100", "the database search ignores it and answers with its 100 most recent matches; the tool pages through them itself"),
 			"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
 			"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 		}
@@ -114,7 +143,8 @@ func searchPostsSpec() Spec {
 		&mcp.Tool{
 			Name: "search_posts",
 			Description: "Search the messages the user can read, across every team or one: by words, and by who wrote them, " +
-				"in which channel and when, through from, in, before, after and on. Search for @username to find where someone was mentioned.",
+				"in which channel and when, through from, in, before, after and on. Search for @username to find where someone was mentioned. " +
+				"Mattermost's search finds the 100 most recent matches at most; capped says when it did, and before reaches older ones.",
 			Annotations: readOnly("Search posts"),
 		},
 		uses([]Use{
@@ -125,7 +155,7 @@ func searchPostsSpec() Spec {
 					"The tool calls it the same way on every supported release, and the live suite runs it on both.",
 			},
 			{Operation: "SearchPosts", Params: coverage(SetBy("team_id"))},
-		}, channelLookupUses("in"), describeUses(true)),
+		}, channelLookupUses("in"), fromUses(), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchPostsInput, SearchResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchPostsInput) (*mcp.CallToolResult, SearchResults, error) {
 				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)
@@ -150,15 +180,16 @@ func searchPostsSpec() Spec {
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				// The database search answers with every match at once; a page is a
-				// slice of it, which a search run again for the next page finds the
+				// The database search answers with its matches at once; a page is a
+				// slice of them, which a search run again for the next page finds the
 				// same unless posts were written or deleted since.
-				page, next := offsetPage(newestFirst(orderedPosts(list, false)), at, limit)
+				found := newestFirst(orderedPosts(list, false))
+				page, next := offsetPage(found, at, limit)
 				posts, err := describePosts(ctx, client, page)
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				return nil, SearchResults{Posts: posts, pageInfo: pageInfo{NextCursor: next}}, nil
+				return nil, SearchResults{Posts: posts, capped: capped{len(found) >= searchReach}, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
 	), withShapes(searchFilterShapes, pagingShapes))

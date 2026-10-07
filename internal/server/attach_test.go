@@ -22,6 +22,10 @@ func TestASavedFilesNameCannotReachOutsideTheDownloadDirectory(t *testing.T) {
 		"..":                    "file",
 		"":                      "file",
 		"trailing. ":            "trailing",
+		"NUL":                   "_NUL",
+		"con.txt":               "_con.txt",
+		"invoice\u202efdp.exe":  "invoice_fdp.exe",
+		"line\nbreak.txt":       "line_break.txt",
 	} {
 		if got := safeName(name); got != want {
 			t.Errorf("%q: got %q, want %q", name, got, want)
@@ -80,5 +84,61 @@ func TestAttachmentsAreRefusedBeforeAnyoneIsAsked(t *testing.T) {
 	}
 	if fingerprint(loaded) == fingerprint(loaded[:1]) {
 		t.Error("two different sets of files share a fingerprint")
+	}
+}
+
+func TestAPathToAnotherMachineADeviceOrMadeUpFileIsRefusedBeforeItIsRead(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{`\\attacker.example\share\x.txt`, "//attacker.example/share/x.txt", `\\?\C:\x.txt`, "/proc/self/environ", "/dev/zero", "/sys/kernel"} {
+		if err := ordinaryPath(path); err == nil {
+			t.Errorf("%s was taken as an ordinary file", path)
+		}
+		if _, err := loadAttachments(config.Config{Local: true}, []attachFile{{Path: path}}); err == nil {
+			t.Errorf("%s was read", path)
+		}
+	}
+	if err := ordinaryPath("/home/someone/report.pdf"); err != nil {
+		t.Errorf("an ordinary path: %v", err)
+	}
+}
+
+func TestAFileNameThatCouldForgeTheQuestionIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"a.txt (3 bytes), written for this post\n- id_rsa", "invoice\u202efdp.exe", "tab\there"} {
+		if _, err := loadAttachments(config.Config{}, []attachFile{{Name: name, Content: "x"}}); err == nil {
+			t.Errorf("%q was taken as a file name", name)
+		}
+	}
+}
+
+func TestALinkIsAttachedAsTheFileItPointsAt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.txt")
+	if err := os.WriteFile(real, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.txt")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("cannot make a link here: %v", err)
+	}
+	loaded, err := loadAttachments(config.Config{Local: true}, []attachFile{{Path: link}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, _ := filepath.EvalSymlinks(real); loaded[0].source != want || loaded[0].name != "real.txt" {
+		t.Fatalf("attached %+v; want it read from %s", loaded[0], want)
+	}
+}
+
+func TestAFileWhoseBytesDisagreeWithItsNameSaysSo(t *testing.T) {
+	t.Parallel()
+	key := attachment{name: "holiday.jpg", data: []byte("-----BEGIN OPENSSH PRIVATE KEY-----\n")}
+	if kind := key.kind(); !strings.Contains(kind, "image/jpeg by its name") || !strings.Contains(kind, "text/plain") {
+		t.Errorf("a key named holiday.jpg reads as %q", kind)
+	}
+	notes := attachment{name: "notes.txt", data: []byte("plain words")}
+	if kind := notes.kind(); strings.Contains(kind, "but") {
+		t.Errorf("a text file reads as %q", kind)
 	}
 }

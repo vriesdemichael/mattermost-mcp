@@ -191,7 +191,7 @@ func TestGetUserTeamsAndChannelsNameTheirTeam(t *testing.T) {
 	team := seedTeam(t, admin, user)
 	channel := seedChannel(t, admin, team, user)
 
-	listed, ok := listChannels(t, sessionFor(t, admin, user), map[string]any{"team_id": team.Id})[channel.Id]
+	listed, ok := getUserChannels(t, sessionFor(t, admin, user), map[string]any{"team_id": team.Id})[channel.Id]
 	if !ok || listed.Team != team.DisplayName {
 		t.Fatalf("got %+v", listed)
 	}

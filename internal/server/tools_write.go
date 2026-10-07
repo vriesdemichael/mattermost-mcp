@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -66,9 +68,20 @@ func place(channel *model.Channel, self string, names map[string]string) string 
 		}
 		return "a direct message"
 	case model.ChannelTypeGroup:
-		return "the group message with " + channel.DisplayName
+		return "the group message with " + oneLine(channel.DisplayName)
 	}
-	return "~" + channel.DisplayName
+	return "~" + oneLine(channel.DisplayName)
+}
+
+// oneLine is a name someone gave, as a question shows it: control characters,
+// which could start a forged line of the question, become spaces.
+func oneLine(name string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, name)
 }
 
 // postInContext is a post with what a question about it names: the user, the
@@ -147,6 +160,11 @@ type destination struct {
 	root      *model.Post
 	open      func(context.Context) (string, error)
 	size      destinationSize
+	// key names the destination for the person's answer: the channel and
+	// thread, or the people a direct or group message goes to, so the answer
+	// accepts a post to the people it named and not to whoever the same
+	// usernames mean later.
+	key string
 }
 
 // rootID is the id of the thread's first post, or empty for a post that starts
@@ -218,6 +236,7 @@ func inChannel(ctx context.Context, client *mattermost.Client, channelID, rootID
 		self:      self,
 		label:     place(channel, self.Id, names),
 		channelID: channelID,
+		key:       "channel:" + channelID + "/" + rootID,
 		root:      root,
 		size: func(ctx context.Context) (int64, error) {
 			stats, err := client.ChannelStats(ctx, channelID)
@@ -263,24 +282,32 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 			},
 		}, messageUses(inTeams), describeUses(inTeams)),
 		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[In, Post] {
-			bind := func(input In) (string, error) {
+			// What a post is bound to: the files' bytes, and where it goes.
+			bound := func(files []attachment, where destination) string {
+				return fingerprint(files) + "\n" + where.key
+			}
+			prepare := func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mattermost.Client, []attachment, destination, error) {
 				files, err := loadAttachments(cfg, input.attached())
 				if err != nil {
-					return "", err
+					return nil, nil, destination{}, err
 				}
-				return fingerprint(files), nil
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return nil, nil, destination{}, err
+				}
+				where, err := input.destination(ctx, client)
+				return client, files, where, err
 			}
-			ask := askingBound(tool.Name, bind,
+			ask := askingBound(tool.Name,
+				func(ctx context.Context, request *mcp.CallToolRequest, input In) (string, error) {
+					_, files, where, err := prepare(ctx, request, input)
+					if err != nil {
+						return "", err
+					}
+					return bound(files, where), nil
+				},
 				func(ctx context.Context, request *mcp.CallToolRequest, input In) (confirmation, error) {
-					files, err := loadAttachments(cfg, input.attached())
-					if err != nil {
-						return confirmation{}, err
-					}
-					client, err := clientFor(ctx, request)
-					if err != nil {
-						return confirmation{}, err
-					}
-					where, err := input.destination(ctx, client)
+					client, files, where, err := prepare(ctx, request, input)
 					if err != nil {
 						return confirmation{}, err
 					}
@@ -291,16 +318,13 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 					return postQuestion(ctx, client, where, input.text(), files, checked, cfg.MarkAIGenerated)
 				},
 				func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Post, error) {
-					client, err := clientFor(ctx, request)
+					// Read once more, checked against what the person accepted, and
+					// these very bytes are what is uploaded.
+					client, files, where, err := prepare(ctx, request, input)
 					if err != nil {
 						return nil, Post{}, err
 					}
-					where, err := input.destination(ctx, client)
-					if err != nil {
-						return nil, Post{}, err
-					}
-					files, err := loadAttachments(cfg, input.attached())
-					if err != nil {
+					if err := stillAsAsked(ctx, tool.Name, bound(files, where)); err != nil {
 						return nil, Post{}, err
 					}
 					channelID, err := where.channel(ctx)
@@ -322,10 +346,12 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 					if err != nil {
 						return nil, Post{}, err
 					}
-					stopTyping(created.ChannelId, created.RootId)
+					stopTyping(where.self.Id, created.ChannelId, created.RootId)
 					posted, err := describePosts(ctx, client, []*model.Post{created})
 					if err != nil {
-						return nil, Post{}, err
+						// The post exists: answer with what is known rather than an
+						// error that would invite posting it again.
+						return nil, Post{ID: created.Id, ChannelID: created.ChannelId, RootID: created.RootId, Message: created.Message, AuthorID: created.UserId}, nil
 					}
 					return nil, posted[0], nil
 				})
@@ -333,9 +359,14 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 				result, posted, err := ask(ctx, request, input)
 				// The indicator stays while the person is being asked, which is
 				// when they are finishing the message, and goes once they have
-				// answered either way.
-				if result == nil || result.RequestState == "" {
-					stopTyping(input.typingIn())
+				// answered either way: a post took it down already; otherwise it
+				// is found where the post would have gone.
+				if (result == nil || result.RequestState == "") && posted.ID == "" {
+					if client, e := clientFor(ctx, request); e == nil {
+						if where, e := input.destination(ctx, client); e == nil && where.channelID != "" {
+							stopTyping(where.self.Id, where.channelID, where.rootID())
+						}
+					}
 				}
 				return result, posted, err
 			}
@@ -343,17 +374,19 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 	)
 }
 
-// postQuestion asks to post: as whom, where, in reply to what, the message as
-// it will be sent, what its mentions do, and every file it carries.
+// postQuestion asks to post: as whom, where, in reply to what, what its
+// mentions do, every file it carries, and then the message as it will be
+// sent. What the person must not miss comes before the message, which may be
+// long.
 func postQuestion(ctx context.Context, client *mattermost.Client, where destination, message string, files []attachment, checked checkedMessage, marked bool) (confirmation, error) {
 	carrying := ""
 	if len(files) > 0 {
 		carrying = fmt.Sprintf(" with %d %s", len(files), plural(int64(len(files)), "file", "files"))
 	}
-	tail := describeAttachments(files) + checked.note() + aiNote(marked)
+	summary := describeAttachments(files) + checked.note() + aiNote(marked)
 	if where.root == nil {
 		return confirmation{
-			Message: fmt.Sprintf("Post as @%s in %s:\n\n%s%s", where.self.Username, where.label, message, tail),
+			Message: fmt.Sprintf("Post as @%s in %s.%s\n\nThe message:\n\n%s", where.self.Username, where.label, summary, message),
 			Label:   "Post this message" + carrying + " in " + where.label,
 		}, nil
 	}
@@ -366,8 +399,8 @@ func postQuestion(ctx context.Context, client *mattermost.Client, where destinat
 		author = where.root.UserId
 	}
 	return confirmation{
-		Message: fmt.Sprintf("Reply as @%s in %s, in the thread @%s started with:\n“%s”\n\nThe reply:\n\n%s%s",
-			where.self.Username, where.label, author, excerpt(where.root.Message), message, tail),
+		Message: fmt.Sprintf("Reply as @%s in %s, in the thread @%s started with:\n“%s”%s\n\nThe reply:\n\n%s",
+			where.self.Username, where.label, author, excerpt(where.root.Message), summary, message),
 		Label: "Post this reply" + carrying + " in @" + author + "'s thread",
 	}, nil
 }
@@ -420,7 +453,7 @@ func createPostSpec() Spec {
 }
 
 type dmInput struct {
-	Username string `json:"username,omitempty" jsonschema:"the person to message, with or without @; the user themselves when not given"`
+	Username string `json:"username,omitempty" jsonschema:"the person to message: their username, with or without @, or their email address; the user themselves when not given"`
 	Message  string `json:"message" jsonschema:"the text to send, in Mattermost Markdown"`
 	filesField
 }
@@ -451,6 +484,7 @@ func (in dmInput) destination(ctx context.Context, client *mattermost.Client) (d
 	return destination{
 		self:  self,
 		label: label,
+		key:   "direct:" + other.Id,
 		open: func(ctx context.Context) (string, error) {
 			channel, err := client.DirectChannel(ctx, self.Id, other.Id)
 			if err != nil {
@@ -462,10 +496,12 @@ func (in dmInput) destination(ctx context.Context, client *mattermost.Client) (d
 	}, nil
 }
 
-// peopleUses are the operations lookUpUsers calls for a name.
+// peopleUses are the operations lookUpUsers calls for a person named by arg:
+// by username, user id or email address.
 func peopleUses(arg string) []Use {
 	return []Use{
 		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+		{Operation: "GetUserByEmail", Params: map[string]Coverage{"email": SetBy(arg)}},
 		{Operation: "SearchUsers", Params: suggestionSearch(SetBy(arg))},
 	}
 }
@@ -497,7 +533,7 @@ const (
 )
 
 type groupMessageInput struct {
-	Usernames []string `json:"usernames" jsonschema:"the people to message together, two to seven of them, with or without @, the user left out"`
+	Usernames []string `json:"usernames" jsonschema:"the people to message together, two to seven of them, by username, with or without @, or email address, the user left out"`
 	Message   string   `json:"message" jsonschema:"the text to send, in Mattermost Markdown"`
 	filesField
 }
@@ -523,18 +559,29 @@ func (in groupMessageInput) destination(ctx context.Context, client *mattermost.
 	if err != nil {
 		return destination{}, err
 	}
+	// The same person may be named twice, by username and by email; the user
+	// is in every group of theirs already.
 	ids := []string{self.Id}
 	var mentioned []string
 	for _, person := range people {
+		if slices.Contains(ids, person.Id) {
+			continue
+		}
 		if person.DeleteAt > 0 {
 			return destination{}, fmt.Errorf("@%s is deactivated, and cannot be messaged", person.Username)
 		}
 		ids = append(ids, person.Id)
 		mentioned = append(mentioned, "@"+person.Username)
 	}
+	if others := len(ids) - 1; others < minGroupOthers {
+		return destination{}, fmt.Errorf("a group message is with %d to %d people besides the user, and those named are %d; message one person with dm",
+			minGroupOthers, maxGroupOthers, others)
+	}
+	sorted := slices.Sorted(slices.Values(ids))
 	return destination{
 		self:  self,
 		label: "the group message with you and " + strings.Join(mentioned, ", "),
+		key:   "group:" + strings.Join(sorted, ","),
 		open: func(ctx context.Context) (string, error) {
 			channel, err := client.GroupChannel(ctx, ids)
 			if err != nil {
@@ -584,9 +631,9 @@ func updatePostSpec() Spec {
 	return configuredToolSpec(
 		&mcp.Tool{
 			Name: "update_post",
-			Description: "Replace the text of one of the user's own posts; Mattermost marks the post as edited. The new text is checked " +
-				"as a new post's is. The person is asked to confirm each edit, seeing the old text and the new; if they decline or close " +
-				"the question, do not edit it again unless they ask.",
+			Description: "Replace the text of one of the user's own posts; Mattermost marks the post as edited, and notifies nobody it " +
+				"newly mentions. The new text must fit the server's limit. The person is asked to confirm each edit, seeing the old text " +
+				"and the new; if they decline or close the question, do not edit it again unless they ask.",
 			Annotations: overwrites("Update post"),
 		},
 		uses([]Use{{
@@ -599,9 +646,21 @@ func updatePostSpec() Spec {
 				"body.has_reactions": Omitted("Mattermost keeps it in step with the reactions itself"),
 				"body.is_pinned":     Omitted("pin_post pins and unpins, asking about that on its own"),
 			},
-		}}, postContextUses(), messageUses(true), describeUses(true)),
+		}}, postContextUses(), lengthUses(), describeUses(true)),
 		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[updatePostInput, Post] {
-			return asking("update_post",
+			// An edit is bound to the text it replaces.
+			bind := func(ctx context.Context, request *mcp.CallToolRequest, input updatePostInput) (string, error) {
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return "", err
+				}
+				p, err := ownPost(ctx, client, input.PostID, "edit")
+				if err != nil {
+					return "", err
+				}
+				return p.post.Message, nil
+			}
+			return askingBound("update_post", bind,
 				func(ctx context.Context, request *mcp.CallToolRequest, input updatePostInput) (confirmation, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
@@ -614,19 +673,14 @@ func updatePostSpec() Spec {
 					if p.post.Message == input.Message {
 						return confirmation{}, fmt.Errorf("the post already reads exactly so; there is nothing to edit")
 					}
-					checked, err := checkMessage(ctx, client, input.Message, p.in, func(ctx context.Context) (int64, error) {
-						stats, err := client.ChannelStats(ctx, p.channel.Id)
-						if err != nil {
-							return 0, err
-						}
-						return stats.MemberCount, nil
-					})
-					if err != nil {
+					// Mattermost notifies nobody of an edit, so its mentions are only text.
+					if err := checkLength(ctx, client, input.Message); err != nil {
 						return confirmation{}, err
 					}
+					_, marked := editProps(p.post, cfg.MarkAIGenerated, p.self.Id)
 					return confirmation{
-						Message: fmt.Sprintf("Edit your post in %s as @%s.\n\nIt reads now:\n\n%s\n\nIt will read:\n\n%s%s%s",
-							p.in, p.self.Username, p.post.Message, input.Message, checked.note(), aiNote(cfg.MarkAIGenerated)),
+						Message: fmt.Sprintf("Edit your post in %s as @%s. An edit notifies nobody.%s\n\nIt reads now:\n\n%s\n\nIt will read:\n\n%s",
+							p.in, p.self.Username, aiNote(marked), p.post.Message, input.Message),
 						Label: "Replace the text of your post in " + p.in,
 					}, nil
 				},
@@ -639,12 +693,10 @@ func updatePostSpec() Spec {
 					if err != nil {
 						return nil, Post{}, err
 					}
-					var props model.StringInterface
-					if marker := aiMarker(cfg.MarkAIGenerated, p.self.Id); marker != nil {
-						props = model.StringInterface{}
-						maps.Copy(props, p.post.GetProps())
-						maps.Copy(props, marker)
+					if err := stillAsAsked(ctx, "update_post", p.post.Message); err != nil {
+						return nil, Post{}, err
 					}
+					props, _ := editProps(p.post, cfg.MarkAIGenerated, p.self.Id)
 					edited, err := client.EditPost(ctx, input.PostID, input.Message, props)
 					if err != nil {
 						return nil, Post{}, err
@@ -657,6 +709,33 @@ func updatePostSpec() Spec {
 				})
 		},
 	)
+}
+
+// markablePostProps are the properties an edit may send back unchanged with
+// the AI marker. Mattermost sanitises the properties an edit sends, and in its
+// hardened mode refuses some outright, so a post carrying any other property
+// is edited without the marker rather than have it disturbed.
+var markablePostProps = map[string]bool{
+	model.PostPropsAIGeneratedByUserID:   true,
+	model.PostPropsAIGeneratedByUsername: true,
+	"disable_group_highlight":            true,
+}
+
+// editProps are the properties an edit sends, nil to leave them as they are,
+// and whether they mark the post as written with AI.
+func editProps(post *model.Post, mark bool, userID string) (model.StringInterface, bool) {
+	if !mark {
+		return nil, false
+	}
+	for name := range post.GetProps() {
+		if !markablePostProps[name] {
+			return nil, false
+		}
+	}
+	props := model.StringInterface{}
+	maps.Copy(props, post.GetProps())
+	maps.Copy(props, aiMarker(true, userID))
+	return props, true
 }
 
 // ownPost reads a post the user is about to change, refusing one that is not
@@ -699,7 +778,21 @@ func deletePostSpec() Spec {
 			Params:    map[string]Coverage{"post_id": SetBy("post_id")},
 		}}, postContextUses()),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[deletePostInput, Deleted] {
-			return asking("delete_post",
+			// A deletion is bound to the post and the replies that go with it,
+			// so one posted while the person was asked is not deleted unseen.
+			state := func(post *model.Post) string { return fmt.Sprintf("%d\n%s", post.ReplyCount, post.Message) }
+			bind := func(ctx context.Context, request *mcp.CallToolRequest, input deletePostInput) (string, error) {
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return "", err
+				}
+				p, err := ownPost(ctx, client, input.PostID, "delete")
+				if err != nil {
+					return "", err
+				}
+				return state(p.post), nil
+			}
+			return askingBound("delete_post", bind,
 				func(ctx context.Context, request *mcp.CallToolRequest, input deletePostInput) (confirmation, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
@@ -725,6 +818,9 @@ func deletePostSpec() Spec {
 					}
 					p, err := ownPost(ctx, client, input.PostID, "delete")
 					if err != nil {
+						return nil, Deleted{}, err
+					}
+					if err := stillAsAsked(ctx, "delete_post", state(p.post)); err != nil {
 						return nil, Deleted{}, err
 					}
 					if err := client.DeletePost(ctx, input.PostID); err != nil {

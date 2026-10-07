@@ -34,32 +34,32 @@ const (
 
 // typist keeps one typing indicator up.
 type typist struct {
-	channelID, rootID string
-	stop              context.CancelFunc
+	userID, channelID, rootID string
+	stop                      context.CancelFunc
 }
 
-// typists are the typing indicators this server keeps up, by channel and
-// thread.
+// typists are the typing indicators this server keeps up, by user, channel
+// and thread: a server over HTTP may act for several users (ADR-020).
 var typists = struct {
 	sync.Mutex
 	active map[string]*typist
 }{active: map[string]*typist{}}
 
 // startTyping shows the user typing in a channel or thread until stopTyping,
-// a post there, or typingFor runs out. The first event is sent before it
-// returns, so a refusal reaches the caller.
-func startTyping(client *mattermost.Client, userID, channelID, rootID string) (time.Time, error) {
-	if err := client.Typing(context.Background(), userID, channelID, rootID); err != nil { //nolint:contextcheck // outlives the call by design
+// a post there, or typingFor runs out. The first event is sent within the
+// call, so a refusal reaches the caller; the ones after it outlive the call.
+func startTyping(ctx context.Context, client *mattermost.Client, userID, channelID, rootID string) (time.Time, error) {
+	if err := client.Typing(ctx, userID, channelID, rootID); err != nil {
 		return time.Time{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), typingFor) //nolint:contextcheck // outlives the call by design
-	until, _ := ctx.Deadline()
-	key := channelID + "/" + rootID
+	keep, cancel := context.WithTimeout(context.Background(), typingFor) //nolint:contextcheck // outlives the call by design
+	until, _ := keep.Deadline()
+	key := userID + "/" + channelID + "/" + rootID
 	typists.Lock()
 	if previous := typists.active[key]; previous != nil {
 		previous.stop()
 	}
-	current := &typist{channelID: channelID, rootID: rootID, stop: cancel}
+	current := &typist{userID: userID, channelID: channelID, rootID: rootID, stop: cancel}
 	typists.active[key] = current
 	typists.Unlock()
 	go func() {
@@ -75,12 +75,12 @@ func startTyping(client *mattermost.Client, userID, channelID, rootID string) (t
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-keep.Done():
 				return
 			case <-ticker.C:
 				// A failure to send one event ends the indicator rather than
 				// retrying: it lapses on its own within seconds.
-				if client.Typing(ctx, userID, channelID, rootID) != nil {
+				if client.Typing(keep, userID, channelID, rootID) != nil {
 					return
 				}
 			}
@@ -89,16 +89,15 @@ func startTyping(client *mattermost.Client, userID, channelID, rootID string) (t
 	return until, nil
 }
 
-// stopTyping takes down every typing indicator in the channel or the thread
-// named; an empty id names nothing.
-func stopTyping(channelID, rootID string) {
+// stopTyping takes down the user's typing indicator in a channel, or in a
+// thread of it when rootID is set.
+func stopTyping(userID, channelID, rootID string) {
+	key := userID + "/" + channelID + "/" + rootID
 	typists.Lock()
 	defer typists.Unlock()
-	for key, t := range typists.active {
-		if (channelID != "" && t.channelID == channelID) || (rootID != "" && t.rootID == rootID) {
-			t.stop()
-			delete(typists.active, key)
-		}
+	if t := typists.active[key]; t != nil {
+		t.stop()
+		delete(typists.active, key)
 	}
 }
 
@@ -157,15 +156,15 @@ func typingSpec() Spec {
 					return nil, Typing{}, err
 				}
 				answer := Typing{ChannelID: channelID, RootID: rootID}
-				if input.Stop {
-					stopTyping(channelID, rootID)
-					return nil, answer, nil
-				}
 				self, err := client.Me(ctx)
 				if err != nil {
 					return nil, Typing{}, err
 				}
-				until, err := startTyping(client, self.Id, channelID, rootID)
+				if input.Stop {
+					stopTyping(self.Id, channelID, rootID)
+					return nil, answer, nil
+				}
+				until, err := startTyping(ctx, client, self.Id, channelID, rootID)
 				if err != nil {
 					return nil, Typing{}, err
 				}
@@ -429,8 +428,7 @@ func setPostReminderSpec() Spec {
 				if err != nil {
 					return nil, Reminder{}, err
 				}
-				zone := userZone(self)
-				at, err := reminderTime(input.At, zone, time.Now())
+				at, zone, err := reminderAt(input.At, self)
 				if err != nil {
 					return nil, Reminder{}, err
 				}
@@ -444,13 +442,44 @@ func setPostReminderSpec() Spec {
 }
 
 // userZone is the timezone the person set in Mattermost: the one their device
-// reports when they let it, or the one they chose; UTC when neither is known.
-func userZone(user *model.User) *time.Location {
+// reports when they let it, or the one they chose; UTC when they set none. A
+// zone that does not load is refused, not read as UTC, which would remind the
+// person at another hour than they asked for.
+func userZone(user *model.User) (*time.Location, error) {
 	name := user.GetPreferredTimezone()
-	if zone, err := time.LoadLocation(name); err == nil && name != "" {
-		return zone
+	if name == "" {
+		return time.UTC, nil
 	}
-	return time.UTC
+	zone, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, fmt.Errorf("the person's timezone, %q, is not one this server knows; give the time with an offset, such as 2026-10-12T09:00:00+02:00", name)
+	}
+	return zone, nil
+}
+
+// reminderAt is when to remind, and the zone the answer says it in: a time
+// with an offset as it says, and one without in the person's own zone.
+func reminderAt(at string, user *model.User) (time.Time, *time.Location, error) {
+	zone, zoneErr := userZone(user)
+	if zoneErr != nil {
+		// A time with an offset needs no zone of the person's.
+		if parsed, err := reminderTime(at, time.UTC, time.Now()); err == nil && hasOffset(at) {
+			return parsed, time.UTC, nil
+		}
+		return time.Time{}, nil, zoneErr
+	}
+	parsed, err := reminderTime(at, zone, time.Now())
+	return parsed, zone, err
+}
+
+// hasOffset reports whether an ISO 8601 time says its own offset.
+func hasOffset(at string) bool {
+	at = strings.TrimSpace(at)
+	if strings.HasSuffix(at, "Z") {
+		return true
+	}
+	date, clock, found := strings.Cut(at, "T")
+	return found && date != "" && strings.ContainsAny(clock, "+-")
 }
 
 // reminderTime reads an ISO 8601 time: with an offset as it says, without one
@@ -460,7 +489,12 @@ func reminderTime(at string, zone *time.Location, now time.Time) (time.Time, err
 	at = strings.TrimSpace(at)
 	var parsed time.Time
 	var err error
-	if parsed, err = time.Parse(time.RFC3339, at); err != nil {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04Z07:00"} {
+		if parsed, err = time.Parse(layout, at); err == nil {
+			break
+		}
+	}
+	if err != nil {
 		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04"} {
 			if parsed, err = time.ParseInLocation(layout, at, zone); err == nil {
 				break

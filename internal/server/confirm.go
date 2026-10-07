@@ -56,10 +56,13 @@ func asking[In, Out any](tool string, confirm func(context.Context, *mcp.CallToo
 }
 
 // askingBound is asking for a call whose input names something that can
-// change between the question and the answer, such as a file on disk. bind
-// fingerprints it, and an answer accepts the call only while the fingerprint
-// is what it was when the person was asked.
-func askingBound[In, Out any](tool string, bind func(In) (string, error), confirm func(context.Context, *mcp.CallToolRequest, In) (confirmation, error), handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
+// change between the question and the answer: a file on disk, the post to be
+// deleted and the replies that go with it, the person a username means. bind
+// fingerprints what the call acts on, and an answer accepts the call only
+// while the fingerprint is what it was when the person was asked. The handler
+// is given the fingerprint (see stillAsAsked), so it can check what it is
+// about to act on against it once more, after the answer.
+func askingBound[In, Out any](tool string, bind func(context.Context, *mcp.CallToolRequest, In) (string, error), confirm func(context.Context, *mcp.CallToolRequest, In) (confirmation, error), handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
 		if !canConfirm(request) {
@@ -70,12 +73,13 @@ func askingBound[In, Out any](tool string, bind func(In) (string, error), confir
 			return nil, none, fmt.Errorf("%s: %w", tool, err)
 		}
 		if bind != nil {
-			bound, err := bind(input)
+			bound, err := bind(ctx, request, input)
 			if err != nil {
 				return nil, none, err
 			}
 			sum := sha256.Sum256([]byte(digest + "\n" + bound))
 			digest = hex.EncodeToString(sum[:])
+			ctx = context.WithValue(ctx, boundKey{}, bound)
 		}
 		answer, answered := request.Params.InputResponses[confirmKey]
 		state := request.Params.RequestState
@@ -131,6 +135,20 @@ func askingBound[In, Out any](tool string, bind func(In) (string, error), confir
 		}
 		return handler(ctx, request, input)
 	}
+}
+
+// boundKey carries a call's fingerprint from askingBound to its handler.
+type boundKey struct{}
+
+// stillAsAsked refuses to act when what a handler is about to act on is no
+// longer what the person was asked about: now is its fingerprint, made as bind
+// makes it. bind read it when the answer arrived; the handler reads it again
+// just before it acts, which closes the time between the two.
+func stillAsAsked(ctx context.Context, tool, now string) error {
+	if bound, ok := ctx.Value(boundKey{}).(string); ok && bound != now {
+		return fmt.Errorf("%s did not run: what it acts on changed after the person was asked. Call it again to ask again", tool)
+	}
+	return nil
 }
 
 // confirmationForm is the question: the message, and one required checkbox.
@@ -240,7 +258,7 @@ func (s *confirmationSeal) open(state, tool, digest string) (bool, error) {
 	case sealed.Tool != tool:
 		return false, invalidConfirmation("it was issued for another tool")
 	case sealed.Digest != digest:
-		return false, invalidConfirmation("the call, or a file it attaches, changed since the person was asked")
+		return false, invalidConfirmation("the call, or what it acts on, changed since the person was asked")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

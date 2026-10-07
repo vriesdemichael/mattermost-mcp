@@ -149,15 +149,19 @@ func followedThreads(ctx context.Context, client *mattermost.Client, teamID stri
 			if err != nil {
 				return nil, err
 			}
+			// Mattermost reads on from a thread by when it was last replied to
+			// alone; a millisecond the page is cut back from is read whole next.
+			read, more, _ := wholeMilliseconds(page.Threads, serverPageSize, len(page.Threads) == serverPageSize,
+				func(thread *model.ThreadResponse) int64 { return thread.LastReplyAt })
 			added := 0
-			for _, thread := range page.Threads {
+			for _, thread := range read {
 				if !seen[thread.PostId] && thread.Post != nil {
 					seen[thread.PostId] = true
 					threads = append(threads, thread)
 					added++
 				}
 			}
-			if len(page.Threads) < serverPageSize {
+			if !more {
 				break
 			}
 			// before is undocumented: should a release stop reading it, the same
@@ -165,7 +169,7 @@ func followedThreads(ctx context.Context, client *mattermost.Client, teamID stri
 			if added == 0 {
 				return nil, fmt.Errorf("the next page of followed threads came back the same as the last: Mattermost no longer pages them by before")
 			}
-			before = page.Threads[len(page.Threads)-1].PostId
+			before = read[len(read)-1].PostId
 		}
 	}
 	// Most recently replied to first, and by id between threads replied to in

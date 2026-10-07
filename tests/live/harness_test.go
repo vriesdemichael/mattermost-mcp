@@ -303,6 +303,14 @@ func eventually(t *testing.T, within time.Duration, check func() (bool, string))
 // finds which tools the suite calls sees it.
 func everyPage(t *testing.T, session *mcp.ClientSession, first *mcp.CallToolParams, limit int, list, key string) [][]string {
 	t.Helper()
+	return pagesOfAtMost(t, session, first, limit, limit, list, key)
+}
+
+// pagesOfAtMost is everyPage for a list a page of which may hold more than its
+// limit, up to most: a channel's posts, when one millisecond holds more posts
+// than the page.
+func pagesOfAtMost(t *testing.T, session *mcp.ClientSession, first *mcp.CallToolParams, limit, most int, list, key string) [][]string {
+	t.Helper()
 	asked := maps.Clone(first.Arguments.(map[string]any))
 	asked["limit"] = limit
 	var pages [][]string
@@ -315,7 +323,7 @@ func everyPage(t *testing.T, session *mcp.ClientSession, first *mcp.CallToolPara
 		for _, item := range items {
 			page = append(page, fmt.Sprint(item.(map[string]any)[key]))
 		}
-		if len(page) > limit {
+		if len(page) > most {
 			t.Fatalf("%s gave %d items on a page of %d", first.Name, len(page), limit)
 		}
 		pages = append(pages, page)
@@ -344,4 +352,17 @@ func flat(t *testing.T, pages [][]string) []string {
 		}
 	}
 	return out
+}
+
+// postAt posts a message as a system administrator, the one poster Mattermost
+// lets choose a post's time, at the given millisecond, so a test can put
+// posts in the same one.
+func postAt(t *testing.T, admin *model.Client4, channelID, rootID, message string, at int64) *model.Post {
+	t.Helper()
+	post, _, err := admin.CreatePost(t.Context(), &model.Post{ChannelId: channelID, RootId: rootID, Message: message, CreateAt: at})
+	check(t, err)
+	if post.CreateAt != at {
+		t.Fatalf("Mattermost wrote the post at %d, not at %d", post.CreateAt, at)
+	}
+	return post
 }

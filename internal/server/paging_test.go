@@ -111,3 +111,37 @@ func TestALimitHasADefaultAndAMaximum(t *testing.T) {
 		}
 	}
 }
+
+func TestAPageThatWouldEndInsideAMillisecondIsCutBackToAWholeOne(t *testing.T) {
+	t.Parallel()
+	at := func(ms int64) int64 { return ms }
+	for name, c := range map[string]struct {
+		page        []int64
+		limit       int
+		more        bool
+		want        []int64
+		follows     bool
+		whole       bool
+		wantThrough []int64
+	}{
+		"the post past the page is a later millisecond": {[]int64{1, 2, 3, 4}, 3, false, []int64{1, 2, 3}, true, true, nil},
+		"the post past the page shares its last one":    {[]int64{1, 2, 3, 3}, 3, false, []int64{1, 2}, true, true, nil},
+		"the last page": {[]int64{1, 2, 2}, 3, false, []int64{1, 2, 2}, false, true, nil},
+		"a page of Mattermost's most, more following": {[]int64{1, 2, 2}, 3, true, []int64{1}, true, true, nil},
+		"one millisecond fuller than the page":        {[]int64{5, 5, 5, 5}, 3, false, []int64{5, 5, 5}, true, false, []int64{5, 5, 5, 5}},
+		"empty":                                       {nil, 3, false, nil, false, true, nil},
+	} {
+		got, follows, whole := wholeMilliseconds(c.page, c.limit, c.more, at)
+		if !slices.Equal(got, c.want) || follows != c.follows || whole != c.whole {
+			t.Errorf("%s: got %v, more %v, whole %v; want %v, %v, %v", name, got, follows, whole, c.want, c.follows, c.whole)
+		}
+		if !whole {
+			if through, _ := throughMillisecond(c.page, got[0], false, at); !slices.Equal(through, c.wantThrough) {
+				t.Errorf("%s: read through the millisecond as %v; want %v", name, through, c.wantThrough)
+			}
+		}
+	}
+	if got, more := throughMillisecond([]int64{5, 5, 6}, 5, false, at); !slices.Equal(got, []int64{5, 5}) || !more {
+		t.Errorf("through millisecond 5 of 5, 5, 6: got %v, more %v", got, more)
+	}
+}

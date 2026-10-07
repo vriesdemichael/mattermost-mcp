@@ -12,10 +12,10 @@ import (
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
-// edit_post, delete_post, remove_reaction and pin_post: changes others see,
+// update_post, delete_post, remove_reaction and pin_post: changes others see,
 // each asked first (ADR-021), read back through the test's own client.
 
-func TestEditPostReplacesTheUsersOwnTextShowingTheOldAndTheNew(t *testing.T) {
+func TestUpdatePostReplacesTheUsersOwnTextShowingTheOldAndTheNew(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -58,7 +58,7 @@ func TestEditAndDeleteRefuseAnotherPersonsPostEvenForAnAdministrator(t *testing.
 			t.Errorf("%s changed another person's post", params.Name)
 		}
 	}
-	if len(questions.questions) != 0 {
+	if questions.count() != 0 {
 		t.Error("the person was asked about changing another person's post")
 	}
 	stored, _, err := admin.GetPost(t.Context(), theirs.Id, "")
@@ -124,7 +124,7 @@ func TestRemoveReactionTakesBackOnlyTheUsersOwn(t *testing.T) {
 	}
 }
 
-func TestPinPostPinsAndUnpinsWhatListPinnedReads(t *testing.T) {
+func TestPinPostPinsAndUnpinsWhatListPinnedPostsReads(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
@@ -141,11 +141,11 @@ func TestPinPostPinsAndUnpinsWhatListPinnedReads(t *testing.T) {
 	callTool(t, session, &mcp.CallToolParams{Name: "pin_post", Arguments: map[string]any{"post_id": post.Id}})
 	mustContain(t, "question", questions.only(t).Message, "Pin @"+other.Username, "The wiki is at /docs")
 	if got := pinned(); len(got) != 1 || got[0].ID != post.Id || !got[0].Pinned {
-		t.Fatalf("list_pinned gives %+v after pinning", got)
+		t.Fatalf("list_pinned_posts gives %+v after pinning", got)
 	}
 
 	callTool(t, session, &mcp.CallToolParams{Name: "pin_post", Arguments: map[string]any{"post_id": post.Id, "pinned": false}})
 	if got := pinned(); len(got) != 0 {
-		t.Fatalf("list_pinned gives %d posts after unpinning", len(got))
+		t.Fatalf("list_pinned_posts gives %d posts after unpinning", len(got))
 	}
 }

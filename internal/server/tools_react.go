@@ -43,18 +43,31 @@ var systemEmojiNames = sync.OnceValue(func() map[string][]string {
 })
 
 // emojiCodes are an emoji character as Mattermost may name its code points:
-// each in lower-case hex, joined by dashes, with the variation selector that
-// asks for emoji presentation and without it, since Mattermost keeps some
-// emoji one way and some the other.
+// each in lower-case hex, joined by dashes, as given, without the variation
+// selector that asks for emoji presentation, and with it after the first,
+// since Mattermost keeps some emoji one way and some the other, and people
+// type them both ways.
 func emojiCodes(emoji string) []string {
-	var with, without []string
+	var as, without []string
 	for _, r := range emoji {
-		with = append(with, fmt.Sprintf("%x", r))
+		as = append(as, fmt.Sprintf("%x", r))
 		if r != '\ufe0f' {
 			without = append(without, fmt.Sprintf("%x", r))
 		}
 	}
-	return []string{strings.Join(with, "-"), strings.Join(without, "-")}
+	withSelector := append([]string{without[0], "fe0f"}, without[1:]...)
+	return []string{strings.Join(as, "-"), strings.Join(without, "-"), strings.Join(withSelector, "-")}
+}
+
+// emojiAliases are the names of the same emoji as name: the name itself, and
+// every other name Mattermost gives the same code points, such as +1 and
+// thumbsup.
+func emojiAliases(name string) []string {
+	code, ok := model.SystemEmojis[name]
+	if !ok {
+		return []string{name}
+	}
+	return systemEmojiNames()[code]
 }
 
 // emojiName is an emoji's name as Mattermost stores it: a name without the
@@ -66,6 +79,9 @@ func emojiName(emoji string) (string, error) {
 	}
 	if strings.IndexFunc(emoji, func(r rune) bool { return r > unicode.MaxASCII }) < 0 {
 		return strings.ToLower(strings.Trim(emoji, ":")), nil
+	}
+	if len([]rune(emoji)) == 0 {
+		return "", fmt.Errorf("give the emoji, by its name or as itself")
 	}
 	for _, code := range emojiCodes(emoji) {
 		if names := systemEmojiNames()[code]; len(names) > 0 {
@@ -102,17 +118,20 @@ func knownEmoji(ctx context.Context, client *mattermost.Client, name string) err
 	return fmt.Errorf("no emoji is called %q on this server", name)
 }
 
-// reacted reports whether the user reacted to the post with the emoji.
-func reacted(p postInContext, emoji string) bool {
+// reaction is the name the user reacted to the post with under the emoji, or
+// any other name of it, or empty when they did not: a reaction made as
+// thumbsup is taken back when asked for +1, or for 👍.
+func reaction(p postInContext, emoji string) string {
 	if p.post.Metadata == nil {
-		return false
+		return ""
 	}
+	aliases := emojiAliases(emoji)
 	for _, reaction := range p.post.Metadata.Reactions {
-		if reaction.UserId == p.self.Id && reaction.EmojiName == emoji {
-			return true
+		if reaction.UserId == p.self.Id && slices.Contains(aliases, reaction.EmojiName) {
+			return reaction.EmojiName
 		}
 	}
-	return false
+	return ""
 }
 
 // reactionQuestion reads the post a reaction is about and asks what ask builds
@@ -211,12 +230,13 @@ func removeReactionSpec() Spec {
 		func(clientFor ClientFor) mcp.ToolHandlerFor[reactionInput, Reaction] {
 			return asking("remove_reaction",
 				reactionQuestion(clientFor, func(_ context.Context, _ *mattermost.Client, p postInContext, emoji string) (confirmation, error) {
-					if !reacted(p, emoji) {
+					made := reaction(p, emoji)
+					if made == "" {
 						return confirmation{}, fmt.Errorf("@%s has not reacted with :%s: to that post", p.self.Username, emoji)
 					}
 					return confirmation{
-						Message: fmt.Sprintf("Take back your :%s: on @%s's post in %s:\n“%s”", emoji, p.author, p.in, excerpt(p.post.Message)),
-						Label:   fmt.Sprintf("Remove your :%s: from @%s's post", emoji, p.author),
+						Message: fmt.Sprintf("Take back your :%s: on @%s's post in %s:\n“%s”", made, p.author, p.in, excerpt(p.post.Message)),
+						Label:   fmt.Sprintf("Remove your :%s: from @%s's post", made, p.author),
 					}, nil
 				}),
 				func(ctx context.Context, request *mcp.CallToolRequest, input reactionInput) (*mcp.CallToolResult, Reaction, error) {
@@ -228,14 +248,18 @@ func removeReactionSpec() Spec {
 					if err != nil {
 						return nil, Reaction{}, err
 					}
-					self, err := client.Me(ctx)
+					p, err := readPostInContext(ctx, client, input.PostID)
 					if err != nil {
 						return nil, Reaction{}, err
 					}
-					if err := client.Unreact(ctx, self.Id, input.PostID, emoji); err != nil {
+					made := reaction(p, emoji)
+					if made == "" {
+						return nil, Reaction{}, fmt.Errorf("@%s has not reacted with :%s: to that post", p.self.Username, emoji)
+					}
+					if err := client.Unreact(ctx, p.self.Id, input.PostID, made); err != nil {
 						return nil, Reaction{}, err
 					}
-					return nil, Reaction{PostID: input.PostID, EmojiName: emoji}, nil
+					return nil, Reaction{PostID: input.PostID, EmojiName: made}, nil
 				})
 		},
 	)

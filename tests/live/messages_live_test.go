@@ -128,7 +128,7 @@ func TestAMessageToEveryoneSaysHowManyItReachesAndADeactivatedMentionIsNoted(t *
 	check(t, err)
 	session, questions := writingSession(t, admin, user, accept)
 
-	postMessage(t, session, map[string]any{
+	createPost(t, session, map[string]any{
 		"channel_id": channel.Id,
 		"message":    "@here the build is green, thanks @" + other.Username + " and @" + gone.Username + ". `@nobody` is code.",
 	})
@@ -162,7 +162,7 @@ func TestAPostAndAnEditAreMarkedAsWrittenWithAIKeepingOtherProps(t *testing.T) {
 	channel := seedChannel(t, admin, team, user, other)
 	session, questions := writingSession(t, admin, user, accept)
 
-	posted := postMessage(t, session, map[string]any{"channel_id": channel.Id, "message": "written with help"})
+	posted := createPost(t, session, map[string]any{"channel_id": channel.Id, "message": "written with help"})
 	mustContain(t, "question", questions.only(t).Message, "marked as written with AI")
 	stored, _, err := admin.GetPost(t.Context(), posted.ID, "")
 	check(t, err)
@@ -170,24 +170,36 @@ func TestAPostAndAnEditAreMarkedAsWrittenWithAIKeepingOtherProps(t *testing.T) {
 		t.Fatalf("the post's props are %v; the tool says ai_generated %v", stored.GetProps(), posted.AIGenerated)
 	}
 
-	written := &model.Post{ChannelId: channel.Id, Message: "by hand"}
-	written.AddProp("from_integration", "kept")
-	own, _, err := clientAs(t, user).CreatePost(t.Context(), written)
-	check(t, err)
-	// The edit mentions everyone online and a colleague, so its check reads
-	// both, as a new post's does.
-	callTool(t, session, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{
-		"post_id": own.Id, "message": "@here edited with help, @" + other.Username,
-	}})
+	// A post written by hand is marked when edited with help.
+	own := postAs(t, clientAs(t, user), channel.Id, "", "by hand")
+	editor, edits := writingSession(t, admin, user, accept)
+	callTool(t, editor, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{"post_id": own.Id, "message": "edited with help"}})
+	mustContain(t, "question", edits.only(t).Message, "An edit notifies nobody", "marked as written with AI")
 	edited, _, err := admin.GetPost(t.Context(), own.Id, "")
 	check(t, err)
-	if edited.GetProp("ai_generated_by") != user.Id || edited.GetProp("from_integration") != "kept" {
+	if edited.GetProp("ai_generated_by") != user.Id {
 		t.Fatalf("the edited post's props are %v", edited.GetProps())
 	}
-	if result := callTool(t, session, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{
-		"post_id": own.Id, "message": "and @" + slipOf(other.Username),
-	}}); !result.IsError {
-		t.Error("an edit mentioning someone nobody is was accepted")
+
+	// A post carrying properties of its own keeps them as they are, unmarked:
+	// sending them back with an edit would let Mattermost sanitise them.
+	carrying := &model.Post{ChannelId: channel.Id, Message: "from a tool"}
+	carrying.AddProp("from_integration", "kept")
+	integration, _, err := clientAs(t, user).CreatePost(t.Context(), carrying)
+	check(t, err)
+	// An edit notifies nobody, so a mention in it, even of someone nobody is,
+	// is only text.
+	other2, asked2 := writingSession(t, admin, user, accept)
+	callTool(t, other2, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{
+		"post_id": integration.Id, "message": "fixed, thanks @" + slipOf(other.Username),
+	}})
+	if strings.Contains(asked2.only(t).Message, "marked as written with AI") {
+		t.Error("the question says a post with properties of its own will be marked")
+	}
+	kept, _, err := admin.GetPost(t.Context(), integration.Id, "")
+	check(t, err)
+	if kept.GetProp("from_integration") != "kept" || kept.GetProp("ai_generated_by") != nil || kept.Message != "fixed, thanks @"+slipOf(other.Username) {
+		t.Fatalf("the edited post reads %q with props %v", kept.Message, kept.GetProps())
 	}
 }
 
@@ -204,7 +216,7 @@ func TestTheAIMarkerCanBeTurnedOff(t *testing.T) {
 		return questions.answer(accept)(request.Params), nil
 	}})
 
-	posted := postMessage(t, session, map[string]any{"channel_id": channel.Id, "message": "unmarked"})
+	posted := createPost(t, session, map[string]any{"channel_id": channel.Id, "message": "unmarked"})
 	if strings.Contains(questions.only(t).Message, "AI") || posted.AIGenerated {
 		t.Fatalf("an unmarked post was marked or said to be: %+v", posted)
 	}

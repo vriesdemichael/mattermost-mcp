@@ -13,6 +13,9 @@ import (
 // the model asks or chooses by id; none is refused with the closest names, so
 // it corrects itself on the next call.
 
+// ambiguous is the refusal of a name more than one thing goes by.
+type ambiguous struct{ error }
+
 // named is one thing a name may mean, with every name it goes by.
 type named[T any] struct {
 	value T
@@ -53,8 +56,8 @@ func match[T any](what, name string, candidates []named[T], hint string) (T, err
 				labels = append(labels, candidate.label)
 			}
 			slices.Sort(labels)
-			return none, fmt.Errorf("%q could mean any of %d %ss: %s. Give the id of the one meant, or ask the person which",
-				name, len(found), what, strings.Join(labels, "; "))
+			return none, ambiguous{fmt.Errorf("%q could mean any of %d %ss: %s. Give the id of the one meant, or ask the person which",
+				name, len(found), what, strings.Join(labels, "; "))}
 		}
 	}
 	var all []string

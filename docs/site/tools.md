@@ -90,7 +90,12 @@ candidate, and an unknown one with the closest names
 `read_unread`: Read unread posts
 :   Catches up on a channel from where you stopped reading: a few posts you have
     read, then the ones you have not, oldest first, with the first unread one
-    named. It marks nothing read: what you have read is yours to record
+    named. A channel you never opened is all unread, and reads newest first,
+    the pages after going further back.
+
+Posts written in the same millisecond stay on one page, so a page of a channel
+can hold a few more posts than its limit; Mattermost reads on from a post by
+its time alone, and a page split inside a millisecond would lose posts. It marks nothing read: what you have read is yours to record
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
 
 `read_post`: Read post
@@ -112,7 +117,11 @@ candidate, and an unknown one with the closest names
 :   Messages you can read, across every team or one, by words, and by who wrote
     them, where and when through `from`, `in`, `before`, `after` and `on`, so no
     search syntax is needed. `@username` finds where someone was mentioned.
-    20 posts a page by default, at most 100.
+    20 posts a page by default, at most 100. Mattermost's search finds the 100
+    most recent matches at most, and the answer says `capped` when it reached
+    them: `before` reaches older ones. `in` takes a channel you belong to, the
+    only ones Mattermost searches, and `from` a username, refused with the
+    closest when nobody has it.
 
 ## Files
 
@@ -129,7 +138,7 @@ candidate, and an unknown one with the closest names
 `search_files`: Search files
 :   Files attached to posts you can read, by name, by type with `ext:pdf`, and by
     `from`, `in`, `before`, `after` and `on`, each with the post and channel it
-    is in.
+    is in. Like `search_posts`, it finds the 100 most recent matches at most.
 
 ## Writing
 
@@ -148,7 +157,12 @@ Every message is checked before you are asked
 one longer than the server takes is refused with its length and the limit, an
 @mention of someone nobody is is refused with the closest usernames, and the
 question says how many people `@here`, `@channel` and `@all` reach and who of
-those mentioned is deactivated. Posts and edits are marked as written with AI,
+those mentioned is deactivated. Mentions are found as Mattermost finds them, so
+code mentions nobody and `@here.` ending a sentence is `@here`. What a post
+does, and every file it carries, comes before the message in the question.
+
+What a write acts on is what you were asked about: a reply posted, a file
+rewritten or a draft typed on while you read the question stops the write. Posts and edits are marked as written with AI,
 as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 
 `create_post`: Create post
@@ -165,8 +179,8 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
     `files` too.
 
 `dm`: Send direct message
-:   Sends a direct message to one person, or to yourself when no username is
-    given. This is how to message people: "message Alice and Bob" is two direct
+:   Sends a direct message to one person, by username or email address, or to
+    yourself when none is given. This is how to message people: "message Alice and Bob" is two direct
     messages.
 
 `group_message`: Send group message
@@ -176,8 +190,8 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 
 `update_post`: Update post
 :   Replaces the text of one of your own posts. The question shows the old text
-    and the new. Another person's post is refused, even with an administrator's
-    credential.
+    and the new. An edit notifies nobody, so only its length is checked.
+    Another person's post is refused, even with an administrator's credential.
 
 `delete_post`: Delete post
 :   Deletes one of your own posts. Deleting the post that starts a thread
@@ -196,8 +210,9 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 :   Pins a post to its channel for everyone, or unpins it with `pinned` false.
 
 `delete_draft`: Delete draft
-:   Deletes your draft in a channel or thread. It may hold words you have not
-    sent, so the question shows it first.
+:   Deletes your draft in a channel or thread. Nobody else sees a draft, but it
+    may hold words you have not sent, so the question shows it and where it is
+    first.
 
 ### Yours alone, or gone in seconds: not asked
 

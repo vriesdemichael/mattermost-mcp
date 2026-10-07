@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -217,6 +218,7 @@ type FoundFile struct {
 // FileResults is a page of files a search found.
 type FileResults struct {
 	Files []FoundFile `json:"files" jsonschema:"newest first"`
+	capped
 	pageInfo
 }
 
@@ -235,7 +237,8 @@ func searchFilesSpec() Spec {
 			Name: "search_files",
 			Description: "Search the files attached to posts the user can read: by name, by text where the server extracts it, by type with " +
 				"ext:pdf, and by who posted them, in which channel and when, through from, in, before, after and on. Each file comes " +
-				"with the post and channel it is in; read_file reads it.",
+				"with the post and channel it is in; read_file reads it. Mattermost's search finds the 100 most recent matches at most; " +
+				"capped says when it did, and before reaches older ones.",
 			Annotations: readOnly("Search files"),
 		},
 		uses([]Use{
@@ -246,12 +249,12 @@ func searchFilesSpec() Spec {
 					"body.terms":                    SetBy("terms"),
 					"body.is_or_search":             SetBy("match_any"),
 					"body.page":                     Fixed("0", "Team Edition's database search answers the first page with every match, and later pages with nothing"),
-					"body.per_page":                 Fixed(fmt.Sprint(maxPostsPerSearch), "the most the tool returns; it applies its limit itself"),
+					"body.per_page":                 Fixed(fmt.Sprint(searchReach), "the database search answers with its 100 most recent matches whatever it is asked; the tool pages through them itself"),
 					"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
 					"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 				},
 			},
-		}, channelLookupUses("in"), describeUses(true)),
+		}, channelLookupUses("in"), fromUses(), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchFilesInput, FileResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchFilesInput) (*mcp.CallToolResult, FileResults, error) {
 				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)
@@ -303,7 +306,7 @@ func searchFilesSpec() Spec {
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				out := FileResults{Files: make([]FoundFile, 0, len(files)), pageInfo: pageInfo{NextCursor: next}}
+				out := FileResults{Files: make([]FoundFile, 0, len(files)), capped: capped{len(all) >= searchReach}, pageInfo: pageInfo{NextCursor: next}}
 				for i, file := range files {
 					out.Files = append(out.Files, FoundFile{
 						Attachment: toAttachment(file),
@@ -402,12 +405,15 @@ func downloadDir(cfg config.Config) (string, error) {
 }
 
 // safeName is a file's name as save_file writes it: its last element only,
-// with what Windows forbids in a name replaced, so a name from Mattermost
-// cannot reach outside the download directory.
+// with what Windows forbids in a name, control characters and invisible
+// formatting characters, which can make one name look like another, replaced,
+// so a name from Mattermost cannot reach outside the download directory. A
+// name the system keeps for a device, such as NUL or COM1 on Windows, gets a
+// leading underscore, so the file is written rather than sent to the device.
 func safeName(name string) string {
 	name = filepath.Base(filepath.Clean("/" + strings.ReplaceAll(name, "\\", "/")))
 	name = strings.Map(func(r rune) rune {
-		if r < 32 || strings.ContainsRune(`<>:"/\|?*`, r) {
+		if r < 32 || strings.ContainsRune(`<>:"/\|?*`, r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return '_'
 		}
 		return r
@@ -416,7 +422,23 @@ func safeName(name string) string {
 	if name == "" || name == "_" {
 		return "file"
 	}
+	if !filepath.IsLocal(name) || reservedOnWindows(name) {
+		return "_" + name
+	}
 	return name
+}
+
+// reservedOnWindows reports whether a name is one Windows keeps for a device,
+// with or without an extension, which files saved here may be carried to.
+func reservedOnWindows(name string) bool {
+	stem, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
+		return true
+	}
+	return false
 }
 
 // writeNew writes data to a file of its own in dir: name, or name with a

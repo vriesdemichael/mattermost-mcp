@@ -16,7 +16,7 @@ import (
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
-// post_message and add_reaction, each asking the person first (ADR-021). What
+// create_post and add_reaction, each asking the person first (ADR-021). What
 // they wrote, or that they wrote nothing, is read back through a client of the
 // test's own, not through the tool.
 
@@ -33,6 +33,13 @@ func (a *asked) answer(result *mcp.ElicitResult) func(*mcp.ElicitParams) *mcp.El
 		a.questions = append(a.questions, question)
 		return result
 	}
+}
+
+// count is how many questions were asked.
+func (a *asked) count() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.questions)
 }
 
 // only is the one question asked, failing the test unless exactly one was.
@@ -60,7 +67,7 @@ func writingSession(t *testing.T, admin *model.Client4, user *model.User, answer
 	return mcpWriting(t, personalAccessToken(t, admin, user.Id).Token, questions.answer(answer)), questions
 }
 
-func postMessage(t *testing.T, session *mcp.ClientSession, arguments map[string]any) server.Post {
+func createPost(t *testing.T, session *mcp.ClientSession, arguments map[string]any) server.Post {
 	t.Helper()
 	var posted server.Post
 	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: arguments}), &posted)
@@ -100,7 +107,7 @@ func label(t *testing.T, question *mcp.ElicitParams) string {
 	return field["title"].(string)
 }
 
-func TestPostMessagePostsWhatThePersonAcceptedUnderTheirName(t *testing.T) {
+func TestCreatePostPostsWhatThePersonAcceptedUnderTheirName(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -109,7 +116,7 @@ func TestPostMessagePostsWhatThePersonAcceptedUnderTheirName(t *testing.T) {
 	session, questions := writingSession(t, admin, user, accept)
 	message := "Deploy is **done**.\nSee you tomorrow."
 
-	posted := postMessage(t, session, map[string]any{"channel_id": channel.Id, "message": message})
+	posted := createPost(t, session, map[string]any{"channel_id": channel.Id, "message": message})
 
 	question := questions.only(t)
 	mustContain(t, "question", question.Message, "@"+user.Username, "~"+channel.DisplayName, message)
@@ -123,7 +130,7 @@ func TestPostMessagePostsWhatThePersonAcceptedUnderTheirName(t *testing.T) {
 	}
 }
 
-func TestPostMessageRepliesInTheThreadOfAnyPostInIt(t *testing.T) {
+func TestCreatePostRepliesInTheThreadOfAnyPostInIt(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
@@ -134,7 +141,7 @@ func TestPostMessageRepliesInTheThreadOfAnyPostInIt(t *testing.T) {
 	reply := postAs(t, author, channel.Id, root.Id, "Anyone?")
 	session, questions := writingSession(t, admin, user, accept)
 
-	posted := postMessage(t, session, map[string]any{"root_id": reply.Id, "message": "I can."})
+	posted := createPost(t, session, map[string]any{"root_id": reply.Id, "message": "I can."})
 
 	mustContain(t, "question", questions.only(t).Message, "@"+user.Username, "@"+other.Username, "Who can review the release notes?", "I can.")
 	if posted.RootID != root.Id || posted.ChannelID != channel.Id {
@@ -147,7 +154,7 @@ func TestPostMessageRepliesInTheThreadOfAnyPostInIt(t *testing.T) {
 	}
 }
 
-func TestPostMessageRefusesAReplyToAPostInAnotherChannel(t *testing.T) {
+func TestCreatePostRefusesAReplyToAPostInAnotherChannel(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -162,12 +169,12 @@ func TestPostMessageRefusesAReplyToAPostInAnotherChannel(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("a reply named the wrong channel and was posted")
 	}
-	if len(questions.questions) != 0 || len(messagesIn(t, admin, here.Id)) != 0 {
+	if questions.count() != 0 || len(messagesIn(t, admin, here.Id)) != 0 {
 		t.Fatal("the person was asked, or something was posted")
 	}
 }
 
-func TestPostMessageInADirectMessageNamesThePersonOnTheOtherSide(t *testing.T) {
+func TestCreatePostInADirectMessageNamesThePersonOnTheOtherSide(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
@@ -176,7 +183,7 @@ func TestPostMessageInADirectMessageNamesThePersonOnTheOtherSide(t *testing.T) {
 	check(t, err)
 	session, questions := writingSession(t, admin, user, accept)
 
-	postMessage(t, session, map[string]any{"channel_id": direct.Id, "message": "lunch?"})
+	createPost(t, session, map[string]any{"channel_id": direct.Id, "message": "lunch?"})
 
 	question := questions.only(t)
 	mustContain(t, "question", question.Message, "your direct message with @"+other.Username)
@@ -197,10 +204,11 @@ func TestAWriteThePersonDidNotAcceptChangesNothing(t *testing.T) {
 			target := postAs(t, clientAs(t, user), channel.Id, "", "react to me")
 			token := personalAccessToken(t, admin, user.Id).Token
 			var session *mcp.ClientSession
+			questions := &asked{}
 			if answer == nil {
 				session = mcpWriting(t, token, nil)
 			} else {
-				session = mcpWriting(t, token, (&asked{}).answer(answer))
+				session = mcpWriting(t, token, questions.answer(answer))
 			}
 
 			for _, params := range []*mcp.CallToolParams{
@@ -217,6 +225,10 @@ func TestAWriteThePersonDidNotAcceptChangesNothing(t *testing.T) {
 				}
 			}
 
+			// Each refusal came from the person's answer, after one question each.
+			if answer != nil && questions.count() != 2 {
+				t.Errorf("asked %d questions; want one for each of the two tools", questions.count())
+			}
 			if stored := messagesIn(t, admin, channel.Id); len(stored) != 1 {
 				t.Errorf("the channel holds %d messages; want only the one the test posted", len(stored))
 			}
