@@ -144,3 +144,22 @@ func TestTheDifferencesWithAnOlderReleaseAreNamed(t *testing.T) {
 		t.Errorf("GetRecaps: got %q", got)
 	}
 }
+
+func TestAFormBodyListsItsFields(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spec.json")
+	spec := `{"info": {"version": "1.0.0"}, "paths": {"/api/v4/files": {"post": {"operationId": "UploadFile",
+    "requestBody": {"content": {"multipart/form-data": {"schema": {"properties": {"channel_id": {}, "files": {}}}}}}}}}}`
+	if err := os.WriteFile(path, []byte(spec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := apisurface.LoadSpec(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload, ok := loaded.Operation("UploadFile")
+	if !ok || !slices.Equal(upload.BodyFields, []string{"channel_id", "files"}) {
+		t.Fatalf("got %+v", upload)
+	}
+}
