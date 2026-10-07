@@ -111,6 +111,25 @@ func TestListChannelsNamesTheOtherPersonOfADirectMessage(t *testing.T) {
 	}
 }
 
+// Mattermost names a direct message to oneself with the user's id on both
+// sides, which its own helper for the other person answers with nothing.
+func TestListChannelsNamesADirectMessageToOneselfYourself(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	seedTeam(t, admin, user)
+	direct, _, err := clientAs(t, user).CreateDirectChannel(t.Context(), user.Id, user.Id)
+	check(t, err)
+
+	listed, ok := listChannels(t, sessionFor(t, admin, user), map[string]any{})[direct.Id]
+	if !ok {
+		t.Fatal("the direct message to oneself is not listed")
+	}
+	if listed.Type != "direct" || listed.DisplayName != "yourself" {
+		t.Fatalf("got %+v; want a direct message named yourself", listed)
+	}
+}
+
 func TestListChannelsFiltersByTeamAndByWhatIsUnread(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)

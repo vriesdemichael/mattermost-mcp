@@ -154,7 +154,7 @@ func listChannelsSpec() Spec {
 				var others []string
 				for _, channel := range channels {
 					if channel.Type == model.ChannelTypeDirect {
-						others = append(others, channel.GetOtherUserIdForDM(self.Id))
+						others = append(others, otherInDirect(channel, self.Id))
 					}
 				}
 				names, err := usernames(ctx, client, others)
@@ -187,11 +187,21 @@ func listChannelsSpec() Spec {
 	})
 }
 
+// otherInDirect is the other person in a direct message, and the user
+// themselves in a direct message to themselves, which Mattermost names with
+// their id on both sides and its own helper answers with nothing.
+func otherInDirect(channel *model.Channel, self string) string {
+	if channel.Type == model.ChannelTypeDirect && channel.Name == model.GetDMNameFromIds(self, self) {
+		return self
+	}
+	return channel.GetOtherUserIdForDM(self)
+}
+
 func toChannel(channel *model.Channel, self string, names map[string]string) Channel {
 	display := channel.DisplayName
 	if channel.Type == model.ChannelTypeDirect {
 		// A direct message to oneself names the user on both sides.
-		switch other := channel.GetOtherUserIdForDM(self); {
+		switch other := otherInDirect(channel, self); {
 		case other == self:
 			display = "yourself"
 		case names[other] != "":

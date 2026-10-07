@@ -144,7 +144,7 @@ func channelNames(ctx context.Context, client *mattermost.Client) (map[string]st
 	}
 	var others []string
 	for _, channel := range channels {
-		others = append(others, channel.GetOtherUserIdForDM(self.Id))
+		others = append(others, otherInDirect(channel, self.Id))
 	}
 	people, err := usernames(ctx, client, others)
 	if err != nil {
