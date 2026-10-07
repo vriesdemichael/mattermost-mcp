@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
 )
 
 // LoopbackHosts are the hosts the network block lets through.

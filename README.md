@@ -1,14 +1,17 @@
 # mm-mcp
 
-[![CI](https://github.com/vriesdemichael/mattermost-mcp/actions/workflows/ci.yml/badge.svg?branch=next)](https://github.com/vriesdemichael/mattermost-mcp/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/vriesdemichael/mattermost-mcp/branch/next/graph/badge.svg)](https://codecov.io/gh/vriesdemichael/mattermost-mcp)
+[![CI](https://github.com/vriesdemichael/mm-mcp/actions/workflows/ci.yml/badge.svg?branch=next)](https://github.com/vriesdemichael/mm-mcp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/vriesdemichael/mm-mcp/branch/next/graph/badge.svg)](https://codecov.io/gh/vriesdemichael/mm-mcp)
 
 An MCP server for Mattermost. It lets an AI agent read and search your Mattermost
 and, when you allow it, post and reply, as you or as a bot.
 
+mm-mcp is an independent project. It is not affiliated with, endorsed by or
+supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
+
 > **Early development.** One tool exists today, `get_me`, which proves the
 > connection and the credential. Reading, searching, posting and the in-chat
-> views are being built; the [issues](https://github.com/vriesdemichael/mattermost-mcp/issues)
+> views are being built; the [issues](https://github.com/vriesdemichael/mm-mcp/issues)
 > are the plan.
 
 ## Why it works the way it does
@@ -30,7 +33,7 @@ and, when you allow it, post and reply, as you or as a bot.
 ## Quick start
 
 Download the binary for your machine from the
-[latest release](https://github.com/vriesdemichael/mattermost-mcp/releases/latest),
+[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
 and get a personal access token in Mattermost under **Profile → Security →
 Personal Access Tokens**.
 
@@ -58,7 +61,7 @@ claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=y
 Claude Desktop users can open the `.mcpb` bundle for their machine from the
 latest release instead.
 
-The [documentation](https://vriesdemichael.github.io/mattermost-mcp/) has every
+The [documentation](https://vriesdemichael.github.io/mm-mcp/) has every
 setting, the tools, and the supported Mattermost releases.
 
 ## Contributing

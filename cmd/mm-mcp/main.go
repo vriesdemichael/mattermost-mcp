@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/cli"
+	"github.com/vriesdemichael/mm-mcp/internal/cli"
 )
 
 func main() {

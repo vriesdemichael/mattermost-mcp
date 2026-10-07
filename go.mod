@@ -1,4 +1,4 @@
-module github.com/vriesdemichael/mattermost-mcp
+module github.com/vriesdemichael/mm-mcp
 
 go 1.27.0
 

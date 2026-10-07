@@ -6,9 +6,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/mattermost"
-	"github.com/vriesdemichael/mattermost-mcp/internal/version"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
+	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
 
 // Name is the server's name in the MCP handshake.
@@ -67,7 +67,7 @@ func Exposed(cfg config.Config) []Spec {
 // New builds the server a configuration describes, acting through clientFor.
 func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 	server := mcp.NewServer(
-		&mcp.Implementation{Name: Name, Version: version.Version, WebsiteURL: "https://github.com/vriesdemichael/mattermost-mcp"},
+		&mcp.Implementation{Name: Name, Version: version.Version, WebsiteURL: "https://github.com/vriesdemichael/mm-mcp"},
 		&mcp.ServerOptions{Instructions: Instructions},
 	)
 	for _, spec := range Exposed(cfg) {

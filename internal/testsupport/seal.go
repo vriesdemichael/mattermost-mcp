@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
 )
 
 // Seal empties every variable mm-mcp reads and turns the network block on

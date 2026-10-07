@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/network"
+	"github.com/vriesdemichael/mm-mcp/internal/network"
 )
 
 // answers records that it was reached. Its subject is the request itself --

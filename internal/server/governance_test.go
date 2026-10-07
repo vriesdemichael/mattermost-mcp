@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/server"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
 // Invariants every MCP tool is held to (ADR-021, ADR-015).

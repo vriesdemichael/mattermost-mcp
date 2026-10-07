@@ -3,10 +3,13 @@
 mm-mcp is an MCP server for Mattermost. It lets an AI agent read and search your
 Mattermost, and, when you allow it, post and reply, as you or as a bot.
 
+mm-mcp is an independent project. It is not affiliated with, endorsed by or
+supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
+
 !!! warning "Early development"
     mm-mcp is at the start of its life. One tool exists today, `get_me`, which
     proves the connection and the credential. Reading, searching and posting are
-    being built. The [issues](https://github.com/vriesdemichael/mattermost-mcp/issues)
+    being built. The [issues](https://github.com/vriesdemichael/mm-mcp/issues)
     are the plan.
 
 ## What it is for

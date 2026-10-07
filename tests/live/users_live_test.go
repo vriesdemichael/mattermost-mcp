@@ -9,7 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/server"
+	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
 // get_me, with each kind of credential mm-mcp accepts (ADR-019).

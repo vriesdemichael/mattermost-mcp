@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/adr"
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/testsupport"
+	"github.com/vriesdemichael/mm-mcp/internal/adr"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/testsupport"
 )
 
 func TestMain(m *testing.M) { testsupport.SealedMain(m) }

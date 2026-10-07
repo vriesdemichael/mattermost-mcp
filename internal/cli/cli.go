@@ -15,11 +15,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/mattermost"
-	"github.com/vriesdemichael/mattermost-mcp/internal/network"
-	"github.com/vriesdemichael/mattermost-mcp/internal/server"
-	"github.com/vriesdemichael/mattermost-mcp/internal/version"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
+	"github.com/vriesdemichael/mm-mcp/internal/network"
+	"github.com/vriesdemichael/mm-mcp/internal/server"
+	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
 
 // Exit codes.

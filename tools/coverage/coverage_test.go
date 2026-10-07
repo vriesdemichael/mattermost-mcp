@@ -11,14 +11,14 @@ import (
 // gate it computes (ADR-014).
 
 const unitProfile = `mode: atomic
-github.com/vriesdemichael/mattermost-mcp/internal/a/a.go:10.1,12.2 2 1
-github.com/vriesdemichael/mattermost-mcp/internal/a/a.go:14.1,15.2 3 0
-github.com/vriesdemichael/mattermost-mcp/tools/x/x.go:1.1,2.2 5 0
+github.com/vriesdemichael/mm-mcp/internal/a/a.go:10.1,12.2 2 1
+github.com/vriesdemichael/mm-mcp/internal/a/a.go:14.1,15.2 3 0
+github.com/vriesdemichael/mm-mcp/tools/x/x.go:1.1,2.2 5 0
 `
 
 const liveProfile = `mode: atomic
-github.com/vriesdemichael/mattermost-mcp/internal/a/a.go:14.1,15.2 3 4
-github.com/vriesdemichael/mattermost-mcp/internal/b/b.go:1.1,3.2 5 0
+github.com/vriesdemichael/mm-mcp/internal/a/a.go:14.1,15.2 3 4
+github.com/vriesdemichael/mm-mcp/internal/b/b.go:1.1,3.2 5 0
 `
 
 func parse(t *testing.T, profile string) []Block {

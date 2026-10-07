@@ -34,7 +34,7 @@ func main() {
 		flags := flag.NewFlagSet("release notes", flag.ExitOnError)
 		version := flags.String("version", "", "the release, vX.Y.Z")
 		previous := flags.String("previous-tag", "", "the release before it, if any")
-		repository := flags.String("repository-url", "https://github.com/vriesdemichael/mattermost-mcp", "for commit links")
+		repository := flags.String("repository-url", "https://github.com/vriesdemichael/mm-mcp", "for commit links")
 		output := flags.String("output", "RELEASE_NOTES.md", "where to write the notes")
 		_ = flags.Parse(os.Args[2:])
 		fail(notes(*version, *previous, *repository, *output))
