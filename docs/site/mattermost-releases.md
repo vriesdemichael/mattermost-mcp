@@ -21,4 +21,10 @@ groups, are not supported, because the tests run on the free Team Edition
 
 ## Differences between releases
 
-None that mm-mcp handles yet.
+Each operation a tool calls is compared between the two ends, from each
+release's own route table and specification
+([ADR-027](adr/027-a-difference-between-supported-releases-is-found-from-mattermosts-own-files.md)).
+
+| Operation | Tool | On the Extended Support Release |
+|---|---|---|
+| `SearchPostsInAllTeams` | `search_posts` | Served, as 11.7's router shows, but missing from its specification. Nothing differs in use. |

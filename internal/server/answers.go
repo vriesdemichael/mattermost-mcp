@@ -26,6 +26,7 @@ func timestamp(ms int64) string {
 // Post is one message as a tool returns it.
 type Post struct {
 	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 	Author    string `json:"author" jsonschema:"the author's username, or their id when it could not be read"`
 	AuthorID  string `json:"author_id"`
 	CreatedAt string `json:"created_at"`
@@ -42,6 +43,12 @@ type Post struct {
 // postsInOrder is a post list oldest first, as a conversation is read, with
 // each author's username.
 func postsInOrder(ctx context.Context, client *mattermost.Client, list *model.PostList) ([]Post, error) {
+	return listedPosts(ctx, client, list, true)
+}
+
+// listedPosts is a post list with each author's username: oldest first when
+// chronological, and in the list's own order, such as a search's, when not.
+func listedPosts(ctx context.Context, client *mattermost.Client, list *model.PostList, chronological bool) ([]Post, error) {
 	if list == nil {
 		return []Post{}, nil
 	}
@@ -50,6 +57,9 @@ func postsInOrder(ctx context.Context, client *mattermost.Client, list *model.Po
 		if post, ok := list.Posts[id]; ok {
 			posts = append(posts, post)
 		}
+	}
+	if !chronological {
+		return withAuthors(ctx, client, posts)
 	}
 	slices.SortStableFunc(posts, func(a, b *model.Post) int {
 		switch {
@@ -61,6 +71,10 @@ func postsInOrder(ctx context.Context, client *mattermost.Client, list *model.Po
 			return 0
 		}
 	})
+	return withAuthors(ctx, client, posts)
+}
+
+func withAuthors(ctx context.Context, client *mattermost.Client, posts []*model.Post) ([]Post, error) {
 	authors := make([]string, 0, len(posts))
 	for _, post := range posts {
 		authors = append(authors, post.UserId)
@@ -83,6 +97,7 @@ func toPost(post *model.Post, names map[string]string) Post {
 	}
 	out := Post{
 		ID:         post.Id,
+		ChannelID:  post.ChannelId,
 		Author:     author,
 		AuthorID:   post.UserId,
 		CreatedAt:  timestamp(post.CreateAt),

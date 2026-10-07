@@ -39,6 +39,16 @@ UTC.
 :   A whole thread: the post that started it and every reply, oldest first.
     Give any post in it.
 
+`search_posts`: Search posts
+:   The messages the user can read that match a search, most recent first, each
+    with its author and channel, across every team or within one. The terms use
+    Mattermost's search syntax: words, `"a phrase"`, `-excluded`, `#hashtag`,
+    `@username` for mentions, and `from:`, `in:`, `on:`, `before:` and
+    `after:`. `match_any` finds posts with any of the words instead of all of
+    them. Returns at most `limit` posts, 20 by default and at most 100, and says
+    when more matched: Team Edition's search does not page, so narrow the terms
+    to see the rest.
+
 `get_user`: Get user
 :   One user, by `username` or by `user_id`: name, nickname, position and
     whether they are a bot.
