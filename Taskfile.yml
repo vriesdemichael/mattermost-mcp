@@ -237,8 +237,10 @@ tasks:
   release:snapshot:
     desc: Build every release artifact into dist/ as a release would, publishing nothing (ADR-013)
     # GoReleaser builds, archives, packages, checksums and scans; tools/mcpb
-    # makes the bundles from its binaries. SNAPSHOT_SKIP leaves out what needs a
-    # tool this machine may not have: cosign for signing, syft for the SBOMs.
+    # makes the bundles from its binaries, and tools/packages the Homebrew
+    # formula and the Scoop manifest from its checksums. SNAPSHOT_SKIP leaves
+    # out what needs a tool this machine may not have: cosign for signing, syft
+    # for the SBOMs.
     # CI keeps the SBOMs and checks them with release:sbom:verify.
     vars:
       SNAPSHOT_SKIP: '{{.SNAPSHOT_SKIP | default "sign,sbom"}}'
@@ -249,6 +251,8 @@ tasks:
     cmds:
       - go run "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}" release --snapshot --clean --skip={{.SNAPSHOT_SKIP}}
       - go run ./tools/mcpb bundle -version v0.0.0
+      - go run ./tools/packages homebrew -version v0.0.0 -out dist/homebrew/mm-mcp.rb
+      - go run ./tools/packages scoop -version v0.0.0 -out dist/scoop/mm-mcp.json
 
   release:sbom:verify:
     desc: Hold every SBOM in dist/ to the binary in its archive. Needs a build with SBOMs
