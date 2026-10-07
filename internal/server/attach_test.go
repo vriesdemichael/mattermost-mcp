@@ -78,8 +78,14 @@ func TestAttachmentsAreRefusedBeforeAnyoneIsAsked(t *testing.T) {
 			t.Errorf("%s: got %v; want it to say %q", name, err, c.says)
 		}
 	}
+	// The source is the file's real path, which the temporary directory's need
+	// not be: /var is a link on macOS, and Windows may name it by a short name.
+	real, err := filepath.EvalSymlinks(onDisk)
+	if err != nil {
+		t.Fatal(err)
+	}
 	loaded, err := loadAttachments(local, []attachFile{{Path: onDisk}, {Name: "b.md", Content: "# b"}})
-	if err != nil || len(loaded) != 2 || loaded[0].name != "a.txt" || loaded[0].source != onDisk || loaded[1].source != "" {
+	if err != nil || len(loaded) != 2 || loaded[0].name != "a.txt" || loaded[0].source != real || loaded[1].source != "" {
 		t.Fatalf("got %+v, %v", loaded, err)
 	}
 	if fingerprint(loaded) == fingerprint(loaded[:1]) {
