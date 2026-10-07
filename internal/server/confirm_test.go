@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -278,7 +279,7 @@ func TestAnEmojiIsNamedWithoutItsColonsOrByItsCharacter(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
 		":thumbsup:": "thumbsup", " eyes ": "eyes", "+1": "+1", "Tada": "tada",
-		"👍": "+1", "✅": "white_check_mark", "❤️": "heart",
+		"👍": "+1", "✅": "white_check_mark", "❤️": "heart", "\u2764": "heart", "\u2714": "heavy_check_mark",
 	} {
 		if got, err := emojiName(in); err != nil || got != want {
 			t.Errorf("%q: got %q, %v; want %q", in, got, err, want)
@@ -308,5 +309,58 @@ func TestAConfirmationNamesAChannelAsThePersonKnowsIt(t *testing.T) {
 		if got := place(c.channel, self, names); got != c.want {
 			t.Errorf("%s %q: got %q, want %q", c.channel.Type, c.channel.DisplayName, got, c.want)
 		}
+	}
+}
+
+// Not parallel: it moves the clock of the one seal every call shares, which no
+// parallel test sees, since those wait for the sequential ones to finish.
+func TestAnAnswerAfterTheQuestionExpiredRunsNothingAndARefusalStillStands(t *testing.T) {
+	session, ran := byHand(t)
+	accepted, declined := ask(t, session, "late yes"), ask(t, session, "late no")
+	confirmations.now = func() time.Time { return time.Now().Add(confirmationTTL + time.Minute) }
+	t.Cleanup(func() { confirmations.now = time.Now })
+
+	result, err := retry(t, session, "late yes", accepted, ticked)
+	if err != nil || !result.IsError || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "expired") {
+		t.Fatalf("a late acceptance: %v, %+v", err, result)
+	}
+	result, err = retry(t, session, "late no", declined, &mcp.ElicitResult{Action: "decline"})
+	if err != nil || !result.IsError || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "declined") {
+		t.Fatalf("a late refusal: %v, %+v", err, result)
+	}
+	if ran.Load() != 0 {
+		t.Fatal("the tool ran on an answer to a question that had expired")
+	}
+}
+
+func TestAMentionIsFoundAsMattermostFindsIt(t *testing.T) {
+	t.Parallel()
+	words := func(message string) []string {
+		var out []string
+		for _, m := range mentions(message) {
+			out = append(out, m.word)
+		}
+		return out
+	}
+	for message, want := range map[string][]string{
+		"thanks @here.":                {"@here."},
+		"_@channel_ and @all-hands":    {"@channel_", "@all-hands"},
+		"cc @john/@jane":               {"@john", "@jane"},
+		"x.@all and a@b.com":           {"@all"},
+		"`@code` and ``a @b``":         nil,
+		"~~~\n@dataclass\n~~~":         nil,
+		"text\n\n    @Override\n":      nil,
+		":smile: @bob: and @bob again": {"@bob:", "@bob"},
+	} {
+		if got := words(message); !slices.Equal(got, want) {
+			t.Errorf("%q: got %v, want %v", message, got, want)
+		}
+	}
+	m := mentions("ping @here.")[0]
+	if m.special() != "here" || !slices.Equal(m.names, []string{"here.", "here"}) {
+		t.Errorf("@here. reads as %+v", m)
+	}
+	if special := mentions("@all-hands")[0].special(); special != "" {
+		t.Errorf("@all-hands reads as a mention of %s", special)
 	}
 }

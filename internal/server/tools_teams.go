@@ -156,6 +156,12 @@ func findTeam(ctx context.Context, client *mattermost.Client, name string) (*mod
 	if matchErr == nil {
 		return team, nil
 	}
+	// A name that could mean several of the user's teams is theirs to settle,
+	// not one outside them.
+	var several ambiguous
+	if errors.As(matchErr, &several) {
+		return nil, matchErr
+	}
 	// A team the user is not in is found only by its exact address name, as
 	// Mattermost finds it.
 	if outside, err := client.TeamByName(ctx, strings.ToLower(name)); err == nil {
@@ -647,7 +653,16 @@ func teamChannelsSpec(name, title, description, operation string, list func(cont
 				if err != nil {
 					return nil, Channels{}, err
 				}
-				// By display name, and by id between channels named alike.
+				// Each once, should Mattermost's pages overlap where names tie; by
+				// display name, and by id between channels named alike.
+				seen := map[string]bool{}
+				all = slices.DeleteFunc(all, func(channel *model.Channel) bool {
+					if seen[channel.Id] {
+						return true
+					}
+					seen[channel.Id] = true
+					return false
+				})
 				slices.SortStableFunc(all, func(a, b *model.Channel) int {
 					if order := strings.Compare(strings.ToLower(a.DisplayName), strings.ToLower(b.DisplayName)); order != 0 {
 						return order

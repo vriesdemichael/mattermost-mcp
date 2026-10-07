@@ -138,6 +138,9 @@ func TestEveryParameterOfACalledOperationIsAccountedFor(t *testing.T) {
 					if strings.TrimSpace(coverage.Reason) == "" {
 						t.Errorf("%s %s %s.%s without a reason", spec.Tool.Name, coverage.How, use.Operation, name)
 					}
+					if coverage.How == "fixed" && strings.TrimSpace(coverage.Value) == "" {
+						t.Errorf("%s fixes %s.%s without saying to what", spec.Tool.Name, use.Operation, name)
+					}
 				default:
 					t.Errorf("%s: %s.%s is neither exposed, fixed nor omitted", spec.Tool.Name, use.Operation, name)
 				}
@@ -239,5 +242,37 @@ func TestALocalToolOnlyReadsMattermost(t *testing.T) {
 				t.Errorf("%s is local, and calls %s, %s %s", spec.Tool.Name, use.Operation, op.Method, op.Path)
 			}
 		}
+	}
+}
+
+// readingPosts are the operations that take a POST and change nothing: searches,
+// and lookups that take their list of ids or names as a body.
+var readingPosts = map[string]bool{
+	"SearchPosts": true, "SearchPostsInAllTeams": true, "SearchFiles": true, "SearchUsers": true,
+	"SearchChannels": true, "GetUsersByIds": true, "GetUsersByUsernames": true, "GetUsersStatusesByIds": true,
+}
+
+// TestAReadOnlyToolCallsOnlyOperationsThatRead holds a tool annotated read-only,
+// which a read-only server offers and which never asks, to operations that
+// change nothing in Mattermost (ADR-021): a read-only annotation on a tool that
+// posted would offer it where writes are off and post without asking.
+func TestAReadOnlyToolCallsOnlyOperationsThatRead(t *testing.T) {
+	t.Parallel()
+	s := loadSurface(t)
+	checked := 0
+	for _, spec := range server.AllSpecs() {
+		if !spec.ReadOnly() {
+			continue
+		}
+		checked++
+		for _, use := range spec.Uses {
+			op, ok := s.latest.Operation(use.Operation)
+			if ok && op.Method != "GET" && op.Method != "HEAD" && !readingPosts[use.Operation] {
+				t.Errorf("%s is read-only, and calls %s, %s %s", spec.Tool.Name, use.Operation, op.Method, op.Path)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no tool is read-only; the check has nothing to hold")
 	}
 }

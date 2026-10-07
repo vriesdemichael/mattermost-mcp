@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
+
+	"github.com/mattermost/mattermost/server/public/model"
 )
 
 // Paging (ADR-032). Every tool that answers with a list takes limit and cursor
@@ -152,4 +155,60 @@ func allPages[T any](ctx context.Context, fetch func(ctx context.Context, page, 
 			return all, nil
 		}
 	}
+}
+
+// wholeMilliseconds cuts a page Mattermost read on from a post, given in the
+// order it reads on, the post it would go on from last, to at most limit items
+// that end where a millisecond does, and says whether more follow. Mattermost
+// reads on from a post by its time alone, so a page that ended inside a
+// millisecond would lose the rest of it; cut back, the next page reads that
+// millisecond whole. Mattermost is asked for one item more than the page holds
+// where it can be, which says whether the page ends inside a millisecond; a
+// page of Mattermost's most that more follow is cut back to before its last
+// millisecond. A page all of one millisecond that more may follow cannot be
+// cut back, and is answered as it is, not whole: the caller reads that
+// millisecond whole with throughMillisecond.
+func wholeMilliseconds[T any](page []T, limit int, more bool, at func(T) int64) (kept []T, follows, whole bool) {
+	if len(page) > limit {
+		next := page[limit]
+		page, more = page[:limit], true
+		if at(next) != at(page[limit-1]) {
+			return page, true, true
+		}
+	}
+	if !more || len(page) == 0 {
+		return page, more, true
+	}
+	edge := at(page[len(page)-1])
+	end := len(page)
+	for end > 0 && at(page[end-1]) == edge {
+		end--
+	}
+	if end == 0 {
+		return page, true, false
+	}
+	return page[:end], true, true
+}
+
+// throughMillisecond is the items of a page, in the order it reads on, up to
+// and with the last of the given millisecond, and whether more follow: a page
+// that holds one millisecond whole, however many items were written in it.
+func throughMillisecond[T any](page []T, edge int64, more bool, at func(T) int64) ([]T, bool) {
+	end := 0
+	for i, item := range page {
+		if at(item) == edge {
+			end = i + 1
+		}
+	}
+	return page[:end], more || end < len(page)
+}
+
+// postTime is when a post was written, which Mattermost pages a channel by.
+func postTime(post *model.Post) int64 { return post.CreateAt }
+
+// backwards is a copy of items in the opposite order.
+func backwards[T any](items []T) []T {
+	reversed := slices.Clone(items)
+	slices.Reverse(reversed)
+	return reversed
 }

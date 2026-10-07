@@ -70,11 +70,17 @@ func existingDraft(ctx context.Context, client *mattermost.Client, userID, teamI
 		return nil, err
 	}
 	for _, draft := range drafts {
-		if draft.ChannelId == channelID && draft.RootId == rootID && strings.TrimSpace(draft.Message) != "" {
+		if draft.ChannelId == channelID && draft.RootId == rootID && (strings.TrimSpace(draft.Message) != "" || len(draft.FileIds) > 0) {
 			return draft, nil
 		}
 	}
 	return nil, nil
+}
+
+// onlyText reports whether a draft is text alone, with no files, priority or
+// properties a person set in Mattermost, which saving over it would drop.
+func onlyText(draft *model.Draft) bool {
+	return len(draft.FileIds) == 0 && draft.Priority == nil && len(draft.GetProps()) == 0
 }
 
 // draftsSync refuses a draft the person would never see: one on a server that
@@ -160,7 +166,7 @@ func saveDraftSpec() Spec {
 				if err != nil {
 					return nil, Draft{}, err
 				}
-				checked, err := checkMessage(ctx, client, input.Message, "~"+channel.DisplayName, func(ctx context.Context) (int64, error) {
+				checked, err := checkMessage(ctx, client, input.Message, place(channel, self.Id, nil), func(ctx context.Context) (int64, error) {
 					stats, err := client.ChannelStats(ctx, channelID)
 					if err != nil {
 						return 0, err
@@ -174,15 +180,25 @@ func saveDraftSpec() Spec {
 				if err != nil {
 					return nil, Draft{}, err
 				}
-				// A draft is the person's unsent words; replacing one would lose them.
-				if there, err := existingDraft(ctx, client, self.Id, teamID, channelID, rootID); err != nil {
-					return nil, Draft{}, err
-				} else if there != nil && there.Message != input.Message {
-					return nil, Draft{}, fmt.Errorf("there is a draft there already, which was left as it is: “%s”. Ask the person what to do with it", excerpt(there.Message))
-				}
-				saved, err := client.Draft(ctx, self.Id, channelID, rootID, input.Message)
+				// A draft is the person's unsent words, and maybe files; replacing
+				// one would lose them. The same text is there already, and is left
+				// as it is rather than written again, which would drop its files.
+				there, err := existingDraft(ctx, client, self.Id, teamID, channelID, rootID)
 				if err != nil {
 					return nil, Draft{}, err
+				}
+				switch {
+				case there != nil && there.Message == input.Message:
+				case there != nil && !onlyText(there):
+					return nil, Draft{}, fmt.Errorf("there is a draft there already, with files or settings the person added, which was left as it is: “%s”. Ask the person what to do with it", excerpt(there.Message))
+				case there != nil:
+					return nil, Draft{}, fmt.Errorf("there is a draft there already, which was left as it is: “%s”. Ask the person what to do with it", excerpt(there.Message))
+				}
+				saved := there
+				if saved == nil {
+					if saved, err = client.Draft(ctx, self.Id, channelID, rootID, input.Message); err != nil {
+						return nil, Draft{}, err
+					}
 				}
 				drafts, err := describeDrafts(ctx, client, []*model.Draft{saved})
 				if err != nil {
@@ -337,7 +353,7 @@ func deleteDraftSpec() Spec {
 				},
 				Releases: "11.7 serves DELETE /api/v4/users/{user_id}/channels/{channel_id}/drafts/{thread_id}, as its router shows, though its specification leaves it out; nothing differs in use",
 			},
-		}, draftsUses()),
+		}, draftsUses(), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[draftTarget, Draft] {
 			find := func(ctx context.Context, client *mattermost.Client, input draftTarget) (*model.User, *model.Draft, error) {
 				channelID, rootID, err := threadOf(ctx, client, input.ChannelID, input.RootID)
@@ -361,7 +377,21 @@ func deleteDraftSpec() Spec {
 				}
 				return self, draft, nil
 			}
-			return asking("delete_draft",
+			// A deletion is bound to the draft's text: the person may be writing
+			// it in Mattermost while they are asked, and words added since are not
+			// theirs to lose unseen.
+			bind := func(ctx context.Context, request *mcp.CallToolRequest, input draftTarget) (string, error) {
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return "", err
+				}
+				_, draft, err := find(ctx, client, input)
+				if err != nil {
+					return "", err
+				}
+				return draft.Message, nil
+			}
+			return askingBound("delete_draft", bind,
 				func(ctx context.Context, request *mcp.CallToolRequest, input draftTarget) (confirmation, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
@@ -371,13 +401,20 @@ func deleteDraftSpec() Spec {
 					if err != nil {
 						return confirmation{}, err
 					}
-					where := "this channel"
+					described, err := describeDrafts(ctx, client, []*model.Draft{draft})
+					if err != nil {
+						return confirmation{}, err
+					}
+					where := oneLine(described[0].Channel)
+					if described[0].Team != "" {
+						where += " in " + oneLine(described[0].Team)
+					}
 					if draft.RootId != "" {
-						where = "this thread"
+						where = "a thread in " + where
 					}
 					return confirmation{
 						Message: fmt.Sprintf("Delete your unsent draft in %s:\n\n%s", where, draft.Message),
-						Label:   "Delete the draft and its text",
+						Label:   "Delete the draft in " + where + " and its text",
 					}, nil
 				},
 				func(ctx context.Context, request *mcp.CallToolRequest, input draftTarget) (*mcp.CallToolResult, Draft, error) {
@@ -387,6 +424,9 @@ func deleteDraftSpec() Spec {
 					}
 					self, draft, err := find(ctx, client, input)
 					if err != nil {
+						return nil, Draft{}, err
+					}
+					if err := stillAsAsked(ctx, "delete_draft", draft.Message); err != nil {
 						return nil, Draft{}, err
 					}
 					if err := client.DeleteDraft(ctx, self.Id, draft.ChannelId, draft.RootId); err != nil {

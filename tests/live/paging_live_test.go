@@ -36,7 +36,9 @@ func inParallel(t *testing.T, n int, work func(i int)) {
 }
 
 // Mattermost gives followed threads and saved posts 200 at a time; a list
-// longer than that shows the tools read past its pages.
+// longer than that shows the tools read past its pages. The threads are
+// replied to ten in each millisecond, so one of Mattermost's pages ends inside
+// one.
 func TestListsLongerThanMattermostsPageAreReadToTheirEnd(t *testing.T) {
 	t.Parallel()
 	const many = 205
@@ -44,7 +46,8 @@ func TestListsLongerThanMattermostsPageAreReadToTheirEnd(t *testing.T) {
 	user, other := seedUser(t, admin), seedUser(t, admin)
 	team := seedTeam(t, admin, user, other)
 	channel := seedChannel(t, admin, team, user, other)
-	author, replier := clientAs(t, user), clientAs(t, other)
+	author := clientAs(t, user)
+	base := model.GetMillis() + 1000
 	roots := make([]string, many)
 	inParallel(t, many, func(i int) {
 		root, _, err := author.CreatePost(t.Context(), &model.Post{ChannelId: channel.Id, Message: fmt.Sprintf("thread %d", i)})
@@ -53,8 +56,9 @@ func TestListsLongerThanMattermostsPageAreReadToTheirEnd(t *testing.T) {
 			return
 		}
 		roots[i] = root.Id
-		if _, _, err := replier.CreatePost(t.Context(), &model.Post{ChannelId: channel.Id, RootId: root.Id, Message: "reply"}); err != nil {
-			t.Error(err)
+		reply, _, err := admin.CreatePost(t.Context(), &model.Post{ChannelId: channel.Id, RootId: root.Id, Message: "reply", CreateAt: base + int64(i/10)})
+		if err != nil || reply.CreateAt != base+int64(i/10) {
+			t.Errorf("replied at %v: %v", reply, err)
 		}
 	})
 	if t.Failed() {
@@ -79,10 +83,11 @@ func TestListsLongerThanMattermostsPageAreReadToTheirEnd(t *testing.T) {
 	if len(savedPosts) != many || !sameItems(savedPosts, roots) {
 		t.Errorf("list_saved paged through %d posts; want the %d saved", len(savedPosts), many)
 	}
-	// Two of Mattermost's pages hold them all: its page parameter is an offset
-	// in posts, and asked as a page number it would take one request a post.
-	if reads := reachedLast(t, session, "GetFlaggedPostsForUser"); reads != 2 {
-		t.Errorf("reading %d saved posts took %d requests; want 2", many, reads)
+	// Two of Mattermost's pages hold them all, and a third, empty, says so: its
+	// page parameter is an offset in posts, and asked as a page number it would
+	// take one request a post.
+	if reads := reachedLast(t, session, "GetFlaggedPostsForUser"); reads != 3 {
+		t.Errorf("reading %d saved posts took %d requests; want 3", many, reads)
 	}
 }
 
@@ -218,6 +223,62 @@ func TestACursorContinuesOnlyTheListItCameFrom(t *testing.T) {
 			t.Errorf("%s with a cursor not its own: %s", c.params.Name, errorText(result))
 		}
 	}
-	// The same arguments with another limit continue the list.
-	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_user_teams", Arguments: map[string]any{"limit": 5, "cursor": first.NextCursor}}), &first)
+	// The same arguments with another limit continue the list: the two teams
+	// after the first, and nothing after them.
+	var rest struct {
+		Teams      []map[string]any `json:"teams"`
+		NextCursor string           `json:"next_cursor"`
+	}
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_user_teams", Arguments: map[string]any{"limit": 5, "cursor": first.NextCursor}}), &rest)
+	if len(rest.Teams) != 2 || rest.NextCursor != "" {
+		t.Fatalf("the rest with another limit: %d teams, next cursor %q; want 2 and none", len(rest.Teams), rest.NextCursor)
+	}
+}
+
+// Mattermost reads on from a post by its time alone, so a page that ended
+// inside a millisecond would lose the rest of it: every read back or forward
+// from a post, with three posts a page and four posts in each millisecond,
+// still reads every post once, a page holding a millisecond's four whole, and
+// read_unread's first the two read posts before them too.
+func TestAPageEndingInsideAMillisecondLosesNoPost(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	team := seedTeam(t, admin, user)
+	read, unread := seedChannel(t, admin, team, user), seedChannel(t, admin, team, user)
+	_, _, err := clientAs(t, user).ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: unread.Id})
+	check(t, err)
+	base := model.GetMillis() + 1000
+	seed := func(channelID string) []string {
+		var ids []string
+		for i := range 14 {
+			ids = append(ids, postAt(t, admin, channelID, "", fmt.Sprintf("tied %d", i), base+int64(i/4)).Id)
+		}
+		return ids
+	}
+	inRead, inUnread := seed(read.Id), seed(unread.Id)
+	session := sessionFor(t, admin, user)
+
+	for name, c := range map[string]struct {
+		args map[string]any
+		tool string
+		most int
+		want []string
+	}{
+		"read_channel back from the newest": {map[string]any{"channel_id": read.Id}, "read_channel", 4, inRead},
+		"read_channel forward":              {map[string]any{"channel_id": read.Id, "after": inRead[3]}, "read_channel", 4, inRead[4:]},
+		"read_channel since":                {map[string]any{"channel_id": read.Id, "since": time.UnixMilli(base).UTC().Format(time.RFC3339Nano)}, "read_channel", 4, inRead},
+		"read_unread never opened":          {map[string]any{"channel_id": read.Id}, "read_unread", 4, inRead},
+		"read_unread forward":               {map[string]any{"channel_id": unread.Id}, "read_unread", 6, inUnread},
+	} {
+		// A read back to the channel's start also holds Mattermost's own
+		// messages of who joined it.
+		got := flat(t, pagesOfAtMost(t, session, &mcp.CallToolParams{Name: c.tool, Arguments: c.args}, 3, c.most, "posts", "id"))
+		for _, id := range c.want {
+			if !slices.Contains(got, id) {
+				t.Errorf("%s read %d posts, not %s: %v", name, len(got), id, got)
+				break
+			}
+		}
+	}
 }

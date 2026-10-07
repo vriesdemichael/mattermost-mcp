@@ -142,7 +142,9 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 		case mattermostID.MatchString(ref):
 			ids = append(ids, ref)
 		default:
-			names = append(names, strings.TrimPrefix(ref, "@"))
+			// Mattermost keeps usernames in lower case and matches a list of
+			// them exactly.
+			names = append(names, strings.ToLower(strings.TrimPrefix(ref, "@")))
 		}
 	}
 	if len(ids) > 0 {
@@ -174,7 +176,7 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 		ref = strings.TrimSpace(ref)
 		user := byRef[ref]
 		if user == nil {
-			user = byRef[strings.TrimPrefix(ref, "@")]
+			user = byRef[strings.ToLower(strings.TrimPrefix(ref, "@"))]
 		}
 		if user == nil {
 			unknown = append(unknown, ref)
@@ -334,6 +336,7 @@ func getStatusSpec() Spec {
 		[]Use{
 			{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
 			{Operation: "GetUsersStatusesByIds", Params: map[string]Coverage{}},
+			{Operation: "SearchUsers", Params: suggestionSearch(Fixed("the start of an unknown username", "enough to find the usernames closest to one that is unknown"))},
 		},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getStatusInput, Statuses] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input getStatusInput) (*mcp.CallToolResult, Statuses, error) {
@@ -345,7 +348,7 @@ func getStatusSpec() Spec {
 				}
 				wanted := make([]string, 0, len(input.Usernames))
 				for _, name := range input.Usernames {
-					wanted = append(wanted, strings.TrimPrefix(strings.TrimSpace(name), "@"))
+					wanted = append(wanted, strings.ToLower(strings.TrimPrefix(strings.TrimSpace(name), "@")))
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -368,7 +371,7 @@ func getStatusSpec() Spec {
 					}
 				}
 				if len(missing) > 0 {
-					return nil, Statuses{}, fmt.Errorf("no user is named %s", strings.Join(missing, ", "))
+					return nil, Statuses{}, unknownUsers(ctx, client, missing)
 				}
 				statuses, err := client.Statuses(ctx, ids)
 				if err != nil {

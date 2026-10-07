@@ -150,13 +150,6 @@ func (c *Client) SavedPosts(ctx context.Context, offset, perPage int) (*model.Po
 	return result(c.api.GetFlaggedPostsForUser(ctx, me, offset, perPage))
 }
 
-// UnreadPosts is a channel's posts around where the user stopped reading: up
-// to before of the posts they have read, and up to after of those they have
-// not. Asking marks nothing read. GetPostsAroundLastUnread.
-func (c *Client) UnreadPosts(ctx context.Context, userID, channelID string, before, after int) (*model.PostList, error) {
-	return result(c.api.GetPostsAroundLastUnread(ctx, userID, channelID, before, after, false))
-}
-
 // Threads is a page of the threads the user follows in a team, direct and
 // group messages included, most recently active first, with who took part:
 // the first page, or the one after the thread before names. GetUserThreads.

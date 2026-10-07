@@ -60,10 +60,12 @@ const usage = `mm-mcp is an MCP server for Mattermost.
 Usage:
   mm-mcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8765]
   mm-mcp version
+  mm-mcp help
 
 Credentials come from the environment, never from a flag: set MM_URL and
 MM_TOKEN in the MCP client's env block. MM_MCP_ALLOW_WRITES=true offers the
-tools that post, and each of them asks before it acts.
+tools that change Mattermost. A change others see asks before it acts;
+following a thread, saving a post, a draft and the typing indicator do not.
 `
 
 // Run runs the command line and returns the process's exit code.

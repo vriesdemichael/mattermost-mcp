@@ -48,20 +48,6 @@ type Post struct {
 	Type        string              `json:"type,omitempty" jsonschema:"set for a message Mattermost wrote, such as someone joining the channel"`
 }
 
-// postsInOrder is a post list oldest first, as a conversation is read.
-func postsInOrder(ctx context.Context, client *mattermost.Client, list *model.PostList) ([]Post, error) {
-	return listedPosts(ctx, client, list, true)
-}
-
-// listedPosts is a post list oldest first when chronological, and in the list's
-// own order, such as a search's, when not.
-func listedPosts(ctx context.Context, client *mattermost.Client, list *model.PostList, chronological bool) ([]Post, error) {
-	if list == nil {
-		return []Post{}, nil
-	}
-	return describePosts(ctx, client, orderedPosts(list, chronological))
-}
-
 // surroundings is what posts name, read once for all of them: the user, each
 // channel and its team, and each author and reactor.
 type surroundings struct {

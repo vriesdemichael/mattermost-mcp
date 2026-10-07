@@ -110,65 +110,174 @@ func readChannelSpec() Spec {
 // readFromPost reads a page of a channel from a post: back from it, or the
 // newest when there is none yet, or forward from it.
 func readFromPost(ctx context.Context, client *mattermost.Client, channelID string, collapsed bool, at position, limit int) (*mcp.CallToolResult, ChannelPosts, error) {
-	page := mattermost.PostsPage{ChannelID: channelID, PerPage: limit, Collapsed: collapsed}
+	page := mattermost.PostsPage{ChannelID: channelID, Collapsed: collapsed}
 	if at.Back {
 		page.Before = at.After
 	} else {
 		page.After = at.After
 	}
-	list, err := client.Posts(ctx, page)
+	read, more, err := readOn(func(perPage int) (*model.PostList, error) {
+		page.PerPage = perPage
+		return client.Posts(ctx, page)
+	}, at.Back, limit)
 	if err != nil {
 		return nil, ChannelPosts{}, err
 	}
-	posts, err := postsInOrder(ctx, client, list)
+	posts, err := describePosts(ctx, client, read)
 	if err != nil {
 		return nil, ChannelPosts{}, err
 	}
 	out := ChannelPosts{ChannelID: channelID, Posts: posts}
-	// Mattermost names the post beyond each end of the page, when there is one.
-	if more := (at.Back && list.PrevPostId != "") || (!at.Back && list.NextPostId != ""); more && len(posts) > 0 {
+	if more && len(read) > 0 {
 		next := at
 		if at.Back {
-			next.After = posts[0].ID
+			next.After = read[0].Id
 		} else {
-			next.After = posts[len(posts)-1].ID
+			next.After = read[len(read)-1].Id
 		}
 		out.NextCursor = next.String()
 	}
 	return nil, out, nil
 }
 
-// readSince reads the posts written from a time on. Mattermost answers since
-// with every post changed after it, old ones edited or deleted since included,
-// so the tool keeps those written since and not deleted, oldest first, and the
-// pages after the first go on from the last post by after.
+// readOn is a page of posts Mattermost reads back or forward from a post,
+// fetched a page of perPage at a time: oldest first, at most limit posts that
+// end on a whole millisecond, and whether more follow, by the post Mattermost
+// names beyond the page's end. A millisecond with more posts than the page
+// holds is read whole, at Mattermost's most, on a page larger than asked for.
+func readOn(fetch func(perPage int) (*model.PostList, error), back bool, limit int) ([]*model.Post, bool, error) {
+	onwards := func(perPage int) ([]*model.Post, bool, error) {
+		list, err := fetch(perPage)
+		if err != nil {
+			return nil, false, err
+		}
+		posts := orderedPosts(list, true)
+		if back {
+			return backwards(posts), list.PrevPostId != "", nil
+		}
+		return posts, list.NextPostId != "", nil
+	}
+	posts, more, err := onwards(min(limit+1, serverPageSize))
+	if err != nil {
+		return nil, false, err
+	}
+	read, more, whole := wholeMilliseconds(posts, limit, more, postTime)
+	if !whole && limit < serverPageSize {
+		edge := read[0].CreateAt
+		if posts, more, err = onwards(serverPageSize); err != nil {
+			return nil, false, err
+		}
+		read, more = throughMillisecond(posts, edge, more, postTime)
+	}
+	if back {
+		read = backwards(read)
+	}
+	return read, more, nil
+}
+
+// sinceReach is the most posts Mattermost answers a read since a time with,
+// and walkBackPages how far back, in Mattermost's pages, the tool reads a
+// channel when that is not enough.
+const (
+	sinceReach    = 1000
+	walkBackPages = 50
+)
+
+// readSince reads the posts written from a time on, oldest first; the pages
+// after the first go on from the last post by after.
 func readSince(ctx context.Context, client *mattermost.Client, input readChannelInput, at position, limit int) (*mcp.CallToolResult, ChannelPosts, error) {
 	since, err := time.Parse(time.RFC3339, input.Since)
 	if err != nil {
 		return nil, ChannelPosts{}, fmt.Errorf("since must be an RFC 3339 time such as 2026-10-07T09:00:00Z, not %q", input.Since)
 	}
-	list, err := client.PostsSince(ctx, input.ChannelID, since.UnixMilli(), input.CollapseThreads)
+	written, err := postsWrittenSince(ctx, client, input.ChannelID, input.CollapseThreads, since.UnixMilli())
 	if err != nil {
 		return nil, ChannelPosts{}, err
 	}
-	var written []*model.Post
-	for _, post := range list.Posts {
-		if post.CreateAt >= since.UnixMilli() && post.DeleteAt == 0 && (!input.CollapseThreads || post.RootId == "") {
-			written = append(written, post)
-		}
-	}
-	slices.SortStableFunc(written, func(a, b *model.Post) int { return int(a.CreateAt - b.CreateAt) })
-	page := written[:min(limit, len(written))]
+	page, more := firstOf(written, limit)
 	posts, err := describePosts(ctx, client, page)
 	if err != nil {
 		return nil, ChannelPosts{}, err
 	}
 	out := ChannelPosts{ChannelID: input.ChannelID, Posts: posts}
-	if len(written) > limit {
+	if more {
 		at.After = page[len(page)-1].Id
 		out.NextCursor = at.String()
 	}
 	return nil, out, nil
+}
+
+// firstOf is the first page of posts read whole, at most limit that end on a
+// whole millisecond, or one millisecond whole however many it holds, and
+// whether more follow.
+func firstOf(posts []*model.Post, limit int) ([]*model.Post, bool) {
+	page, more, whole := wholeMilliseconds(posts, limit, false, postTime)
+	if !whole {
+		return throughMillisecond(posts, page[0].CreateAt, false, postTime)
+	}
+	return page, more
+}
+
+// postsWrittenSince is the posts written in a channel from a time on and not
+// deleted, oldest first. Mattermost answers since with up to 1000 posts
+// changed after it, old ones edited or deleted since included and in no order
+// that says which were left out, so the tool keeps those written since; and
+// when the answer is as long as Mattermost makes it, the tool reads back from
+// the newest post instead, page by page, until it passes the time.
+func postsWrittenSince(ctx context.Context, client *mattermost.Client, channelID string, collapsed bool, from int64) ([]*model.Post, error) {
+	keep := func(post *model.Post) bool {
+		return post.CreateAt >= from && post.DeleteAt == 0 && (!collapsed || post.RootId == "")
+	}
+	// Mattermost compares a change's time with since strictly; a post written
+	// in since's very millisecond is asked for one millisecond earlier.
+	list, err := client.PostsSince(ctx, channelID, from-1, collapsed)
+	if err != nil {
+		return nil, err
+	}
+	var written []*model.Post
+	if len(list.Posts) < sinceReach {
+		for _, post := range list.Posts {
+			if keep(post) {
+				written = append(written, post)
+			}
+		}
+	} else if written, err = writtenSince(ctx, client, channelID, collapsed, keep, from); err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(written, func(a, b *model.Post) int {
+		if a.CreateAt != b.CreateAt {
+			return int(a.CreateAt - b.CreateAt)
+		}
+		return strings.Compare(a.Id, b.Id)
+	})
+	return written, nil
+}
+
+// writtenSince is the posts written from a time on, read back from the
+// newest, a page at a time, until a page reaches past the time.
+func writtenSince(ctx context.Context, client *mattermost.Client, channelID string, collapsed bool, keep func(*model.Post) bool, from int64) ([]*model.Post, error) {
+	var written []*model.Post
+	before := ""
+	for range walkBackPages {
+		// A millisecond the page is cut back from is read whole on the next.
+		page, more, err := readOn(func(perPage int) (*model.PostList, error) {
+			return client.Posts(ctx, mattermost.PostsPage{ChannelID: channelID, PerPage: perPage, Before: before, Collapsed: collapsed})
+		}, true, serverPageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, post := range page {
+			if keep(post) {
+				written = append(written, post)
+			}
+		}
+		if len(page) == 0 || page[0].CreateAt < from || !more {
+			return written, nil
+		}
+		before = page[0].Id
+	}
+	return nil, fmt.Errorf("more than %d posts were written in the channel since %s; give a later since, or read back from the newest with read_channel",
+		walkBackPages*serverPageSize, time.UnixMilli(from).UTC().Format(time.RFC3339))
 }
 
 // The most posts of a thread one read_post call returns, and how many when
@@ -180,7 +289,7 @@ const (
 
 // PostWithThread is a post, and the thread it is in.
 type PostWithThread struct {
-	Post   *Post  `json:"post,omitempty" jsonschema:"the post asked for; on the pages after the first, only the thread"`
+	Post   *Post  `json:"post,omitempty" jsonschema:"the post asked for, on every page"`
 	RootID string `json:"root_id" jsonschema:"the post that started the thread: the post itself when it started one"`
 	Thread []Post `json:"thread,omitempty" jsonschema:"the thread's first post, then its replies, oldest first, a page at a time; left out when include_thread is false"`
 	pageInfo
@@ -258,34 +367,58 @@ func readPostSpec() Spec {
 				if err != nil {
 					return nil, PostWithThread{}, err
 				}
-				// Mattermost counts a page's replies and adds the thread's first post
-				// to every page; it belongs on the first, and the page is cut to the
-				// limit, the rest following from its last post.
-				ordered := orderedPosts(list, true)
-				if at.After != "" {
-					// and the post a page goes on from opens that page too.
-					ordered = slices.DeleteFunc(ordered, func(post *model.Post) bool { return post.RootId == "" || post.Id == at.After })
+				// Mattermost answers a page of a thread with its replies after the
+				// cursor, and adds to every page the thread's first post and the post
+				// asked for, wherever they fall. A page keeps what comes after the
+				// cursor, by time and then id; the post asked for stays out of it
+				// until the replies reach it, and the page is cut to the limit, the
+				// rest following from its last post.
+				var asked *model.Post
+				var page []*model.Post
+				replies := 0
+				for _, post := range orderedPosts(list, true) {
+					if post.Id == input.PostID {
+						asked = post
+					}
+					if at.After != "" && !(post.CreateAt > at.At || (post.CreateAt == at.At && post.Id > at.After)) {
+						continue
+					}
+					if post.RootId != "" && post.Id != input.PostID {
+						replies++
+					}
+					page = append(page, post)
 				}
 				more := list.HasNext != nil && *list.HasNext
-				if len(ordered) > limit {
-					ordered, more = ordered[:limit], true
+				if asked != nil && asked.RootId != "" && more && len(page) > 0 {
+					// The window is full, and the post asked for lies beyond it.
+					if last := page[len(page)-1]; last.Id == asked.Id && replies >= limit {
+						page = page[:len(page)-1]
+					}
 				}
-				thread, err := describePosts(ctx, client, ordered)
+				if len(page) > limit {
+					page, more = page[:limit], true
+				}
+				described := page
+				if asked != nil && !slices.Contains(page, asked) {
+					described = append(slices.Clone(page), asked)
+				}
+				posts, err := describePosts(ctx, client, described)
 				if err != nil {
 					return nil, PostWithThread{}, err
 				}
-				out := PostWithThread{Thread: thread}
-				for i, post := range thread {
-					if post.ID == input.PostID {
-						out.Post = &thread[i]
-					}
-					if out.RootID == "" {
-						out.RootID = post.RootID
-						if post.RootID == "" {
-							out.RootID = post.ID
-						}
+				out := PostWithThread{Thread: posts[:len(page)]}
+				for i := range posts {
+					if posts[i].ID == input.PostID {
+						out.Post = &posts[i]
 					}
 				}
+				if asked != nil {
+					out.RootID = asked.RootId
+					if out.RootID == "" {
+						out.RootID = asked.Id
+					}
+				}
+				ordered := page
 				if more && len(ordered) > 0 {
 					last := ordered[len(ordered)-1]
 					at.After, at.At = last.Id, last.CreateAt
@@ -400,17 +533,19 @@ func listSavedSpec() Spec {
 					return nil, SearchResults{}, err
 				}
 				var all []*model.Post
+				// Until a page comes back empty: Mattermost leaves out of a page,
+				// after counting it, posts the person may no longer read, so a short
+				// page need not be the last.
 				for read := 0; ; {
 					list, err := client.SavedPosts(ctx, read, serverPageSize)
 					if err != nil {
 						return nil, SearchResults{}, err
 					}
-					batch := orderedPosts(list, false)
-					all = append(all, batch...)
-					read += len(list.Order)
-					if len(list.Order) < serverPageSize {
+					if len(list.Order) == 0 {
 						break
 					}
+					all = append(all, orderedPosts(list, false)...)
+					read += len(list.Order)
 				}
 				page, next := offsetPage(newestFirst(uniquePosts(all)), at, limit)
 				posts, err := describePosts(ctx, client, page)
@@ -448,24 +583,13 @@ func readUnreadSpec() Spec {
 		&mcp.Tool{
 			Name: "read_unread",
 			Description: "Catch up on a channel from where the person stopped reading in Mattermost: a few posts they have read, then the " +
-				"ones they have not, oldest first, a page at a time. It reads only; the channel stays unread for the person until they read it themselves.",
+				"ones they have not, oldest first, a page at a time. A channel the person never opened is all unread, and reads newest " +
+				"first, the pages after going further back. It reads only; the channel stays unread for the person until they read it themselves.",
 			Annotations: readOnly("Read unread posts"),
 		},
 		uses([]Use{
-			{
-				Operation: "GetPostsAroundLastUnread",
-				Params: map[string]Coverage{
-					"user_id":                  Fixed("me", "where the user stopped reading is theirs"),
-					"channel_id":               SetBy("channel_id"),
-					"limit_before":             Fixed(fmt.Sprintf("%d, or fewer within the limit", readBeforeUnread), "a few read posts put the unread ones in context"),
-					"limit_after":              SetBy("limit"),
-					"collapsedThreads":         Fixed("false", "replies are among the channel's posts, as read_channel shows them by default"),
-					"skipFetchThreads":         Omitted("the posts are what the tool reads; Mattermost's default answers with them"),
-					"collapsedThreadsExtended": Omitted("threads are not collapsed"),
-				},
-			},
-			channelReadUses(Omitted("the unread posts are read forward, from where the person stopped"), SetBy("cursor"),
-				Omitted("the unread posts are read from a post, not a time"),
+			channelReadUses(SetBy("cursor"), SetBy("cursor"),
+				Fixed("when the person last read the channel", "the unread posts are those written since; Mattermost's read around the last unread post leaves out the posts written in the first unread one's millisecond"),
 				Undocumented("", "getPostsForChannel in server/channels/api4/post.go reads it; Mattermost's client sends it false, keeping replies among the posts")),
 			{
 				Operation: "GetChannelMember",
@@ -497,39 +621,83 @@ func readUnreadSpec() Spec {
 				if err != nil {
 					return nil, UnreadPosts{}, err
 				}
-				var list *model.PostList
-				if at.After == "" {
-					before := min(readBeforeUnread, limit-1)
-					list, err = client.UnreadPosts(ctx, self.Id, input.ChannelID, before, limit-before)
-				} else {
-					list, err = client.Posts(ctx, mattermost.PostsPage{ChannelID: input.ChannelID, PerPage: limit, After: at.After})
+				// A channel the person never opened has nothing read in it: all of
+				// it is unread, and it reads as read_channel reads it, the newest
+				// first and then further back.
+				neverRead := membership.LastViewedAt == 0
+				at.Back = neverRead
+				var page []*model.Post
+				var more bool
+				switch {
+				case neverRead || at.After != "":
+					// Each page ends on a whole millisecond, the next reading on from it.
+					page, more, err = readOn(func(perPage int) (*model.PostList, error) {
+						if neverRead {
+							return client.Posts(ctx, mattermost.PostsPage{ChannelID: input.ChannelID, PerPage: perPage, Before: at.After})
+						}
+						return client.Posts(ctx, mattermost.PostsPage{ChannelID: input.ChannelID, PerPage: perPage, After: at.After})
+					}, neverRead, limit)
+				default:
+					page, more, err = sinceLastRead(ctx, client, input.ChannelID, membership.LastViewedAt, limit)
 				}
 				if err != nil {
 					return nil, UnreadPosts{}, err
 				}
-				posts, err := postsInOrder(ctx, client, list)
+				posts, err := describePosts(ctx, client, page)
 				if err != nil {
 					return nil, UnreadPosts{}, err
 				}
 				out := UnreadPosts{ChannelID: input.ChannelID, Posts: posts}
-				firstUnreadAt := int64(0)
-				for _, post := range list.Posts {
+				for _, post := range page {
 					if post.UserId == self.Id || post.CreateAt <= membership.LastViewedAt {
 						continue
 					}
 					out.Unread++
-					if firstUnreadAt == 0 || post.CreateAt < firstUnreadAt {
-						firstUnreadAt, out.FirstUnreadID = post.CreateAt, post.Id
+					if out.FirstUnreadID == "" {
+						out.FirstUnreadID = post.Id
 					}
 				}
-				if list.NextPostId != "" && len(posts) > 0 {
-					at.After = posts[len(posts)-1].ID
+				switch {
+				case len(page) == 0:
+				case neverRead && more:
+					at.After = page[0].Id
+					out.NextCursor = at.String()
+				case !neverRead && more:
+					at.After = page[len(page)-1].Id
 					out.NextCursor = at.String()
 				}
 				return nil, out, nil
 			}
 		},
 	), nil)
+}
+
+// sinceLastRead is the first page of a channel from where the person stopped
+// reading: a few posts they read, then those written since, oldest first, and
+// whether more follow. With nothing written since, it is the last few posts.
+func sinceLastRead(ctx context.Context, client *mattermost.Client, channelID string, lastRead int64, limit int) ([]*model.Post, bool, error) {
+	unread, err := postsWrittenSince(ctx, client, channelID, false, lastRead+1)
+	if err != nil {
+		return nil, false, err
+	}
+	context := mattermost.PostsPage{ChannelID: channelID, PerPage: min(readBeforeUnread, limit-1)}
+	if len(unread) == 0 {
+		context.PerPage = min(readBeforeUnread, limit)
+	} else {
+		// Every post before the first unread one by time was written before the
+		// person last read the channel.
+		context.Before = unread[0].Id
+	}
+	var read []*model.Post
+	if context.PerPage > 0 {
+		list, err := client.Posts(ctx, context)
+		if err != nil {
+			return nil, false, err
+		}
+		read = orderedPosts(list, true)
+	}
+	page, more := firstOf(unread, limit-len(read))
+	return append(read, page...), more, nil
 }
 
 // uniquePosts is posts, each once.

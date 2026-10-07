@@ -13,16 +13,14 @@ import (
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
-// typing, follow_thread, save_post and draft_message: changes only the user
+// typing, follow_thread, save_post, set_post_reminder and save_draft: changes only the user
 // sees, or that last seconds, which do not ask (ADR-021).
 
 // noQuestions fails the test when a tool that does not ask asked.
 func noQuestions(t *testing.T, questions *asked) {
 	t.Helper()
-	questions.mu.Lock()
-	defer questions.mu.Unlock()
-	if len(questions.questions) != 0 {
-		t.Errorf("asked %d questions; the tool does not ask", len(questions.questions))
+	if questions.count() != 0 {
+		t.Errorf("asked %d questions; the tool does not ask", questions.count())
 	}
 }
 
@@ -74,7 +72,7 @@ func TestTypingShowsTheUserTypingUntilTheyPost(t *testing.T) {
 	}
 	noQuestions(t, questions)
 
-	postMessage(t, session, map[string]any{"root_id": root.Id, "message": "Looking now."})
+	createPost(t, session, map[string]any{"root_id": root.Id, "message": "Looking now."})
 	// Absence cannot be polled for: wait out two refreshes after draining
 	// what was already sent.
 	for len(seen) > 0 {

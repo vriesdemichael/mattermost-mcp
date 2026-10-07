@@ -20,7 +20,7 @@ func sessionFor(t *testing.T, admin *model.Client4, user *model.User) *mcp.Clien
 	return mcpAs(t, personalAccessToken(t, admin, user.Id).Token)
 }
 
-func listChannels(t *testing.T, session *mcp.ClientSession, arguments map[string]any) map[string]server.Channel {
+func getUserChannels(t *testing.T, session *mcp.ClientSession, arguments map[string]any) map[string]server.Channel {
 	t.Helper()
 	var channels server.Channels
 	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_user_channels", Arguments: arguments}), &channels)
@@ -60,21 +60,21 @@ func TestGetUserTeamsNamesTheTeamsTheUserBelongsTo(t *testing.T) {
 	}
 }
 
-func TestListChannelsCountsWhatTheUserHasNotRead(t *testing.T) {
+func TestGetUserChannelsCountsWhatTheUserHasNotRead(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
 	team := seedTeam(t, admin, user, other)
 	busy := seedChannel(t, admin, team, user, other)
 	session := sessionFor(t, admin, user)
-	before := listChannels(t, session, map[string]any{})[busy.Id]
+	before := getUserChannels(t, session, map[string]any{})[busy.Id]
 
 	author := clientAs(t, other)
 	postAs(t, author, busy.Id, "", "first")
 	postAs(t, author, busy.Id, "", "second")
 	postAs(t, author, busy.Id, "", "a word for @"+user.Username)
 
-	after := listChannels(t, session, map[string]any{})[busy.Id]
+	after := getUserChannels(t, session, map[string]any{})[busy.Id]
 	if after.Name != busy.Name || after.Type != "public" || after.TeamID != team.Id {
 		t.Fatalf("got %+v for %s", after, busy.Name)
 	}
@@ -89,7 +89,7 @@ func TestListChannelsCountsWhatTheUserHasNotRead(t *testing.T) {
 	}
 }
 
-func TestListChannelsNamesTheOtherPersonOfADirectMessage(t *testing.T) {
+func TestGetUserChannelsNamesTheOtherPersonOfADirectMessage(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
@@ -99,7 +99,7 @@ func TestListChannelsNamesTheOtherPersonOfADirectMessage(t *testing.T) {
 	check(t, err)
 	postAs(t, author, direct.Id, "", "hello")
 
-	listed, ok := listChannels(t, sessionFor(t, admin, user), map[string]any{})[direct.Id]
+	listed, ok := getUserChannels(t, sessionFor(t, admin, user), map[string]any{})[direct.Id]
 	if !ok {
 		t.Fatal("the direct message is not listed")
 	}
@@ -113,7 +113,7 @@ func TestListChannelsNamesTheOtherPersonOfADirectMessage(t *testing.T) {
 
 // Mattermost names a direct message to oneself with the user's id on both
 // sides, which its own helper for the other person answers with nothing.
-func TestListChannelsNamesADirectMessageToOneselfYourself(t *testing.T) {
+func TestGetUserChannelsNamesADirectMessageToOneselfYourself(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -121,7 +121,7 @@ func TestListChannelsNamesADirectMessageToOneselfYourself(t *testing.T) {
 	direct, _, err := clientAs(t, user).CreateDirectChannel(t.Context(), user.Id, user.Id)
 	check(t, err)
 
-	listed, ok := listChannels(t, sessionFor(t, admin, user), map[string]any{})[direct.Id]
+	listed, ok := getUserChannels(t, sessionFor(t, admin, user), map[string]any{})[direct.Id]
 	if !ok {
 		t.Fatal("the direct message to oneself is not listed")
 	}
@@ -130,7 +130,7 @@ func TestListChannelsNamesADirectMessageToOneselfYourself(t *testing.T) {
 	}
 }
 
-func TestListChannelsFiltersByTeamAndByWhatIsUnread(t *testing.T) {
+func TestGetUserChannelsFiltersByTeamAndByWhatIsUnread(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)
@@ -143,14 +143,14 @@ func TestListChannelsFiltersByTeamAndByWhatIsUnread(t *testing.T) {
 	check(t, err)
 	session := sessionFor(t, admin, user)
 
-	inTeam := listChannels(t, session, map[string]any{"team_id": team.Id})
+	inTeam := getUserChannels(t, session, map[string]any{"team_id": team.Id})
 	if _, ok := inTeam[away.Id]; ok {
 		t.Error("team_id kept a channel of another team")
 	}
 	if _, ok := inTeam[busy.Id]; !ok {
 		t.Error("team_id dropped a channel of the team")
 	}
-	unread := listChannels(t, session, map[string]any{"unread_only": true})
+	unread := getUserChannels(t, session, map[string]any{"unread_only": true})
 	if _, ok := unread[busy.Id]; !ok {
 		t.Error("unread_only dropped a channel with an unread post")
 	}
@@ -224,7 +224,7 @@ func TestReadChannelRefusesBeforeAndAfterTogetherAndALimitOutOfRange(t *testing.
 	}
 }
 
-func TestReadThreadReturnsTheRootAndEveryReplyWithReactions(t *testing.T) {
+func TestReadPostReturnsTheRootAndEveryReplyWithReactions(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user, other := seedUser(t, admin), seedUser(t, admin)

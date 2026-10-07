@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mattermost/mattermost/server/public/model"
+	"github.com/mattermost/mattermost/server/public/shared/markdown"
 
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 )
@@ -29,69 +29,91 @@ var specialMentions = map[string]string{
 	"here":    "everyone in the channel who is online",
 }
 
-// mentionPattern finds @mentions as Mattermost does: an @ at the start of a
-// word, then a username's letters.
-var mentionPattern = regexp.MustCompile(`(?i)(?:^|[^\w@./-])@([a-z0-9][a-z0-9._-]*)`)
-
-// codePattern finds code, fenced and inline, in which an @ mentions nobody.
-var codePattern = regexp.MustCompile("(?s)```.*?```|`[^`\n]*`")
-
 // checkedMessage is what a message will do once posted, for the question.
 type checkedMessage struct {
 	notes []string
 }
 
-// note is what the question says of the message, beside the message itself.
+// note is what the question says of the message, before the message itself.
 func (c checkedMessage) note() string {
 	if len(c.notes) == 0 {
 		return ""
 	}
-	return "\n\n" + strings.Join(c.notes, "\n")
+	return "\n" + strings.Join(c.notes, "\n")
 }
 
 // destinationSize says how many people a post in its place reaches, for what
 // @channel, @all and @here would notify.
 type destinationSize func(context.Context) (int64, error)
 
-// checkMessage refuses a message this server would not take, or that mentions
-// someone who does not exist, and says what the rest of its mentions do.
-func checkMessage(ctx context.Context, client *mattermost.Client, message, where string, size destinationSize) (checkedMessage, error) {
+// checkLength refuses a message this server would not take.
+// GetClientConfig.
+func checkLength(ctx context.Context, client *mattermost.Client, message string) error {
 	if strings.TrimSpace(message) == "" {
-		return checkedMessage{}, fmt.Errorf("the message is empty")
+		return fmt.Errorf("the message is empty")
 	}
 	limit, err := maxPostSize(ctx, client)
 	if err != nil {
-		return checkedMessage{}, err
+		return err
 	}
 	if length := utf8.RuneCountInString(message); length > limit {
-		return checkedMessage{}, fmt.Errorf("the message is %d characters, and this server takes at most %d. Shorten it, "+
+		return fmt.Errorf("the message is %d characters, and this server takes at most %d. Shorten it, "+
 			"post the rest as replies in its thread, or attach the full text as a file and post a summary", length, limit)
 	}
-	mentioned := mentions(message)
+	return nil
+}
+
+// checkMessage refuses a message this server would not take, or that mentions
+// someone who does not exist, and says what the rest of its mentions do once
+// posted. GetClientConfig, GetUsersByUsernames, SearchUsers, and size.
+func checkMessage(ctx context.Context, client *mattermost.Client, message, where string, size destinationSize) (checkedMessage, error) {
+	if err := checkLength(ctx, client, message); err != nil {
+		return checkedMessage{}, err
+	}
 	var checked checkedMessage
-	var people []string
-	for _, name := range mentioned {
-		if who, special := specialMentions[name]; special {
+	var lookup []string
+	var people []mention
+	noted := map[string]bool{}
+	for _, m := range mentions(message) {
+		if special := m.special(); special != "" {
+			if noted[special] {
+				continue
+			}
+			noted[special] = true
 			count, err := size(ctx)
 			if err != nil {
 				return checkedMessage{}, err
 			}
-			checked.notes = append(checked.notes, fmt.Sprintf("@%s notifies %s: %s in %s.", name, who, peopleCount(count), where))
+			checked.notes = append(checked.notes, fmt.Sprintf("@%s notifies %s: %s in %s.", special, specialMentions[special], peopleCount(count), where))
 			continue
 		}
-		people = append(people, name)
+		people = append(people, m)
+		lookup = append(lookup, m.names...)
 	}
 	if len(people) == 0 {
 		return checked, nil
 	}
-	found, err := mentionedUsers(ctx, client, people)
+	users, err := client.UsersByUsernames(ctx, lookup)
 	if err != nil {
 		return checkedMessage{}, err
 	}
-	for _, name := range people {
-		if user := found[name]; user != nil && user.DeleteAt > 0 {
+	byName := map[string]*model.User{}
+	for _, user := range users {
+		byName[user.Username] = user
+	}
+	var unknown []string
+	for _, m := range people {
+		user := m.user(byName)
+		switch {
+		case user == nil:
+			unknown = append(unknown, m.word)
+		case user.DeleteAt > 0 && !noted[user.Id]:
+			noted[user.Id] = true
 			checked.notes = append(checked.notes, fmt.Sprintf("@%s is deactivated, and will not be notified.", user.Username))
 		}
+	}
+	if len(unknown) > 0 {
+		return checkedMessage{}, fmt.Errorf("the message mentions someone nobody is called: %w", unknownUsers(ctx, client, unknown))
 	}
 	return checked, nil
 }
@@ -103,54 +125,93 @@ func peopleCount(n int64) string {
 	return strconv.FormatInt(n, 10) + " people"
 }
 
-// mentions is each name a message @mentions, lower case, once, outside code.
-func mentions(message string) []string {
-	var names []string
-	for _, found := range mentionPattern.FindAllStringSubmatch(codePattern.ReplaceAllString(message, " "), -1) {
-		name := strings.ToLower(found[1])
-		if !slices.Contains(names, name) {
-			names = append(names, name)
-		}
-	}
-	return names
+// mention is a word that may mention someone: the word as written, and the
+// names it may mean, the whole word first and then with each trailing . - : _
+// taken off in turn, as Mattermost tries them.
+type mention struct {
+	word  string
+	names []string
 }
 
-// mentionedUsers reads the users a message mentions, by name. Mattermost
-// lets a username end in a dot, a dash or an underscore, so a mention that
-// ends a sentence is tried without the punctuation after it. A name nobody has
-// is refused with the closest usernames.
-func mentionedUsers(ctx context.Context, client *mattermost.Client, names []string) (map[string]*model.User, error) {
-	var lookup []string
-	for _, name := range names {
-		lookup = append(lookup, name)
-		if trimmed := strings.TrimRight(name, "._-"); trimmed != name && trimmed != "" {
-			lookup = append(lookup, trimmed)
+// special is the mention of everyone this is, if it is one.
+func (m mention) special() string {
+	for _, name := range m.names {
+		if _, ok := specialMentions[name]; ok {
+			return name
 		}
 	}
-	users, err := client.UsersByUsernames(ctx, lookup)
-	if err != nil {
-		return nil, err
-	}
-	byName := map[string]*model.User{}
-	for _, user := range users {
-		byName[user.Username] = user
-	}
-	found := map[string]*model.User{}
-	var unknown []string
-	for _, name := range names {
-		switch user := byName[name]; {
-		case user != nil:
-			found[name] = user
-		case byName[strings.TrimRight(name, "._-")] != nil:
-			found[name] = byName[strings.TrimRight(name, "._-")]
-		default:
-			unknown = append(unknown, "@"+name)
+	return ""
+}
+
+// user is the user this mentions, by the first of its names someone has.
+func (m mention) user(byName map[string]*model.User) *model.User {
+	for _, name := range m.names {
+		if user := byName[name]; user != nil {
+			return user
 		}
 	}
-	if len(unknown) > 0 {
-		return nil, fmt.Errorf("the message mentions someone nobody is called: %w", unknownUsers(ctx, client, unknown))
+	return nil
+}
+
+// mentions is each word of a message that may mention someone, once, found as
+// Mattermost finds them: in the message's text as its Markdown parser reads it,
+// so that code of any kind mentions nobody, split into words where a username
+// cannot go on, and a word that does not start with @ split again at . - and :,
+// as at the end of a sentence (getExplicitMentions and ProcessText in
+// Mattermost's server).
+func mentions(message string) []mention {
+	var found []mention
+	seen := map[string]bool{}
+	add := func(word string) {
+		if !strings.HasPrefix(word, "@") || len(word) < 2 || seen[strings.ToLower(word)] {
+			return
+		}
+		seen[strings.ToLower(word)] = true
+		name := strings.ToLower(word[1:])
+		m := mention{word: word, names: []string{name}}
+		for trimmed := name; trimmed != "" && strings.LastIndexAny(trimmed, ".-:_") == len(trimmed)-1; {
+			trimmed = trimmed[:len(trimmed)-1]
+			if trimmed != "" {
+				m.names = append(m.names, trimmed)
+			}
+		}
+		found = append(found, m)
 	}
-	return found, nil
+	process := func(text string) {
+		for _, word := range strings.FieldsFunc(text, func(c rune) bool {
+			return !(c == ':' || c == '.' || c == '-' || c == '_' || c == '@' || unicode.IsLetter(c) || unicode.IsNumber(c))
+		}) {
+			// :word: is an emoji.
+			if len(word) > 1 && word[0] == ':' && word[len(word)-1] == ':' {
+				continue
+			}
+			word = strings.TrimLeft(word, ":.-_")
+			if strings.HasPrefix(word, "@") {
+				add(word)
+				continue
+			}
+			for _, part := range strings.FieldsFunc(word, func(c rune) bool { return c == '.' || c == '-' || c == ':' }) {
+				add(part)
+			}
+		}
+	}
+	buffer := ""
+	markdown.Inspect(message, func(node any) bool {
+		text, ok := node.(*markdown.Text)
+		if !ok {
+			if buffer != "" {
+				process(buffer)
+			}
+			buffer = ""
+			return true
+		}
+		buffer += text.Text
+		return false
+	})
+	if buffer != "" {
+		process(buffer)
+	}
+	return found
 }
 
 // maxPostSize is the most characters this server takes in one message, as it
@@ -164,6 +225,11 @@ func maxPostSize(ctx context.Context, client *mattermost.Client) (int, error) {
 		return size, nil
 	}
 	return fallbackMaxPostSize, nil
+}
+
+// lengthUses are the operations checkLength calls.
+func lengthUses() []Use {
+	return []Use{{Operation: "GetClientConfig", Params: map[string]Coverage{}}}
 }
 
 // messageUses are the operations checkMessage calls. stats says whether a

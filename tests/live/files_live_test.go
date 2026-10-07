@@ -24,7 +24,7 @@ import (
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
-// read_file, search_files, save_file, and files attached to post_message
+// read_file, search_files, save_file, and files attached to create_post, dm and group_message
 // (ADR-029).
 
 // localSession is a session acting as user from a server on the person's own
@@ -126,10 +126,18 @@ func TestReadFileGivesTextInWindowsImagesAsImagesAndDescribesTheRest(t *testing.
 
 	var read server.ChannelPosts
 	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "read_channel", Arguments: map[string]any{"channel_id": channel.Id}}), &read)
+	listed := false
 	for _, post := range read.Posts {
-		if post.ID == textPost.Id && (len(post.Files) != 1 || post.Files[0].ID != textID || post.Files[0].Name != "log.txt" || post.Files[0].Size == 0) {
+		if post.ID != textPost.Id {
+			continue
+		}
+		listed = true
+		if len(post.Files) != 1 || post.Files[0].ID != textID || post.Files[0].Name != "log.txt" || post.Files[0].Size == 0 {
 			t.Errorf("the post lists its files as %+v", post.Files)
 		}
+	}
+	if !listed {
+		t.Error("read_channel left out the post the files are attached to")
 	}
 }
 
@@ -190,7 +198,7 @@ func TestSaveFileWritesIntoTheDownloadDirectoryAndNeverOverwrites(t *testing.T) 
 	}
 }
 
-func TestPostMessageAttachesFilesShowingEachInTheQuestion(t *testing.T) {
+func TestCreatePostAttachesFilesShowingEachInTheQuestion(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
 	user := seedUser(t, admin)
@@ -201,7 +209,7 @@ func TestPostMessageAttachesFilesShowingEachInTheQuestion(t *testing.T) {
 	questions := &asked{}
 	session, _ := localSession(t, admin, user, questions.answer(accept))
 
-	posted := postMessage(t, session, map[string]any{
+	posted := createPost(t, session, map[string]any{
 		"channel_id": channel.Id,
 		"message":    "Test results attached.",
 		"files": []map[string]any{
@@ -235,7 +243,10 @@ func TestAFileChangedAfterThePersonWasAskedIsNotSent(t *testing.T) {
 	onDisk := filepath.Join(t.TempDir(), "notes.txt")
 	check(t, os.WriteFile(onDisk, []byte("what the person saw"), 0o600))
 	session, _ := localSession(t, admin, user, func(*mcp.ElicitParams) *mcp.ElicitResult {
-		check(t, os.WriteFile(onDisk, []byte("what was swapped in"), 0o600))
+		// Not t.Fatal: this runs on the client's goroutine, not the test's.
+		if err := os.WriteFile(onDisk, []byte("what was swapped in"), 0o600); err != nil {
+			t.Error(err)
+		}
 		return accept
 	})
 
@@ -269,7 +280,7 @@ func TestAServerNotOnThePersonsMachineAttachesNoFileFromAPath(t *testing.T) {
 	if !result.IsError || !strings.Contains(errorText(result), "does not run on the person's machine") {
 		t.Fatalf("a server not on the person's machine took a file from a path: %s", errorText(result))
 	}
-	if len(questions.questions) != 0 || len(messagesIn(t, admin, channel.Id)) != 0 {
+	if questions.count() != 0 || len(messagesIn(t, admin, channel.Id)) != 0 {
 		t.Fatal("the person was asked, or something was posted")
 	}
 }
