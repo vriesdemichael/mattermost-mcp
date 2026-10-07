@@ -83,10 +83,13 @@ Then break each new test by reverting its fix and watch it fail.
 1. Add the call to `internal/mattermost`, using Client4, returning model types or
    a `*mattermost.Error` ([ADR-024](docs/site/adr/024-mattermosts-client-at-the-newest-release.md)).
 2. Add the tool in `internal/server/tools_<area>.go` with `toolSpec`, typed input
-   and output structs, a title, the annotations from `readOnly` (or a write
-   annotation), and a description written for the model that reads it. Reach
-   Mattermost only through the `ClientFor` it is given
+   and output structs, a title, the annotations from `readOnly`, and a
+   description written for the model that reads it. Reach Mattermost only
+   through the `ClientFor` it is given
    ([ADR-020](docs/site/adr/020-stdio-and-streamable-http-single-tenant-first.md)).
+   A tool that writes takes `writes` instead, and wraps its handler in `asking`
+   with a question naming what it writes, where, and as whom
+   ([ADR-021](docs/site/adr/021-read-only-by-default-and-every-write-asks.md)).
 3. Declare its `Uses`: every operation it calls, by operationId in
    `openapi/mattermost-latest.json`, and for every parameter and body field of
    each, `SetBy(arg)`, `Fixed(value, reason)` or `Omitted(reason)`

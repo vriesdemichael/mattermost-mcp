@@ -53,9 +53,21 @@ var (
 	observed   = map[string]map[string]bool{} // tool -> operationId -> seen
 )
 
-// callTool calls a tool through its session, and fails the test when the tool
-// reached Mattermost through an operation it does not declare.
+// callTool calls a tool through its session, and fails the test when the call
+// fails or the tool reached Mattermost through an operation it does not
+// declare.
 func callTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParams) *mcp.CallToolResult {
+	t.Helper()
+	result, err := tryTool(t, session, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+// tryTool is callTool for a call that may fail as a whole, such as one refused
+// for a capability the client lacks; it returns that failure.
+func tryTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 	t.Helper()
 	value, ok := recorders.Load(session)
 	if !ok {
@@ -64,9 +76,6 @@ func callTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolPara
 	rec := value.(*recorder)
 	rec.take()
 	result, err := session.CallTool(t.Context(), params)
-	if err != nil {
-		t.Fatal(err)
-	}
 	declared := declaredOperations(params.Name)
 	for _, request := range rec.take() {
 		method, path, _ := strings.Cut(request, " ")
@@ -85,7 +94,7 @@ func callTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolPara
 			observedMu.Unlock()
 		}
 	}
-	return result
+	return result, err
 }
 
 func declaredOperations(tool string) []string {

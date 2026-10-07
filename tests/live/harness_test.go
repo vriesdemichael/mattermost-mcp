@@ -165,7 +165,25 @@ func sessionToken(t *testing.T, user *model.User) string {
 // Call its tools through callTool, which checks what they send (ADR-028).
 func mcpAs(t *testing.T, token string) *mcp.ClientSession {
 	t.Helper()
-	cfg := config.Config{URL: liveURL, Token: token}
+	return mcpWith(t, config.Config{URL: liveURL, Token: token}, nil)
+}
+
+// mcpWriting is mcpAs with writes allowed, from a client that answers every
+// question with answer, which also sees the question. A nil answer is a client
+// that cannot be asked at all.
+func mcpWriting(t *testing.T, token string, answer func(*mcp.ElicitParams) *mcp.ElicitResult) *mcp.ClientSession {
+	t.Helper()
+	var options *mcp.ClientOptions
+	if answer != nil {
+		options = &mcp.ClientOptions{ElicitationHandler: func(_ context.Context, request *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			return answer(request.Params), nil
+		}}
+	}
+	return mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true}, options)
+}
+
+func mcpWith(t *testing.T, cfg config.Config, options *mcp.ClientOptions) *mcp.ClientSession {
+	t.Helper()
 	rec := &recorder{inner: network.NewSafeTransport()}
 	client := mattermost.New(cfg.URL, cfg.Token, rec)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
@@ -174,7 +192,7 @@ func mcpAs(t *testing.T, token string) *mcp.ClientSession {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = serverSession.Close() })
-	session, err := mcp.NewClient(&mcp.Implementation{Name: "live", Version: "0"}, nil).Connect(t.Context(), clientTransport, nil)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "live", Version: "0"}, options).Connect(t.Context(), clientTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,4 +27,5 @@ release's own route table and specification
 
 | Operation | Tool | On the Extended Support Release |
 |---|---|---|
+| `CreatePost` | `post_message` | No `silent` parameter, which the tool never sends. Nothing differs in use. |
 | `SearchPostsInAllTeams` | `search_posts` | Served, as 11.7's router shows, but missing from its specification. Nothing differs in use. |
