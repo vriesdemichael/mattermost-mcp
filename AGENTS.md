@@ -23,7 +23,8 @@ from CONTRIBUTING.md an agent must not lose
 - **No fake Mattermost in unit tests.** No httptest.Server answering a
   Mattermost route, no fake of internal/mattermost
   ([ADR-005](docs/site/adr/005-unit-tests-do-not-simulate-mattermost.md)).
-- **Read-only by default; every write asks**
+- **Read-only by default; every write others see asks**, and a change that is
+  the user's alone or gone in seconds says why it does not
   ([ADR-021](docs/site/adr/021-read-only-by-default-and-every-write-asks.md)).
 - **No credential in a flag, an argument, a log line, an error or a tool result**
   ([ADR-019](docs/site/adr/019-credentials-are-supplied-not-acquired.md)).
@@ -47,26 +48,33 @@ task openapi:refresh
 ```
 
 `test:live` starts this checkout's Mattermost if needed. `quality:verify` is every
-static gate, golangci-lint included. Run `docs:adr-index` after adding or
-removing a record, and `openapi:refresh` after a stack's image tag changes.
+static gate but one, golangci-lint included; govulncheck (`quality:vulncheck`)
+runs in CI only, because its answer comes from a vulnerability database it
+fetches (ADR-014). Run `docs:adr-index` after adding or removing a record,
+and `openapi:refresh` after a stack's image tag changes.
 
 ## Layout
 
 | Path | Holds |
 |---|---|
 | `cmd/mm-mcp` | the binary's entry point, nothing else |
-| `internal/cli` | the command line: `serve`, `version` |
+| `internal/cli` | the command line: `serve`, `version`, `help` |
 | `internal/config` | configuration from the environment, and the list of every variable read |
+| `internal/version` | the release the binary reports, injected at build time |
 | `internal/server` | the MCP server, the tool catalogue (`AllSpecs`), and the tools |
 | `internal/mattermost` | the wrapper around Client4 every tool goes through |
+| `internal/fileview` | turns an attached file into text or an image a model can use |
 | `internal/network` | the one HTTP transport, with the unit-test network block |
+| `internal/apisurface` | reads the vendored specifications and route tables: matching, parameters, release differences |
+| `internal/adr` | reads the decision records and renders their index |
 | `internal/teststack` | how the live-test instances are named, found and bootstrapped |
 | `internal/testsupport` | the unit-test seal |
 | `internal/repository` | repository-wide governance tests |
 | `tests/live` | the live suite (build tag `live`) |
 | `tools/` | one Go command per directory, each with its reason in its package comment |
-| `internal/apisurface` | reads the vendored specifications and route tables: matching, parameters, release differences |
 | `openapi/` | the vendored specification and route table of each supported release, as reference |
+| `docker/` | the compose file of each live-test stack, `latest` and `esr`, and its settings |
+| `mcpb/` | the `.mcpb` bundle's manifest template; server.json's variables are written from it |
 
 ## Fixing a bug
 
@@ -92,14 +100,18 @@ Then break each new test by reverting its fix and watch it fail.
    description written for the model that reads it. Reach Mattermost only
    through the `ClientFor` it is given
    ([ADR-020](docs/site/adr/020-stdio-and-streamable-http-single-tenant-first.md)).
-   A tool that writes takes `writes` instead, and wraps its handler in `asking`
-   with a question naming what it writes, where, and as whom
+   A tool that writes takes `writes` instead. When others see what it changes,
+   it wraps its handler in `asking` with a question naming what it writes,
+   where, and as whom; when the change is the user's alone or gone in seconds,
+   its spec is marked `unasked` with the reason
    ([ADR-021](docs/site/adr/021-read-only-by-default-and-every-write-asks.md)).
    A tool that answers with a list embeds `pageArgs` and `pageInfo` and pages
    with `openCursor` ([ADR-032](docs/site/adr/032-every-list-pages-by-an-opaque-cursor.md)).
 3. Declare its `Uses`: every operation it calls, by operationId in
    `openapi/mattermost-latest.json`, and for every parameter and body field of
-   each, `SetBy(arg)`, `Fixed(value, reason)` or `Omitted(reason)`
+   each, `SetBy(arg)`, `Fixed(value, reason)` or `Omitted(reason)`, and for a
+   parameter the router reads though the specification leaves it out,
+   `Undocumented(arg, reason)`, with where the server reads it
    ([ADR-028](docs/site/adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)).
    When `TestEveryDifferenceBetweenSupportedReleasesIsHandled` names a
    difference on the ESR, handle it in the call, say how in `Releases`, and list

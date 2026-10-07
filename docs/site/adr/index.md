@@ -23,7 +23,7 @@ holds and why, and the alternatives it turned down.
 - [ADR-014: What the quality gates measure, and why each exists](014-what-the-quality-gates-measure.md)
 - [ADR-015: Governance tests are verified by breaking them](015-governance-tests-are-verified-by-breaking-them.md)
 - [ADR-016: Versioned docs with MkDocs Material and mike](016-versioned-docs-with-mkdocs-material-and-mike.md)
-- [ADR-017: Planning lives in GitHub issues, and an issue closes when its fix ships](017-planning-in-github-issues.md)
+- [ADR-017: Planning lives in GitHub issues, and an issue closes when its fix reaches main](017-planning-in-github-issues.md)
 - [ADR-018: Agents and tasks write temporary files to .tmp](018-agents-write-temporary-files-to-tmp.md)
 - [ADR-019: The server is given a credential; acquiring one is a separate concern](019-credentials-are-supplied-not-acquired.md)
 - [ADR-020: stdio and Streamable HTTP from one server, single-tenant first](020-stdio-and-streamable-http-single-tenant-first.md)

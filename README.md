@@ -9,16 +9,21 @@ and, when you allow it, post and reply, as you or as a bot.
 mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
-> **Early development.** One tool exists today, `get_me`, which proves the
-> connection and the credential. Reading, searching, posting and the in-chat
-> views are being built; the [issues](https://github.com/vriesdemichael/mm-mcp/issues)
-> are the plan.
+> **Early development.** Nothing is released yet. The tools read channels,
+> threads, unread posts and files, search posts, files, people and channels,
+> and, once you allow writes, post, reply, edit, react, pin and keep drafts.
+> The [tools page](docs/site/tools.md) lists every one. Views in the chat for
+> clients that render MCP Apps are planned; the
+> [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 
 ## Why it works the way it does
 
 - **Read-only unless you say otherwise.** The tools that post or change anything
-  are not offered until `MM_MCP_ALLOW_WRITES` is true, and then each call asks you
-  first. An agent acting with your token speaks as you to your colleagues.
+  are not offered until `MM_MCP_ALLOW_WRITES` is true. Then every change others
+  see asks you first: an agent acting with your token speaks as you to your
+  colleagues. Following a thread, saving a post, a reminder, a draft only you
+  see and the typing indicator are yours alone or gone in seconds, and do not
+  ask.
 - **Your token, a bot's, or your own login.** A personal access token, a bot
   token, or the session token from logging in yourself, for servers where
   personal access tokens are switched off.
@@ -27,8 +32,8 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 - **Every supported release, tested.** Every tool runs against a real Mattermost
   Team Edition, on the Extended Support Release and the newest release on every
   change, and on every release between them each week.
-- **stdio and Streamable HTTP**, and views in the chat for clients that render
-  MCP Apps.
+- **stdio and Streamable HTTP.** A client starts it as a local process, or it
+  serves Streamable HTTP on a loopback address.
 
 ## Quick start
 
