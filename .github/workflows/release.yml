@@ -393,10 +393,12 @@ jobs:
           git diff --cached --quiet || git commit -m "mm-mcp: Update to version ${VERSION#v}"
           git push
 
-  # winget-releaser opens the pull request to microsoft/winget-pkgs from the
-  # fork, which must match upstream first. It updates a package WinGet already
-  # has: the first version is submitted by hand, with komac or wingetcreate, and
-  # until that is merged this job says so and publishes nothing.
+  # Komac opens the pull request to microsoft/winget-pkgs from the fork, which
+  # must match upstream first. It updates a package WinGet already has: the
+  # first version is submitted by hand, with komac or wingetcreate, and until
+  # that is merged this job says so and publishes nothing. Komac is run as its
+  # released binary rather than through winget-releaser, which installs it with
+  # an action pinned to a branch, which this repository refuses.
   winget:
     name: Publish to WinGet
     needs:
@@ -435,14 +437,40 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout
+        if: steps.known.outputs.known == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve the pinned tool versions
+        if: steps.known.outputs.known == 'true'
+        run: grep -E "^[A-Za-z_][A-Za-z0-9_]*=" .github/tool-versions.env >> "$GITHUB_ENV"
+
+      - name: Install Komac, held to its release's checksums
+        if: steps.known.outputs.known == 'true'
+        run: |
+          set -euo pipefail
+          number="${KOMAC_VERSION#v}"
+          archive="komac-${number}-x86_64-unknown-linux-gnu.tar.gz"
+          mkdir -p .tmp/komac
+          cd .tmp/komac
+          base="https://github.com/russellbanks/Komac/releases/download/${KOMAC_VERSION}"
+          curl -fsSL --retry 3 -o "$archive" "$base/$archive"
+          curl -fsSL --retry 3 -o SHA256SUMS "$base/SHA256SUMS"
+          grep -E " \*?${archive}\$" SHA256SUMS | sha256sum -c
+          tar -xzf "$archive"
+          echo "$PWD/$(dirname "$(find . -name komac -type f | head -1)")" >> "$GITHUB_PATH"
+
       - name: Open the WinGet pull request
         if: steps.known.outputs.known == 'true'
-        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
-        with:
-          identifier: vriesdemichael.mm-mcp
-          release-tag: ${{ needs.determine-version.outputs.version }}
-          installers-regex: '^mm-mcp_[0-9.]+_windows_(amd64|arm64)\.zip$'
-          token: ${{ secrets.WINGET_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          set -euo pipefail
+          number="${VERSION#v}"
+          base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${VERSION}"
+          komac update vriesdemichael.mm-mcp --version "$number" \
+            --urls "$base/mm-mcp_${number}_windows_amd64.zip" "$base/mm-mcp_${number}_windows_arm64.zip" \
+            --submit
 
   docs:
     name: Publish docs
