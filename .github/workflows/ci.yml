@@ -13,6 +13,9 @@ on:
     branches:
       - main
       - next
+  # Runs CI on any branch by hand, to check a branch before its pull request
+  # exists or to run it again without a new commit.
+  workflow_dispatch:
 
 permissions:
   contents: read
