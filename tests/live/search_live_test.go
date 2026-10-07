@@ -60,6 +60,34 @@ func TestSearchPostsFindsAPostWithItsAuthorAndChannel(t *testing.T) {
 	}
 }
 
+func TestSearchPostsNamesADirectMessageByThePersonOnTheOtherSide(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user, other := seedUser(t, admin), seedUser(t, admin)
+	seedTeam(t, admin, user, other)
+	author := clientAs(t, user)
+	withOther, _, err := author.CreateDirectChannel(t.Context(), user.Id, other.Id)
+	check(t, err)
+	toSelf, _, err := author.CreateDirectChannel(t.Context(), user.Id, user.Id)
+	check(t, err)
+	term := word(t)
+	postAs(t, author, withOther.Id, "", term+" to them")
+	postAs(t, author, toSelf.Id, "", term+" to me")
+	session := sessionFor(t, admin, user)
+
+	var found server.SearchResults
+	eventually(t, 30*time.Second, func() (bool, string) {
+		found = searchPosts(t, session, map[string]any{"terms": term})
+		return len(found.Posts) == 2, fmt.Sprint(foundMessages(found))
+	})
+	want := map[string]string{withOther.Id: other.Username, toSelf.Id: "yourself"}
+	for _, post := range found.Posts {
+		if post.Channel != want[post.ChannelID] {
+			t.Errorf("%q is in a channel named %q; want %q", post.Message, post.Channel, want[post.ChannelID])
+		}
+	}
+}
+
 func TestSearchPostsKeepsToOneTeamWhenTold(t *testing.T) {
 	t.Parallel()
 	admin := admin(t)
