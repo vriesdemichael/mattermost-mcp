@@ -1,0 +1,44 @@
+name: Setup Task
+description: >-
+  Puts the Task release of the given version on the PATH: the prebuilt binary
+  for the runner's platform from go-task/task's GitHub release, held to the
+  release's checksum manifest. It takes seconds where building Task from
+  source with go install took a minute a job, and it reads no API, so no rate
+  limit applies (ADR-002).
+inputs:
+  version:
+    description: The Task release, as GO_TASK_VERSION in .github/tool-versions.env pins it.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install Task
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS" in
+          Linux) os=linux ext=tar.gz ;;
+          macOS) os=darwin ext=tar.gz ;;
+          Windows) os=windows ext=zip ;;
+          *) echo "::error::no Task release for $RUNNER_OS"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64) arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::no Task release for $RUNNER_ARCH"; exit 1 ;;
+        esac
+        archive="task_${os}_${arch}.${ext}"
+        dir="$RUNNER_TEMP/task"
+        mkdir -p "$dir"
+        cd "$dir"
+        base="https://github.com/go-task/task/releases/download/${VERSION}"
+        curl -fsSL --retry 3 -o "$archive" "$base/$archive"
+        curl -fsSL --retry 3 -o task_checksums.txt "$base/task_checksums.txt"
+        # The manifest lists every platform's archive; only this one is checked.
+        grep " ${archive}\$" task_checksums.txt > expected.txt
+        if command -v sha256sum >/dev/null; then sha256sum -c expected.txt; else shasum -a 256 -c expected.txt; fi
+        if [ "$ext" = zip ]; then 7z x -y "$archive" task.exe >/dev/null; else tar -xzf "$archive" task; fi
+        echo "$dir" >> "$GITHUB_PATH"
+        "./task$([ "$os" = windows ] && echo .exe || true)" --version
