@@ -11,6 +11,8 @@ The version a binary reports is injected when it is built, with `-ldflags -X` in
 
 Releases run from main only, so the signing identity is one workflow on one branch, and only the jobs that sign, attest or publish may mint an OIDC token.
 
+A commit that fixes an issue closes it with a keyword in its body, one per issue: `Closes #5, closes #6`. GitHub acts on the keyword only when the commit reaches the default branch, main, so the issue closes with the release that carries the fix (ADR-017).
+
 Type a commit by what a user sees. A change no user can observe, to tooling, CI, tests or documentation, is `ci`, `chore`, `test`, `refactor` or `docs`, and cuts no release. Mark a change breaking when it would break a configuration that works today: a tool renamed or removed, an argument renamed or made required, a result's shape changed, an environment variable renamed, or a call that succeeded now refused.
 
 ## Not chosen

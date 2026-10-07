@@ -76,6 +76,11 @@ A breaking change is one that breaks a configuration that works today: a tool
 renamed or removed, an argument renamed or made required, a result's shape
 changed, an environment variable renamed.
 
+**Close issues from the commit that fixes them.** Put a closing keyword in the
+commit's body, one per issue: `Closes #5, closes #6`. GitHub acts on it when the
+commit reaches `main`, so the issue closes with the release that carries the fix
+([ADR-017](docs/site/adr/017-planning-in-github-issues.md)).
+
 **Keep history linear.** Rebase onto `next`; never merge `next` into your branch.
 
 ```bash
