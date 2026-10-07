@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -183,4 +184,113 @@ func searchUsersSpec() Spec {
 			}
 		},
 	)
+}
+
+// UserStatus is whether someone is around: their presence and the status
+// they set.
+type UserStatus struct {
+	Username string `json:"username"`
+	// Status is Mattermost's presence: online, away, dnd or offline.
+	Status         string `json:"status" jsonschema:"online, away, dnd (do not disturb) or offline"`
+	SetByHand      bool   `json:"set_by_hand" jsonschema:"whether the person set the status themselves rather than Mattermost from their activity"`
+	LastActivityAt string `json:"last_activity_at,omitempty"`
+	DNDUntil       string `json:"dnd_until,omitempty" jsonschema:"when do not disturb ends, if the person set an end"`
+	CustomEmoji    string `json:"custom_emoji,omitempty" jsonschema:"the emoji of the status message the person set, if any"`
+	CustomText     string `json:"custom_text,omitempty" jsonschema:"the status message the person set, such as 'In a meeting', if any"`
+	CustomUntil    string `json:"custom_until,omitempty" jsonschema:"when the status message clears, if it does"`
+}
+
+// Statuses is the status of each user asked about.
+type Statuses struct {
+	Users []UserStatus `json:"users"`
+}
+
+type getStatusInput struct {
+	Usernames []string `json:"usernames" jsonschema:"the usernames to ask about, without the @; at most 100"`
+}
+
+func getStatusSpec() Spec {
+	return shaping(toolSpec(
+		&mcp.Tool{
+			Name: "get_status",
+			Description: "Whether people are around: online, away, do not disturb or offline, when they were last active, and the " +
+				"status message they set, such as being in a meeting or on holiday.",
+			Annotations: readOnly("Get status"),
+		},
+		[]Use{
+			{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+			{Operation: "GetUsersStatusesByIds", Params: map[string]Coverage{}},
+		},
+		func(clientFor ClientFor) mcp.ToolHandlerFor[getStatusInput, Statuses] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input getStatusInput) (*mcp.CallToolResult, Statuses, error) {
+				switch {
+				case len(input.Usernames) == 0:
+					return nil, Statuses{}, fmt.Errorf("give the usernames to ask about")
+				case len(input.Usernames) > 100:
+					return nil, Statuses{}, fmt.Errorf("ask about at most 100 people at once, not %d", len(input.Usernames))
+				}
+				wanted := make([]string, 0, len(input.Usernames))
+				for _, name := range input.Usernames {
+					wanted = append(wanted, strings.TrimPrefix(strings.TrimSpace(name), "@"))
+				}
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return nil, Statuses{}, err
+				}
+				users, err := client.UsersByUsernames(ctx, wanted)
+				if err != nil {
+					return nil, Statuses{}, err
+				}
+				byName := map[string]*model.User{}
+				ids := make([]string, 0, len(users))
+				for _, user := range users {
+					byName[user.Username] = user
+					ids = append(ids, user.Id)
+				}
+				var missing []string
+				for _, name := range wanted {
+					if byName[name] == nil {
+						missing = append(missing, name)
+					}
+				}
+				if len(missing) > 0 {
+					return nil, Statuses{}, fmt.Errorf("no user is named %s", strings.Join(missing, ", "))
+				}
+				statuses, err := client.Statuses(ctx, ids)
+				if err != nil {
+					return nil, Statuses{}, err
+				}
+				byID := map[string]*model.Status{}
+				for _, status := range statuses {
+					byID[status.UserId] = status
+				}
+				out := Statuses{Users: []UserStatus{}}
+				for _, name := range wanted {
+					out.Users = append(out.Users, toStatus(byName[name], byID[byName[name].Id]))
+				}
+				return nil, out, nil
+			}
+		},
+	), map[string]string{
+		"usernames": "is the request body of GetUsersByUsernames, a JSON array of usernames, which has no fields to set by name",
+	})
+}
+
+func toStatus(user *model.User, status *model.Status) UserStatus {
+	out := UserStatus{Username: user.Username, Status: model.StatusOffline}
+	if status != nil {
+		out.Status, out.SetByHand, out.LastActivityAt = status.Status, status.Manual, timestamp(status.LastActivityAt)
+		if status.Status == model.StatusDnd && status.DNDEndTime > 0 {
+			// Unlike Mattermost's other times, a do-not-disturb end is in seconds.
+			out.DNDUntil = timestamp(status.DNDEndTime * 1000)
+		}
+	}
+	if custom := user.GetCustomStatus(); custom != nil && (custom.Text != "" || custom.Emoji != "") &&
+		(custom.ExpiresAt.IsZero() || custom.ExpiresAt.After(time.Now())) {
+		out.CustomEmoji, out.CustomText = custom.Emoji, custom.Text
+		if !custom.ExpiresAt.IsZero() {
+			out.CustomUntil = custom.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+	}
+	return out
 }

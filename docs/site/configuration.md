@@ -20,6 +20,12 @@ the server's env block. No setting is a command-line flag that carries a secret
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
     `true`, `false`, `1`, `0`, `yes`, `no`, `on` and `off`.
 
+`MM_MCP_DOWNLOAD_DIR`
+:   Optional. The directory `save_file` writes attachments to, when the server
+    runs over stdio on your own machine. Your Downloads directory by default.
+    An existing file is never overwritten
+    ([ADR-029](adr/029-files-reach-the-model-as-content-and-the-disk-only-locally.md)).
+
 `MM_MCP_BLOCK_EXTERNAL_NETWORK`
 :   For mm-mcp's own tests. While it is `1`, mm-mcp refuses to reach any address
     but the loopback ones

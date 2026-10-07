@@ -215,3 +215,22 @@ func TestEveryDifferenceBetweenSupportedReleasesIsHandled(t *testing.T) {
 		}
 	}
 }
+
+// TestALocalToolOnlyReadsMattermost holds a tool that writes this machine's
+// files to reading Mattermost, which is what lets a local server offer it
+// whether writes are allowed or not (ADR-029).
+func TestALocalToolOnlyReadsMattermost(t *testing.T) {
+	t.Parallel()
+	s := loadSurface(t)
+	for _, spec := range server.AllSpecs() {
+		if !spec.Local {
+			continue
+		}
+		for _, use := range spec.Uses {
+			op, ok := s.latest.Operation(use.Operation)
+			if ok && op.Method != "GET" && op.Method != "HEAD" {
+				t.Errorf("%s is local, and calls %s, %s %s", spec.Tool.Name, use.Operation, op.Method, op.Path)
+			}
+		}
+	}
+}

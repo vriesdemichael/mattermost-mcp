@@ -11,10 +11,13 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestNoToolIsOpenWorld`: no MCP tool is annotated open-world.
 - `TestAReadOnlyServerListsOnlyReadOnlyTools`: without writes allowed, no tool that writes is offered.
 - `TestAllowingWritesAddsExactlyTheToolsThatWrite`: allowing writes adds exactly the tools not annotated read-only.
-- `TestEveryToolThatWritesAsksFirst`: every tool that writes refuses a client that cannot be asked, before it reaches Mattermost.
+- `TestEveryToolThatWritesAsksFirst`: every tool that changes what others see refuses a client that cannot be asked, before it reaches Mattermost.
+- `TestAToolThatDoesNotAskChangesNothingOfOthers`: a tool that changes Mattermost without asking says why, and is not destructive.
+- `TestOnlyALocalServerOffersTheToolsThatWriteItsFiles`: a tool that writes this machine's files is offered by a local server only, whether writes are allowed or not.
 - `TestEveryToolIsCalledByALiveTest`: every MCP tool is called by name in tests/live.
 - `TestTheToolsPageDocumentsEveryToolAndOnlyThose`: the tools page documents exactly the tools the server has.
 - `TestEveryToolDeclaresTheOperationsItCalls`: every tool declares the operations it calls, each in the newest specification and served by the newest router.
+- `TestALocalToolOnlyReadsMattermost`: a tool that writes this machine's files calls only operations that read.
 - `TestEveryParameterOfACalledOperationIsAccountedFor`: every parameter and body field of a called operation is set, fixed or omitted with a reason.
 - `TestEveryToolArgumentSetsAParameterItCalls`: every argument a tool takes sets a parameter it declares, and every declared argument is taken.
 - `TestEveryDifferenceBetweenSupportedReleasesIsHandled`: an operation that differs on the oldest supported release is handled, said so, and listed on the releases page.

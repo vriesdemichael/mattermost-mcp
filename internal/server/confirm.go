@@ -52,6 +52,14 @@ type confirmation struct {
 // Mattermost for what the person must see that the input does not carry; an
 // error ends the call before anyone is asked.
 func asking[In, Out any](tool string, confirm func(context.Context, *mcp.CallToolRequest, In) (confirmation, error), handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
+	return askingBound(tool, nil, confirm, handler)
+}
+
+// askingBound is asking for a call whose input names something that can
+// change between the question and the answer, such as a file on disk. bind
+// fingerprints it, and an answer accepts the call only while the fingerprint
+// is what it was when the person was asked.
+func askingBound[In, Out any](tool string, bind func(In) (string, error), confirm func(context.Context, *mcp.CallToolRequest, In) (confirmation, error), handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
 		if !canConfirm(request) {
@@ -60,6 +68,14 @@ func asking[In, Out any](tool string, confirm func(context.Context, *mcp.CallToo
 		digest, err := inputDigest(input)
 		if err != nil {
 			return nil, none, fmt.Errorf("%s: %w", tool, err)
+		}
+		if bind != nil {
+			bound, err := bind(input)
+			if err != nil {
+				return nil, none, err
+			}
+			sum := sha256.Sum256([]byte(digest + "\n" + bound))
+			digest = hex.EncodeToString(sum[:])
 		}
 		answer, answered := request.Params.InputResponses[confirmKey]
 		state := request.Params.RequestState
@@ -224,7 +240,7 @@ func (s *confirmationSeal) open(state, tool, digest string) (bool, error) {
 	case sealed.Tool != tool:
 		return false, invalidConfirmation("it was issued for another tool")
 	case sealed.Digest != digest:
-		return false, invalidConfirmation("the call changed since the person was asked")
+		return false, invalidConfirmation("the call, or a file it attaches, changed since the person was asked")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
