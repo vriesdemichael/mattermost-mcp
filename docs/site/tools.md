@@ -59,5 +59,19 @@ UTC.
 
 ## Writing
 
-None yet. Tools that write are offered only when `MM_MCP_ALLOW_WRITES` is true,
-and each one asks you before it acts.
+Tools that write are offered only when `MM_MCP_ALLOW_WRITES` is true. Each call
+asks you first, through your MCP client: it shows what will be written, where,
+and under whose name, and acts only when you tick the box and accept. A client
+that cannot show the question gets an error, and nothing is written
+([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+
+`post_message`: Post message
+:   Posts a message in a channel, or with `root_id` replies in the thread of
+    any post in it. The question shows the message as it will be sent, the
+    channel or direct message it goes to and, for a reply, the start of the
+    thread. Returns the post.
+
+`add_reaction`: Add reaction
+:   Reacts to a post with an emoji, such as `thumbsup`. The question shows the
+    emoji and the start of the post. Reacting again with the same emoji
+    changes nothing.

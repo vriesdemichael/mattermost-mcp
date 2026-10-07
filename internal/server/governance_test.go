@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -11,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
 	"github.com/vriesdemichael/mm-mcp/internal/server"
@@ -174,5 +178,34 @@ func TestTheToolsPageDocumentsEveryToolAndOnlyThose(t *testing.T) {
 	if !slices.Equal(documented, offered) {
 		t.Fatalf("the tools page documents %s; the server has %s",
 			strings.Join(documented, ", "), strings.Join(offered, ", "))
+	}
+}
+
+// TestEveryToolThatWritesAsksFirst calls each write tool from a client that
+// cannot be asked. A tool that asks refuses it with the missing capability
+// error before reaching Mattermost; one that does not reaches for the network,
+// which the unit tests block, and fails some other way (ADR-021).
+func TestEveryToolThatWritesAsksFirst(t *testing.T) {
+	t.Parallel()
+	session := connect(t, writingConfig)
+	written := 0
+	for _, tool := range listTools(t, writingConfig) {
+		if tool.Annotations.ReadOnlyHint {
+			continue
+		}
+		written++
+		arguments := map[string]any{}
+		schema := tool.InputSchema.(map[string]any)
+		for _, name := range schema["required"].([]any) {
+			arguments[name.(string)] = "x"
+		}
+		_, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.Name, Arguments: arguments})
+		var refused *jsonrpc.Error
+		if !errors.As(err, &refused) || refused.Code != mcp.CodeMissingRequiredClientCapabilities {
+			t.Errorf("%s, called by a client that cannot be asked, answered %v; want the missing capability error", tool.Name, err)
+		}
+	}
+	if written == 0 {
+		t.Fatal("the writing server offers no tool that writes; the check has nothing to hold")
 	}
 }

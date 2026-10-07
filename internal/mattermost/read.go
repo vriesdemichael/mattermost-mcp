@@ -109,3 +109,13 @@ func (c *Client) SearchPosts(ctx context.Context, search Search) (*model.PostLis
 		PerPage:        &search.PerPage,
 	}))
 }
+
+// Channel is one channel, by id. GetChannel.
+func (c *Client) Channel(ctx context.Context, id string) (*model.Channel, error) {
+	return result(c.api.GetChannel(ctx, id))
+}
+
+// Post is one post, by id, unless it was deleted. GetPost.
+func (c *Client) Post(ctx context.Context, id string) (*model.Post, error) {
+	return result(c.api.GetPost(ctx, id, ""))
+}
