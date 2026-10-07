@@ -8,11 +8,11 @@ body:
         This form is only for mm-mcp behaving incorrectly.
 
         **Anything else — a feature, a question, an idea worth arguing about — belongs in a
-        [blank issue](https://github.com/vriesdemichael/mattermost-mcp/issues/new).**
+        [blank issue](https://github.com/vriesdemichael/mm-mcp/issues/new).**
         Those are welcome and deliberately unstructured.
 
         **Found a security vulnerability?** Do not file it here. Use
-        [private vulnerability reporting](https://github.com/vriesdemichael/mattermost-mcp/security/advisories/new)
+        [private vulnerability reporting](https://github.com/vriesdemichael/mm-mcp/security/advisories/new)
         so it stays private until a fix ships.
 
   - type: textarea

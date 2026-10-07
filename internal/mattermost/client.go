@@ -17,7 +17,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/version"
+	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
 
 // RequestTimeout bounds one request to Mattermost.

@@ -5,7 +5,7 @@
 **Please do not open a public issue for a security vulnerability.**
 
 Use GitHub's [private vulnerability
-reporting](https://github.com/vriesdemichael/mattermost-mcp/security/advisories/new)
+reporting](https://github.com/vriesdemichael/mm-mcp/security/advisories/new)
 on the Security tab. It keeps the report private until a fix is published, and
 gives us somewhere to work on the fix and publish an advisory when it lands.
 
@@ -80,13 +80,13 @@ SBOM, checked against the binary's own build information before the release is
 published and attested against the archive and packages that hold it. With the GitHub CLI:
 
 ```bash
-gh attestation verify mm-mcp_0.1.0_linux_amd64.tar.gz --repo vriesdemichael/mattermost-mcp
+gh attestation verify mm-mcp_0.1.0_linux_amd64.tar.gz --repo vriesdemichael/mm-mcp
 ```
 
 Or with cosign, against the signing identity:
 
 ```bash
-cosign verify-blob --bundle sha256sums.txt.sigstore.json --certificate-identity 'https://github.com/vriesdemichael/mattermost-mcp/.github/workflows/release.yml@refs/heads/main' --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' sha256sums.txt
+cosign verify-blob --bundle sha256sums.txt.sigstore.json --certificate-identity 'https://github.com/vriesdemichael/mm-mcp/.github/workflows/release.yml@refs/heads/main' --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' sha256sums.txt
 ```
 
 ## Telemetry

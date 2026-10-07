@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/adr"
+	"github.com/vriesdemichael/mm-mcp/internal/adr"
 )
 
 const good = adr.FrontMatter + "# ADR-007: A rule\n\nThe rule, and why it holds.\n\n## Not chosen\n\n- **Another way**: why not.\n"

@@ -1,8 +1,8 @@
 site_name: mm-mcp
 site_description: An MCP server for Mattermost
-site_url: https://vriesdemichael.github.io/mattermost-mcp/
-repo_url: https://github.com/vriesdemichael/mattermost-mcp
-repo_name: vriesdemichael/mattermost-mcp
+site_url: https://vriesdemichael.github.io/mm-mcp/
+repo_url: https://github.com/vriesdemichael/mm-mcp
+repo_name: vriesdemichael/mm-mcp
 docs_dir: docs/site
 site_dir: site
 
@@ -59,8 +59,8 @@ nav:
   - Supported Mattermost Releases: mattermost-releases.md
   - Decision Records: adr/index.md
   # Linked rather than copied into docs_dir, so there is one copy to keep current.
-  - Contributing: https://github.com/vriesdemichael/mattermost-mcp/blob/main/CONTRIBUTING.md
-  - Changelog: https://github.com/vriesdemichael/mattermost-mcp/releases
+  - Contributing: https://github.com/vriesdemichael/mm-mcp/blob/main/CONTRIBUTING.md
+  - Changelog: https://github.com/vriesdemichael/mm-mcp/releases
 
 validation:
   nav:

@@ -8,8 +8,8 @@ blank_issues_enabled: true
 
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/vriesdemichael/mattermost-mcp/security/advisories/new
+    url: https://github.com/vriesdemichael/mm-mcp/security/advisories/new
     about: Please do not open a public issue. This opens a private advisory instead.
   - name: Contributing guide
-    url: https://github.com/vriesdemichael/mattermost-mcp/blob/main/CONTRIBUTING.md
+    url: https://github.com/vriesdemichael/mm-mcp/blob/main/CONTRIBUTING.md
     about: Setting up, running the suites, and what CI checks before you open a pull request.

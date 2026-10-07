@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/teststack"
+	"github.com/vriesdemichael/mm-mcp/internal/teststack"
 )
 
 // maxInstancesDefault bounds how many instances run on one machine. Each is a

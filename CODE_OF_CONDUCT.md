@@ -40,7 +40,7 @@ public spaces.
 ## Reporting
 
 Report unacceptable behaviour through [GitHub's private
-reporting](https://github.com/vriesdemichael/mattermost-mcp/security/advisories/new)
+reporting](https://github.com/vriesdemichael/mm-mcp/security/advisories/new)
 on the Security tab.
 
 That form is labelled for security vulnerabilities, and it is deliberately

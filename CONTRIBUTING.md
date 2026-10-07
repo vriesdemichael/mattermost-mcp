@@ -32,8 +32,8 @@ lefthook install
 ## First run
 
 ```bash
-git clone https://github.com/vriesdemichael/mattermost-mcp
-cd mattermost-mcp
+git clone https://github.com/vriesdemichael/mm-mcp
+cd mm-mcp
 task test:unit
 ```
 

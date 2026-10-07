@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/mattermost"
-	"github.com/vriesdemichael/mattermost-mcp/internal/network"
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
+	"github.com/vriesdemichael/mm-mcp/internal/network"
 )
 
 // No server is involved in these tests: which status Mattermost answers with,

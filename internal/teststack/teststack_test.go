@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/teststack"
+	"github.com/vriesdemichael/mm-mcp/internal/teststack"
 )
 
 func TestTheMainCheckoutKeepsTheFixedPortsAndPlainNames(t *testing.T) {
 	t.Parallel()
-	main := teststack.Checkout{Root: filepath.FromSlash("/src/mattermost-mcp")}
+	main := teststack.Checkout{Root: filepath.FromSlash("/src/mm-mcp")}
 	for stack, port := range teststack.MainPorts {
 		instance, err := teststack.Resolve(main, stack, "")
 		if err != nil {
@@ -43,7 +43,7 @@ func TestALinkedWorktreeGetsItsOwnProjectAndAnAssignedPort(t *testing.T) {
 
 func TestAReleaseRunsBesideThePinnedStacksOnAnAssignedPort(t *testing.T) {
 	t.Parallel()
-	instance, err := teststack.Resolve(teststack.Checkout{Root: filepath.FromSlash("/src/mattermost-mcp")}, "latest", "11.9.4")
+	instance, err := teststack.Resolve(teststack.Checkout{Root: filepath.FromSlash("/src/mm-mcp")}, "latest", "11.9.4")
 	if err != nil {
 		t.Fatal(err)
 	}

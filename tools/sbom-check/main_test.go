@@ -23,7 +23,7 @@ var linuxRelease = expectation{version: "v4.1.0", goos: "linux", goarch: "amd64"
 func linuxBinary() *debug.BuildInfo {
 	return &debug.BuildInfo{
 		GoVersion: "go1.26.6",
-		Main:      debug.Module{Path: "github.com/vriesdemichael/mattermost-mcp", Version: "v0.0.0-20260914195618-d14b6f5b671e"},
+		Main:      debug.Module{Path: "github.com/vriesdemichael/mm-mcp", Version: "v0.0.0-20260914195618-d14b6f5b671e"},
 		Deps: []*debug.Module{
 			{Path: "github.com/godbus/dbus/v5", Version: "v5.1.0"},
 			{Path: "github.com/modelcontextprotocol/go-sdk", Version: "v1.8.0"},
@@ -188,7 +188,7 @@ func TestCheckFindsWhatAnSBOMGetsWrong(t *testing.T) {
 			func(doc *document, info *debug.BuildInfo, _ *expectation) {
 				*doc = withoutPackage(*doc, info.Main.Path)
 			},
-			"links github.com/vriesdemichael/mattermost-mcp v0.0.0-20260914195618-d14b6f5b671e, which the SBOM does not list",
+			"links github.com/vriesdemichael/mm-mcp v0.0.0-20260914195618-d14b6f5b671e, which the SBOM does not list",
 		},
 		"a dependency at another version": {
 			func(doc *document, _ *debug.BuildInfo, _ *expectation) { sdk(doc).VersionInfo = "v1.9.0" },

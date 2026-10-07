@@ -1,7 +1,7 @@
 # Installation
 
 mm-mcp is a single binary for Linux, macOS and Windows, published with every
-[release](https://github.com/vriesdemichael/mattermost-mcp/releases).
+[release](https://github.com/vriesdemichael/mm-mcp/releases).
 
 ## Get a token
 
@@ -19,7 +19,7 @@ See [Configuration](configuration.md) for every setting.
 ## Claude Desktop
 
 Download the `.mcpb` bundle for your machine from the
-[latest release](https://github.com/vriesdemichael/mattermost-mcp/releases/latest),
+[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
 such as `mm-mcp_<version>_darwin_arm64.mcpb` for an Apple silicon Mac, and open
 it. Claude Desktop asks for the address and the token, and whether to allow
 posting.
@@ -27,7 +27,7 @@ posting.
 ## Any MCP client
 
 Download the archive for your machine from the
-[latest release](https://github.com/vriesdemichael/mattermost-mcp/releases/latest),
+[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
 put `mm-mcp` somewhere on your `PATH`, and add a server that runs `mm-mcp serve`
 with the settings in its env block. For a client configured with JSON:
 
@@ -59,11 +59,11 @@ On Debian or Ubuntu, and on RHEL or Fedora, the release has packages that put
 `mm-mcp` in `/usr/bin`:
 
 ```bash
-curl -LO "https://github.com/vriesdemichael/mattermost-mcp/releases/latest/download/mm-mcp_<version>_linux_amd64.deb"
+curl -LO "https://github.com/vriesdemichael/mm-mcp/releases/latest/download/mm-mcp_<version>_linux_amd64.deb"
 sudo dpkg -i mm-mcp_<version>_linux_amd64.deb
 ```
 
-With Go installed, `go install github.com/vriesdemichael/mattermost-mcp/cmd/mm-mcp@latest`
+With Go installed, `go install github.com/vriesdemichael/mm-mcp/cmd/mm-mcp@latest`
 builds it from source instead; such a build reports its version as `dev`.
 
 ## Over HTTP
@@ -82,5 +82,5 @@ Every archive and bundle is signed, and every archive's SBOM is attested. With
 the GitHub CLI:
 
 ```bash
-gh attestation verify mm-mcp_<version>_linux_amd64.tar.gz --repo vriesdemichael/mattermost-mcp
+gh attestation verify mm-mcp_<version>_linux_amd64.tar.gz --repo vriesdemichael/mm-mcp
 ```

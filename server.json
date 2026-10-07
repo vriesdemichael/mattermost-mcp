@@ -4,7 +4,7 @@
   "title": "Mattermost",
   "description": "Read, search and post in Mattermost as yourself or a bot.",
   "repository": {
-    "url": "https://github.com/vriesdemichael/mattermost-mcp",
+    "url": "https://github.com/vriesdemichael/mm-mcp",
     "source": "github"
   },
   "version": "0.0.0",

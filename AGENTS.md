@@ -1,4 +1,4 @@
-# Agent Instructions — mattermost-mcp
+# Agent Instructions — mm-mcp
 
 mm-mcp is an MCP server for Mattermost, in Go, on the official MCP SDK and
 Mattermost's own Client4. The rules for working here are in the decision records

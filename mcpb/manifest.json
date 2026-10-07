@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "mm-mcp",
-  "display_name": "Mattermost (mm-mcp)",
+  "display_name": "mm-mcp for Mattermost",
   "version": "0.0.0",
   "description": "Read, search and post in Mattermost as yourself or a bot.",
   "long_description": "mm-mcp connects an MCP client to one Mattermost server, as the person or bot whose token it is given. It is read-only unless writes are allowed, and a tool that writes asks you before it acts.",
@@ -11,11 +11,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/vriesdemichael/mattermost-mcp"
+    "url": "https://github.com/vriesdemichael/mm-mcp"
   },
-  "homepage": "https://github.com/vriesdemichael/mattermost-mcp",
-  "documentation": "https://vriesdemichael.github.io/mattermost-mcp/",
-  "support": "https://github.com/vriesdemichael/mattermost-mcp/issues",
+  "homepage": "https://github.com/vriesdemichael/mm-mcp",
+  "documentation": "https://vriesdemichael.github.io/mm-mcp/",
+  "support": "https://github.com/vriesdemichael/mm-mcp/issues",
   "server": {
     "type": "binary",
     "entry_point": "server/mm-mcp",

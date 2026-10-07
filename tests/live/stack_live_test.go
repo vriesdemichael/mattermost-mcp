@@ -9,7 +9,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/teststack"
+	"github.com/vriesdemichael/mm-mcp/internal/teststack"
 )
 
 // `task stack:up` bootstraps on every run, so bootstrapping an instance that

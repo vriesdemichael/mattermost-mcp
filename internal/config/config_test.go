@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/testsupport"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/testsupport"
 )
 
 func valid() map[string]string {

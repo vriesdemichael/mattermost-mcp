@@ -8,9 +8,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/cli"
-	"github.com/vriesdemichael/mattermost-mcp/internal/config"
-	"github.com/vriesdemichael/mattermost-mcp/internal/testsupport"
+	"github.com/vriesdemichael/mm-mcp/internal/cli"
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/testsupport"
 )
 
 type run struct {

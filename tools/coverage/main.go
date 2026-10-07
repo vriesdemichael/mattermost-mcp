@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-const module = "github.com/vriesdemichael/mattermost-mcp"
+const module = "github.com/vriesdemichael/mm-mcp"
 
 var scope = []string{"cmd/", "internal/"}
 

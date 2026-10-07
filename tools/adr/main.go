@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vriesdemichael/mattermost-mcp/internal/adr"
+	"github.com/vriesdemichael/mm-mcp/internal/adr"
 )
 
 var dir = filepath.Join("docs", "site", "adr")
