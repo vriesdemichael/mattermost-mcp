@@ -65,13 +65,16 @@ func TestSaveDraftLeavesDraftsWhereTheyGoAndNeverReplacesAnother(t *testing.T) {
 	}
 
 	byPlace := draftsOf(t, user, team.Id)
-	switch {
-	case !strings.HasPrefix(byPlace[channel.Id+"/"], "@here status"):
-		t.Errorf("the channel's draft reads %q", byPlace[channel.Id+"/"])
-	case byPlace[channel.Id+"/"+root.Id] != "I can take it":
-		t.Errorf("the thread's draft reads %q", byPlace[channel.Id+"/"+root.Id])
-	case byPlace[direct.Id+"/"] != "see you at standup":
-		t.Errorf("the direct message's draft reads %q", byPlace[direct.Id+"/"])
+	// Each read separately, and all of them shown, so a failure says which
+	// drafts the user does have.
+	if !strings.HasPrefix(byPlace[channel.Id+"/"], "@here status") {
+		t.Errorf("the channel's draft reads %q; the user's drafts by channel/thread are %v", byPlace[channel.Id+"/"], byPlace)
+	}
+	if byPlace[channel.Id+"/"+root.Id] != "I can take it" {
+		t.Errorf("the thread's draft reads %q; the user's drafts are %v", byPlace[channel.Id+"/"+root.Id], byPlace)
+	}
+	if byPlace[direct.Id+"/"] != "see you at standup" {
+		t.Errorf("the direct message's draft reads %q; the user's drafts are %v", byPlace[direct.Id+"/"], byPlace)
 	}
 	if posts := messagesIn(t, admin, channel.Id); len(posts) != 1 {
 		t.Errorf("drafting posted something: the channel holds %d posts", len(posts))
