@@ -63,7 +63,7 @@ func TestAnUnknownPlatformOrVersionIsRefused(t *testing.T) {
 
 func TestTheRegistryEntryListsEveryBundleByAddressAndChecksum(t *testing.T) {
 	t.Parallel()
-	raw, err := ServerJSON(template(t, "server.json"), "v0.3.1", "https://example.com/download/v0.3.1/",
+	raw, err := ServerJSON(template(t, "server.json"), template(t, "mcpb/manifest.json"), "v0.3.1", "https://example.com/download/v0.3.1/",
 		map[string]string{"mm-mcp_0.3.1_linux_amd64.mcpb": "aa", "mm-mcp_0.3.1_darwin_arm64.mcpb": "bb"})
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +84,73 @@ func TestTheRegistryEntryListsEveryBundleByAddressAndChecksum(t *testing.T) {
 		document.Packages[0].FileSha256 != "bb" || document.Packages[1].RegistryType != "mcpb" {
 		t.Fatalf("got %+v", document)
 	}
-	if _, err := ServerJSON(template(t, "server.json"), "v0.3.1", "https://example.com", nil); err == nil {
+	if _, err := ServerJSON(template(t, "server.json"), template(t, "mcpb/manifest.json"), "v0.3.1", "https://example.com", nil); err == nil {
 		t.Fatal("an entry with no bundles was written")
+	}
+}
+
+func TestEveryRegistryPackageDeclaresTheVariablesTheBundleAsksFor(t *testing.T) {
+	t.Parallel()
+	raw, err := ServerJSON(template(t, "server.json"), template(t, "mcpb/manifest.json"), "v0.3.1", "https://example.com",
+		map[string]string{"mm-mcp_0.3.1_linux_amd64.mcpb": "aa", "mm-mcp_0.3.1_windows_arm64.mcpb": "bb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Packages []struct {
+			EnvironmentVariables []map[string]any `json:"environmentVariables"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Packages) != 2 {
+		t.Fatalf("got %d packages", len(document.Packages))
+	}
+	want := map[string]map[string]any{
+		"MM_URL":                   {"isRequired": true, "isSecret": false, "format": "string"},
+		"MM_TOKEN":                 {"isRequired": true, "isSecret": true, "format": "string"},
+		"MM_MCP_ALLOW_WRITES":      {"isRequired": false, "isSecret": false, "format": "boolean", "default": "false"},
+		"MM_MCP_MARK_AI_GENERATED": {"isRequired": false, "isSecret": false, "format": "boolean", "default": "true"},
+		"MM_MCP_DOWNLOAD_DIR":      {"isRequired": false, "isSecret": false, "format": "filepath"},
+	}
+	for _, pkg := range document.Packages {
+		if len(pkg.EnvironmentVariables) != len(want) {
+			t.Fatalf("got %v, want %d variables", pkg.EnvironmentVariables, len(want))
+		}
+		for _, variable := range pkg.EnvironmentVariables {
+			name, _ := variable["name"].(string)
+			expected, ok := want[name]
+			if !ok {
+				t.Errorf("%s is declared, and the bundle does not set it", name)
+				continue
+			}
+			if description, _ := variable["description"].(string); description == "" {
+				t.Errorf("%s has no description", name)
+			}
+			for key, value := range expected {
+				if variable[key] != value {
+					t.Errorf("%s: %s is %v, want %v", name, key, variable[key], value)
+				}
+			}
+			if _, ok := expected["default"]; !ok && variable["default"] != nil {
+				t.Errorf("%s has the default %v, and the bundle gives none", name, variable["default"])
+			}
+		}
+	}
+}
+
+func TestAVariableTheBundleDoesNotAskForIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, manifest := range []string{
+		`{"server":{"mcp_config":{"env":{"MM_URL":"https://chat.example.com"}}},"user_config":{}}`,
+		`{"server":{"mcp_config":{"env":{"MM_URL":"${user_config.url}"}}},"user_config":{}}`,
+		`{"server":{"mcp_config":{"env":{"MM_URL":"${user_config.url}"}}},"user_config":{"url":{"type":"colour"}}}`,
+		`{"server":{"mcp_config":{}},"user_config":{}}`,
+	} {
+		if variables, err := EnvironmentVariables([]byte(manifest)); err == nil {
+			t.Errorf("%s was read as %+v", manifest, variables)
+		}
 	}
 }
 

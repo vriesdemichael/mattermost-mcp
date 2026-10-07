@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -104,6 +105,78 @@ func Next(previous *Version, bump Bump) (Version, bool) {
 	default:
 		return Version{v.Major, v.Minor, v.Patch + 1}, true
 	}
+}
+
+// Decision is what a run of the release workflow releases.
+type Decision struct {
+	Release     bool
+	Version     string
+	PreviousTag string
+}
+
+// Outputs is the decision as the workflow reads it, one key=value per line.
+func (d Decision) Outputs() string {
+	return fmt.Sprintf("should_release=%t\nversion=%s\nprevious_tag=%s", d.Release, d.Version, d.PreviousTag)
+}
+
+// Decide is the release HEAD makes, from the tags reachable from it, the tags
+// on HEAD itself, and the commits after a tag.
+//
+// A release tag already on HEAD means an earlier run decided this commit's
+// release and tagged it, and may have stopped before publishing it. That
+// version is released again, against the release before it, so a repeated run
+// finishes what the first one started instead of finding no commits since the
+// newest tag and releasing nothing (ADR-013).
+func Decide(reachable, onHead []string, commitsSince func(tag string) ([]Commit, error)) (Decision, error) {
+	head, headTag := newest(onHead, nil)
+	previous, previousTag := newest(reachable, onHead)
+	if head != nil {
+		return Decision{Release: true, Version: headTag, PreviousTag: previousTag}, nil
+	}
+	commits, err := commitsSince(previousTag)
+	if err != nil {
+		return Decision{}, err
+	}
+	bump := BumpNone
+	for _, c := range commits {
+		bump = max(bump, c.Bump())
+	}
+	next, releases := Next(previous, bump)
+	if !releases {
+		return Decision{PreviousTag: previousTag}, nil
+	}
+	return Decision{Release: true, Version: next.String(), PreviousTag: previousTag}, nil
+}
+
+// newest is the highest release among tags, leaving out those in except and
+// anything that is not a release tag. It is nil when there is none.
+func newest(tags, except []string) (*Version, string) {
+	var best *Version
+	bestTag := ""
+	for _, tag := range tags {
+		if slices.Contains(except, tag) {
+			continue
+		}
+		v, err := ParseVersion(tag)
+		if err != nil {
+			continue
+		}
+		if best == nil || v.After(*best) {
+			best, bestTag = &v, tag
+		}
+	}
+	return best, bestTag
+}
+
+// After reports whether v is a later release than other.
+func (v Version) After(other Version) bool {
+	if v.Major != other.Major {
+		return v.Major > other.Major
+	}
+	if v.Minor != other.Minor {
+		return v.Minor > other.Minor
+	}
+	return v.Patch > other.Patch
 }
 
 var sections = []struct {

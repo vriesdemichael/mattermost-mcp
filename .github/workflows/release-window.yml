@@ -52,8 +52,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Resolve the pinned tool versions
+        run: grep -E "^[A-Za-z_][A-Za-z0-9_]*=" .github/tool-versions.env >> "$GITHUB_ENV"
+
       - name: Setup Task
-        run: go install github.com/go-task/task/v3/cmd/task@v3.48.0
+        run: go install "github.com/go-task/task/v3/cmd/task@${{ env.GO_TASK_VERSION }}"
 
       - name: Run the live suite against ${{ matrix.release }}
         run: task test:live RELEASE=${{ matrix.release }}

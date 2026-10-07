@@ -9,7 +9,8 @@
 // stamped in, and the binary under server/. It is what `mcpb pack` makes, made
 // here so a release needs no Node; CI checks one with the official tool.
 // `server-json` writes server.json listing every bundle in the directory by its
-// download address and SHA-256, which is how the registry names an .mcpb.
+// download address and SHA-256, which is how the registry names an .mcpb, with
+// the environment variables the manifest sets from its user configuration.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -54,7 +56,7 @@ func main() {
 			sum := sha256.Sum256(read(file))
 			hashes[filepath.Base(file)] = hex.EncodeToString(sum[:])
 		}
-		document, err := ServerJSON(read("server.json"), *version, *baseURL, hashes)
+		document, err := ServerJSON(read("server.json"), read("mcpb/manifest.json"), *version, *baseURL, hashes)
 		fail(err)
 		fail(os.WriteFile("server.json", document, 0o600))
 	default:
@@ -121,15 +123,84 @@ func Manifest(template []byte, version, goos string) ([]byte, error) {
 	return append(encoded, '\n'), err
 }
 
+// EnvironmentVariable is one variable a registry package declares.
+type EnvironmentVariable struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IsRequired  bool   `json:"isRequired"`
+	IsSecret    bool   `json:"isSecret"`
+	Format      string `json:"format"`
+	Default     string `json:"default,omitempty"`
+}
+
+// formats maps a bundle's user configuration types to the registry's formats.
+var formats = map[string]string{"string": "string", "number": "number", "boolean": "boolean", "directory": "filepath", "file": "filepath"}
+
+var userConfigValue = regexp.MustCompile(`^\$\{user_config\.([A-Za-z0-9_]+)\}$`)
+
+// EnvironmentVariables reads the variables the bundle's manifest sets from its
+// user configuration, so the registry entry declares what the bundle asks for
+// and the two cannot drift apart (ADR-023).
+func EnvironmentVariables(manifest []byte) ([]EnvironmentVariable, error) {
+	var parsed struct {
+		Server struct {
+			MCPConfig struct {
+				Env map[string]string `json:"env"`
+			} `json:"mcp_config"`
+		} `json:"server"`
+		UserConfig map[string]struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+			Required    bool   `json:"required"`
+			Sensitive   bool   `json:"sensitive"`
+			Default     any    `json:"default"`
+		} `json:"user_config"`
+	}
+	if err := json.Unmarshal(manifest, &parsed); err != nil {
+		return nil, fmt.Errorf("the manifest: %w", err)
+	}
+	env := parsed.Server.MCPConfig.Env
+	if len(env) == 0 {
+		return nil, fmt.Errorf("the manifest sets no environment variables")
+	}
+	variables := make([]EnvironmentVariable, 0, len(env))
+	for name, value := range env {
+		match := userConfigValue.FindStringSubmatch(value)
+		if match == nil {
+			return nil, fmt.Errorf("the manifest sets %s to %q, not to one user_config value", name, value)
+		}
+		option, ok := parsed.UserConfig[match[1]]
+		if !ok {
+			return nil, fmt.Errorf("the manifest sets %s from user_config.%s, which it does not declare", name, match[1])
+		}
+		format, ok := formats[option.Type]
+		if !ok {
+			return nil, fmt.Errorf("user_config.%s has the type %q, which the registry has no format for", match[1], option.Type)
+		}
+		variable := EnvironmentVariable{Name: name, Description: option.Description, IsRequired: option.Required, IsSecret: option.Sensitive, Format: format}
+		if option.Default != nil {
+			variable.Default = fmt.Sprint(option.Default)
+		}
+		variables = append(variables, variable)
+	}
+	sort.Slice(variables, func(i, j int) bool { return variables[i].Name < variables[j].Name })
+	return variables, nil
+}
+
 // ServerJSON is the registry entry for a release: one package per bundle,
-// each named by its download address and checksum.
-func ServerJSON(template []byte, version, baseURL string, hashes map[string]string) ([]byte, error) {
+// each named by its download address and checksum, and each declaring the
+// environment variables the bundle's manifest sets.
+func ServerJSON(template, manifest []byte, version, baseURL string, hashes map[string]string) ([]byte, error) {
 	number, err := bare(version)
 	if err != nil {
 		return nil, err
 	}
 	if len(hashes) == 0 {
 		return nil, fmt.Errorf("no .mcpb bundles to list")
+	}
+	variables, err := EnvironmentVariables(manifest)
+	if err != nil {
+		return nil, err
 	}
 	var document map[string]any
 	if err := json.Unmarshal(template, &document); err != nil {
@@ -144,11 +215,12 @@ func ServerJSON(template []byte, version, baseURL string, hashes map[string]stri
 	packages := make([]map[string]any, 0, len(names))
 	for _, name := range names {
 		packages = append(packages, map[string]any{
-			"registryType": "mcpb",
-			"identifier":   strings.TrimRight(baseURL, "/") + "/" + name,
-			"version":      number,
-			"fileSha256":   hashes[name],
-			"transport":    map[string]string{"type": "stdio"},
+			"registryType":         "mcpb",
+			"identifier":           strings.TrimRight(baseURL, "/") + "/" + name,
+			"version":              number,
+			"fileSha256":           hashes[name],
+			"transport":            map[string]string{"type": "stdio"},
+			"environmentVariables": variables,
 		})
 	}
 	document["packages"] = packages

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -107,5 +110,111 @@ func TestTheNotesGroupCommitsAndLeaveOutWhatDoesNotRelease(t *testing.T) {
 	if !strings.Contains(notes, "- **search:** search messages ([`1111111`](https://example.com/repo/commit/") ||
 		strings.Contains(notes, "explain tokens") || strings.Count(notes, "rename get_me") != 1 {
 		t.Fatalf("got:\n%s", notes)
+	}
+}
+
+func TestAReleaseTagOnTheCommitReleasesThatVersionAgain(t *testing.T) {
+	t.Parallel()
+	asked := ""
+	commits := func(tag string) ([]Commit, error) {
+		asked = tag
+		return nil, nil
+	}
+	got, err := Decide([]string{"v0.1.0", "v0.1.1", "v0.2.0", "nightly"}, []string{"v0.2.0", "nightly"}, commits)
+	want := Decision{Release: true, Version: "v0.2.0", PreviousTag: "v0.1.1"}
+	if err != nil || got != want {
+		t.Fatalf("got %+v, %v; want %+v", got, err, want)
+	}
+	if asked != "" {
+		t.Errorf("read the commits since %q; a tagged commit's version is already decided", asked)
+	}
+	if got, _ := Decide([]string{"v0.1.0"}, []string{"v0.1.0"}, commits); got != (Decision{Release: true, Version: "v0.1.0"}) {
+		t.Errorf("the first release tagged again: got %+v", got)
+	}
+}
+
+func TestAnUntaggedCommitReleasesWhatItsCommitsCallFor(t *testing.T) {
+	t.Parallel()
+	since := map[string][]Commit{
+		"v0.1.1": {{SHA: strings.Repeat("1", 40), Type: "docs"}},
+		"v0.2.0": {{SHA: strings.Repeat("2", 40), Type: "fix"}},
+	}
+	commits := func(tag string) ([]Commit, error) { return since[tag], nil }
+	cases := []struct {
+		reachable, onHead []string
+		want              Decision
+	}{
+		{[]string{"v0.1.0", "v0.1.1"}, []string{"nightly"}, Decision{PreviousTag: "v0.1.1"}},
+		{[]string{"v0.1.1", "v0.2.0", "v0.10.0-rc.1"}, nil, Decision{Release: true, Version: "v0.2.1", PreviousTag: "v0.2.0"}},
+	}
+	for _, c := range cases {
+		if got, err := Decide(c.reachable, c.onHead, commits); err != nil || got != c.want {
+			t.Errorf("%v with %v on HEAD: got %+v, %v; want %+v", c.reachable, c.onHead, got, err, c.want)
+		}
+	}
+}
+
+func TestTheDecisionIsWhatTheWorkflowReads(t *testing.T) {
+	t.Parallel()
+	got := Decision{Release: true, Version: "v0.2.0", PreviousTag: "v0.1.1"}.Outputs()
+	if got != "should_release=true\nversion=v0.2.0\nprevious_tag=v0.1.1" {
+		t.Fatalf("got %q", got)
+	}
+	if got := (Decision{}).Outputs(); got != "should_release=false\nversion=\nprevious_tag=" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// The workflow tags a commit before it publishes, so a run that fails after
+// tagging leaves the tag on main's tip. This repeats that in a real repository:
+// the repeated run must release the tagged version again, with the commits
+// between the release before it and the tag.
+func TestARunRepeatedAfterTaggingReleasesTheTaggedVersion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	global := filepath.Join(dir, "gitconfig")
+	if err := os.WriteFile(global, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(dir, "repo")
+	run := func(args ...string) {
+		t.Helper()
+		command := exec.Command("git", append([]string{"-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"}, args...)...)
+		command.Dir = repo
+		// Nothing from the developer's git configuration: no signing, hooks or template.
+		command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+global, "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if err := os.Mkdir(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	repository := Repository{Dir: repo}
+	decide := func(want Decision) {
+		t.Helper()
+		if got, err := repository.Decide(); err != nil || got != want {
+			t.Fatalf("got %+v, %v; want %+v", got, err, want)
+		}
+	}
+
+	run("init", "--quiet")
+	decide(Decision{})
+	run("commit", "--quiet", "--allow-empty", "-m", "feat: search messages")
+	decide(Decision{Release: true, Version: "v0.1.0"})
+	run("tag", "-a", "v0.1.0", "-m", "Release v0.1.0")
+	decide(Decision{Release: true, Version: "v0.1.0"})
+
+	run("commit", "--quiet", "--allow-empty", "-m", "docs: explain tokens")
+	decide(Decision{PreviousTag: "v0.1.0"})
+	run("commit", "--quiet", "--allow-empty", "-m", "fix: read an expired session as one")
+	decide(Decision{Release: true, Version: "v0.1.1", PreviousTag: "v0.1.0"})
+	run("tag", "-a", "v0.1.1", "-m", "Release v0.1.1")
+	decide(Decision{Release: true, Version: "v0.1.1", PreviousTag: "v0.1.0"})
+
+	commits, err := repository.CommitsSince("v0.1.0")
+	if err != nil || len(commits) != 2 || commits[0].Type != "fix" || commits[1].Type != "docs" {
+		t.Fatalf("the notes of the repeated run would list %+v, %v", commits, err)
 	}
 }

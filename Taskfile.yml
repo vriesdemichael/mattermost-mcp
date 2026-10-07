@@ -23,7 +23,6 @@ vars:
   # The branch a change is measured against, which is the branch it targets (ADR-011).
   COVERAGE_BASE_REF: '{{.COVERAGE_BASE_REF | default "origin/next"}}'
   PACKAGES: ./cmd/... ./internal/... ./tools/...
-  MCPB: '@anthropic-ai/mcpb@2.1.2'
 
 tasks:
   default:
@@ -33,7 +32,7 @@ tasks:
   # ------------------------------------------------------------------ quality
 
   quality:verify:
-    desc: Every gate that needs no Mattermost. The pre-push hook and CI run the same set (ADR-014)
+    desc: Every static gate but govulncheck (quality:vulncheck), which CI runs. The pre-push hook runs this set (ADR-014)
     cmds:
       - task: quality:format:verify
       - task: quality:line-endings:verify
@@ -197,7 +196,9 @@ tasks:
   docs:validate:
     desc: Build the documentation site strictly, as CI does
     dir: docs
-    cmd: uv run --frozen mkdocs build --strict --config-file ../mkdocs.yml --site-dir ../.tmp/site
+    # MkDocs resolves --site-dir against the directory of mkdocs.yml, the
+    # repository's root, not against the task's dir.
+    cmd: uv run --frozen mkdocs build --strict --config-file ../mkdocs.yml --site-dir .tmp/site
 
   docs:serve:
     desc: Serve the documentation site with live reload
@@ -261,8 +262,8 @@ tasks:
   release:bundles:verify:
     desc: Unpack a built bundle with the official mcpb tool and validate its manifest. Needs Node
     cmds:
-      - npx --yes {{.MCPB}} unpack dist/mm-mcp_0.0.0_linux_amd64.mcpb .tmp/mcpb-check
-      - npx --yes {{.MCPB}} validate .tmp/mcpb-check/manifest.json
+      - npx --yes "@anthropic-ai/mcpb@${MCPB_VERSION}" unpack dist/mm-mcp_0.0.0_linux_amd64.mcpb .tmp/mcpb-check
+      - npx --yes "@anthropic-ai/mcpb@${MCPB_VERSION}" validate .tmp/mcpb-check/manifest.json
 
   pr:rebase:
     desc: Bring the branch up to date with next (ADR-011)

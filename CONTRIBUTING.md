@@ -21,8 +21,11 @@ before each commit and the fast gates before each push, and
 [uv](https://docs.astral.sh/uv/) builds the documentation site. Node is needed
 only to validate an `.mcpb` bundle locally.
 
+Install the Task CI runs, pinned as `GO_TASK_VERSION` in
+`.github/tool-versions.env`:
+
 ```bash
-go install github.com/go-task/task/v3/cmd/task@latest
+go install github.com/go-task/task/v3/cmd/task@v3.48.0
 ```
 
 ```bash
@@ -78,7 +81,8 @@ changed, an environment variable renamed.
 
 **Close issues from the commit that fixes them.** Put a closing keyword in the
 commit's body, one per issue: `Closes #5, closes #6`. GitHub acts on it when the
-commit reaches `main`, so the issue closes with the release that carries the fix
+commit reaches `main`, so the issue closes when `next` is promoted, with the
+release that promotion cuts if its commits call for one
 ([ADR-017](docs/site/adr/017-planning-in-github-issues.md)).
 
 **Keep history linear.** Rebase onto `next`; never merge `next` into your branch.
@@ -92,8 +96,10 @@ task pr:rebase
 `mcp.CallToolParams{Name: "..."}` literal, so the check can read it, and assert
 on what it returned.
 
-**A tool that writes is gated and asks.** Annotate it as not read-only, and
-confirm each call with the person
+**A tool that writes is gated, and asks when others see the change.** Annotate
+it as not read-only. When what it changes is seen by others, confirm each call
+with the person; when it is the user's alone or gone in seconds, such as
+following a thread or showing them typing, say why it does not ask
 ([ADR-021](docs/site/adr/021-read-only-by-default-and-every-write-asks.md)).
 
 ## Before opening a pull request
