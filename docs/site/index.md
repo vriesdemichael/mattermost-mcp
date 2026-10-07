@@ -15,17 +15,24 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
 - **Reading and searching** channels, threads, unread messages and mentions, and
   looking up people and channels.
-- **Posting and replying**, editing your own posts and reacting, once you allow
-  writes, with each one confirmed by you before it is sent.
-- **Files and attachments**, read and uploaded.
-- **Views in the chat**: in a client that renders MCP Apps, a thread appears as
-  Mattermost lays it out, and a draft appears before it is posted.
+- **Posting and replying**, editing and deleting your own posts, reacting and
+  pinning, once you allow writes, each confirmed by you before it is sent.
+- **Your own things**: following threads, saving posts, reminders, drafts and the
+  typing indicator, once you allow writes, without a question each time.
+- **Files and attachments**, read, uploaded and saved to your machine.
+
+Planned, not yet built: **views in the chat**, so that in a client that renders
+MCP Apps a thread appears as Mattermost lays it out and a draft appears before
+it is posted
+([ADR-022](adr/022-mcp-apps-views-through-one-show-tool.md)).
 
 ## How it behaves
 
 - **Read-only unless you say otherwise.** The tools that post or change anything
-  are not even offered until `MM_MCP_ALLOW_WRITES` is true, and then each call asks
-  you first ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+  are not even offered until `MM_MCP_ALLOW_WRITES` is true. Then each change
+  others see asks you first; following a thread, saving a post, a reminder, a
+  draft only you see and the typing indicator do not
+  ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
 - **One server, one identity.** It acts as whoever owns the token it is given: a
   personal access token, a bot's token, or a session token from your own login
   ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).

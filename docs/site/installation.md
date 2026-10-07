@@ -21,8 +21,8 @@ See [Configuration](configuration.md) for every setting.
 Download the `.mcpb` bundle for your machine from the
 [latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
 such as `mm-mcp_<version>_darwin_arm64.mcpb` for an Apple silicon Mac, and open
-it. Claude Desktop asks for the address and the token, and whether to allow
-posting.
+it. Claude Desktop asks for the address and the token, whether to allow
+posting, whether to mark posts as written with AI, and where to save files.
 
 ## With a package manager
 

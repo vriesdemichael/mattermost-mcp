@@ -16,7 +16,10 @@ the server's env block. No setting is a command-line flag that carries a secret
 
 `MM_MCP_ALLOW_WRITES`
 :   Optional, `false` by default. `true` offers the tools that post and change
-    things in Mattermost, and each of them asks you before it acts
+    things in Mattermost. A change others see, such as a post, a reply, an
+    edit, a deletion, a reaction or a pin, asks you before it acts. A change
+    that is yours alone or gone in seconds does not: following a thread, saving
+    a post, setting a reminder, saving a draft, and showing that you are typing
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
     `true`, `false`, `1`, `0`, `yes`, `no`, `on` and `off`.
 
@@ -49,5 +52,9 @@ the server's env block. No setting is a command-line flag that carries a secret
 
 `mm-mcp version`
 :   Prints the installed version.
+
+`mm-mcp help`
+:   Prints the commands and where the configuration comes from. `--help` and
+    `-h` do the same.
 
 A configuration error exits with status 2 and says which setting is wrong.

@@ -5,7 +5,7 @@ search:
 
 # ADR-022: MCP Apps views, shown through one tool
 
-mm-mcp adopts MCP Apps. In a client that renders them, the model can put what it found in front of the person as a view instead of describing it; a client that renders none gets text. The first views are a thread, read as Mattermost lays it out with names, avatars, Markdown, reactions and attachments; a digest of unread messages and mentions across channels; and a composer that shows a draft before it is posted.
+mm-mcp adopts MCP Apps. No view exists yet: they are planned, and this record holds for the first one and every one after it. In a client that renders them, the model will be able to put what it found in front of the person as a view instead of describing it; a client that renders none gets text. The first views planned are a thread, read as Mattermost lays it out with names, avatars, Markdown, reactions and attachments; a digest of unread messages and mentions across channels; and a composer that shows a draft before it is posted.
 
 Views are kinds of one tool, `show`, which the model calls once it has what the person asked about; the data tools carry no view, so an agent that reads twenty threads does not leave twenty views in its turn. What a view draws travels in the tool result beside a short text for the model, avatars included, which mm-mcp fetches with its own credential, because the client's webview has none. Text from Mattermost is never parsed as HTML: the page builds elements through the DOM, renders Markdown with a parser that produces elements, and opens a link only through the host. The view page is plain JavaScript and CSS embedded in the binary with go:embed, with no build step, and takes the host's theme and Mattermost's own wording.
 
