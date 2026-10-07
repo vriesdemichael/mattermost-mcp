@@ -43,6 +43,16 @@ type Spec struct {
 	// exactly these, and the governance tests that each is accounted for in full
 	// and on every supported release (ADR-027).
 	Uses []Use
+	// Shapes names each argument that shapes the answer rather than setting a
+	// parameter, such as a filter applied to what Mattermost returned, with what
+	// it does. Every argument is either set on a parameter or named here.
+	Shapes map[string]string
+}
+
+// shaping gives a spec the arguments that shape its answer.
+func shaping(spec Spec, shapes map[string]string) Spec {
+	spec.Shapes = shapes
+	return spec
 }
 
 // Use is one Mattermost operation a tool calls, by its operationId in the
@@ -90,6 +100,12 @@ func (s Spec) ReadOnly() bool {
 func AllSpecs() []Spec {
 	return []Spec{
 		getMeSpec(),
+		getUserSpec(),
+		searchUsersSpec(),
+		listTeamsSpec(),
+		listChannelsSpec(),
+		readChannelSpec(),
+		readThreadSpec(),
 	}
 }
 

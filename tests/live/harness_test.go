@@ -15,6 +15,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -181,4 +182,63 @@ func mcpAs(t *testing.T, token string) *mcp.ClientSession {
 	recorders.Store(session, rec)
 	t.Cleanup(func() { recorders.Delete(session) })
 	return session
+}
+
+// clientAs is a Client4 logged in as a seeded user, for acting as them in a
+// test's setup: posting, reacting, sending a direct message.
+func clientAs(t *testing.T, user *model.User) *model.Client4 {
+	t.Helper()
+	client := model.NewAPIv4Client(liveURL)
+	_, _, err := client.Login(t.Context(), user.Username, fixturePassword)
+	check(t, err)
+	return client
+}
+
+// seedTeam creates an open team of this test's own, with the given users as
+// members, and archives it when the test ends.
+func seedTeam(t *testing.T, admin *model.Client4, members ...*model.User) *model.Team {
+	t.Helper()
+	name := uniqueName("team")
+	team, _, err := admin.CreateTeam(t.Context(), &model.Team{Name: name, DisplayName: "Live " + name, Type: model.TeamOpen})
+	check(t, err)
+	t.Cleanup(func() { _, _ = admin.SoftDeleteTeam(context.Background(), team.Id) })
+	for _, member := range members {
+		_, _, err := admin.AddTeamMember(t.Context(), team.Id, member.Id)
+		check(t, err)
+	}
+	return team
+}
+
+// seedChannel creates a public channel in a team, with the given users as
+// members. It goes when its team is archived.
+func seedChannel(t *testing.T, admin *model.Client4, team *model.Team, members ...*model.User) *model.Channel {
+	t.Helper()
+	name := uniqueName("channel")
+	channel, _, err := admin.CreateChannel(t.Context(), &model.Channel{TeamId: team.Id, Name: name, DisplayName: "Live " + name, Type: model.ChannelTypeOpen})
+	check(t, err)
+	for _, member := range members {
+		_, _, err := admin.AddChannelMember(t.Context(), channel.Id, member.Id)
+		check(t, err)
+	}
+	return channel
+}
+
+// postAs posts a message in a channel, as a reply to rootID when it is set.
+func postAs(t *testing.T, author *model.Client4, channelID, rootID, message string) *model.Post {
+	t.Helper()
+	post, _, err := author.CreatePost(t.Context(), &model.Post{ChannelId: channelID, RootId: rootID, Message: message})
+	check(t, err)
+	return post
+}
+
+// structured reads a tool's structured answer into out, failing the test on a
+// tool error.
+func structured(t *testing.T, result *mcp.CallToolResult, out any) {
+	t.Helper()
+	if result.IsError {
+		t.Fatalf("the tool failed: %s", errorText(result))
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	check(t, err)
+	check(t, json.Unmarshal(raw, out))
 }

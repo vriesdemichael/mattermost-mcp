@@ -152,13 +152,24 @@ func TestEveryToolArgumentSetsAParameterItCalls(t *testing.T) {
 		}
 		arguments := inputArguments(t, specWithSchema(t, spec.Tool.Name))
 		for _, arg := range arguments {
-			if !exposed[arg] {
-				t.Errorf("%s takes the argument %s, which sets no parameter it declares", spec.Tool.Name, arg)
+			shapes, shaping := spec.Shapes[arg]
+			switch {
+			case exposed[arg] && shaping:
+				t.Errorf("%s both sets a parameter with %s and names it as shaping the answer", spec.Tool.Name, arg)
+			case shaping && strings.TrimSpace(shapes) == "":
+				t.Errorf("%s names %s as shaping the answer without saying how", spec.Tool.Name, arg)
+			case !exposed[arg] && !shaping:
+				t.Errorf("%s takes the argument %s, which sets no parameter it declares and shapes nothing it says", spec.Tool.Name, arg)
 			}
 		}
 		for arg := range exposed {
 			if !slices.Contains(arguments, arg) {
 				t.Errorf("%s exposes a parameter through %s, which it does not take", spec.Tool.Name, arg)
+			}
+		}
+		for arg := range spec.Shapes {
+			if !slices.Contains(arguments, arg) {
+				t.Errorf("%s says %s shapes its answer, but takes no such argument", spec.Tool.Name, arg)
 			}
 		}
 	}
