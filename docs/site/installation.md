@@ -24,12 +24,38 @@ such as `mm-mcp_<version>_darwin_arm64.mcpb` for an Apple silicon Mac, and open
 it. Claude Desktop asks for the address and the token, and whether to allow
 posting.
 
+## With a package manager
+
+On macOS or Linux, with Homebrew:
+
+```bash
+brew install vriesdemichael/tap/mm-mcp
+```
+
+On Windows, with WinGet:
+
+```powershell
+winget install vriesdemichael.mm-mcp
+```
+
+or with Scoop:
+
+```powershell
+scoop bucket add vriesdemichael https://github.com/vriesdemichael/scoop
+scoop install vriesdemichael/mm-mcp
+```
+
+Each puts `mm-mcp` on your `PATH`, and `brew upgrade`, `winget upgrade` and
+`scoop update` bring it to the newest release. WinGet takes a day or two to
+review each new version, so it can lag the release by that long.
+
 ## Any MCP client
 
-Download the archive for your machine from the
-[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
-put `mm-mcp` somewhere on your `PATH`, and add a server that runs `mm-mcp serve`
-with the settings in its env block. For a client configured with JSON:
+Install mm-mcp with a package manager, or download the archive for your machine
+from the [latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest)
+and put `mm-mcp` somewhere on your `PATH`. Then add a server that runs
+`mm-mcp serve` with the settings in its env block. For a client configured with
+JSON:
 
 ```json
 {

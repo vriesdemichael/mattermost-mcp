@@ -32,9 +32,13 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
 ## Quick start
 
-Download the binary for your machine from the
-[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest),
-and get a personal access token in Mattermost under **Profile → Security →
+Install mm-mcp with `brew install vriesdemichael/tap/mm-mcp`,
+`winget install vriesdemichael.mm-mcp` or
+`scoop install vriesdemichael/mm-mcp` (after
+`scoop bucket add vriesdemichael https://github.com/vriesdemichael/scoop`), or
+download the binary for your machine from the
+[latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest).
+Then get a personal access token in Mattermost under **Profile → Security →
 Personal Access Tokens**.
 
 ```json

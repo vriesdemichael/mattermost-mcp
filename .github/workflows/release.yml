@@ -305,6 +305,142 @@ jobs:
           .tmp/publisher/mcp-publisher login github-oidc
           .tmp/publisher/mcp-publisher publish
 
+  # The tap and the bucket are written after the release is public, from its
+  # checksum manifest, so they never name a draft nobody can download. Each
+  # push uses a token that may write only to its own repository, given only to
+  # the step that pushes. A repeated run writes the same file and commits
+  # nothing.
+  homebrew:
+    name: Publish to the Homebrew tap
+    needs:
+      - determine-version
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the checksum manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern sha256sums.txt --dir .tmp/release
+
+      - name: Write the formula and push it to the tap
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/vriesdemichael/homebrew-tap.git .tmp/tap
+          go run ./tools/packages homebrew -version "$VERSION" -repository "$GITHUB_REPOSITORY" -sums .tmp/release/sha256sums.txt -out .tmp/tap/Formula/mm-mcp.rb
+          cd .tmp/tap
+          git config credential.helper '!f() { printf "username=x-access-token\npassword=%s\n" "${TAP_GITHUB_TOKEN}"; }; f'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/mm-mcp.rb
+          git diff --cached --quiet || git commit -m "mm-mcp ${VERSION#v}"
+          git push
+
+  scoop:
+    name: Publish to the Scoop bucket
+    needs:
+      - determine-version
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download the checksum manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern sha256sums.txt --dir .tmp/release
+
+      - name: Write the manifest and push it to the bucket
+        env:
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/vriesdemichael/scoop.git .tmp/bucket
+          go run ./tools/packages scoop -version "$VERSION" -repository "$GITHUB_REPOSITORY" -sums .tmp/release/sha256sums.txt -out .tmp/bucket/mm-mcp.json
+          cd .tmp/bucket
+          git config credential.helper '!f() { printf "username=x-access-token\npassword=%s\n" "${SCOOP_BUCKET_TOKEN}"; }; f'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mm-mcp.json
+          git diff --cached --quiet || git commit -m "mm-mcp: Update to version ${VERSION#v}"
+          git push
+
+  # winget-releaser opens the pull request to microsoft/winget-pkgs from the
+  # fork, which must match upstream first. It updates a package WinGet already
+  # has: the first version is submitted by hand, with komac or wingetcreate, and
+  # until that is merged this job says so and publishes nothing.
+  winget:
+    name: Publish to WinGet
+    needs:
+      - determine-version
+      - release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+    steps:
+      - name: Find the package in WinGet
+        id: known
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh api repos/microsoft/winget-pkgs/contents/manifests/v/vriesdemichael/mm-mcp --silent 2>/dev/null; then
+            echo "known=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::WinGet has no vriesdemichael.mm-mcp yet. Submit $VERSION by hand once; later releases follow on their own."
+            echo "known=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bring the fork up to date with upstream
+        if: steps.known.outputs.known == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api --method POST /repos/vriesdemichael/winget-pkgs/merge-upstream -f branch=master --silent
+          upstream=$(gh api /repos/microsoft/winget-pkgs/branches/master --jq .commit.sha)
+          fork=$(gh api /repos/vriesdemichael/winget-pkgs/branches/master --jq .commit.sha)
+          if [[ "$fork" != "$upstream" ]]; then
+            echo "::error::The fork's master is at $fork, upstream's at $upstream, after merge-upstream."
+            exit 1
+          fi
+
+      - name: Open the WinGet pull request
+        if: steps.known.outputs.known == 'true'
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
+        with:
+          identifier: vriesdemichael.mm-mcp
+          release-tag: ${{ needs.determine-version.outputs.version }}
+          installers-regex: '^mm-mcp_[0-9.]+_windows_(amd64|arm64)\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
   docs:
     name: Publish docs
     needs:
