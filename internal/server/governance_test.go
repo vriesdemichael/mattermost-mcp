@@ -22,7 +22,8 @@ import (
 
 // Invariants every MCP tool is held to (ADR-021, ADR-015).
 
-var writingConfig = config.Config{URL: "https://chat.example.com", Token: "t", AllowWrites: true}
+// writingConfig offers every tool: writes are allowed, and the server is local.
+var writingConfig = config.Config{URL: "https://chat.example.com", Token: "t", AllowWrites: true, Local: true}
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -74,31 +75,86 @@ func TestAReadOnlyServerListsOnlyReadOnlyTools(t *testing.T) {
 	}
 }
 
+// toolKinds sorts the catalogue: tools that only read, tools that change
+// Mattermost, and tools that write this machine's files.
+func toolKinds() (reads, writes, locals []string) {
+	for _, spec := range server.AllSpecs() {
+		switch {
+		case spec.Local:
+			locals = append(locals, spec.Tool.Name)
+		case spec.ReadOnly():
+			reads = append(reads, spec.Tool.Name)
+		default:
+			writes = append(writes, spec.Tool.Name)
+		}
+	}
+	return reads, writes, locals
+}
+
+func offeredNames(t *testing.T, cfg config.Config) []string {
+	t.Helper()
+	var out []string
+	for _, tool := range listTools(t, cfg) {
+		out = append(out, tool.Name)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func sorted(groups ...[]string) []string {
+	return slices.Sorted(slices.Values(slices.Concat(groups...)))
+}
+
 func TestAllowingWritesAddsExactlyTheToolsThatWrite(t *testing.T) {
 	t.Parallel()
-	var readNames, writeNames []string
-	for _, spec := range server.AllSpecs() {
-		if spec.ReadOnly() {
-			readNames = append(readNames, spec.Tool.Name)
-		} else {
-			writeNames = append(writeNames, spec.Tool.Name)
-		}
-	}
-	names := func(cfg config.Config) []string {
-		var out []string
-		for _, tool := range listTools(t, cfg) {
-			out = append(out, tool.Name)
-		}
-		slices.Sort(out)
-		return out
-	}
-	want := slices.Sorted(slices.Values(readNames))
-	if got := names(readOnlyConfig); !slices.Equal(got, want) {
+	reads, writes, _ := toolKinds()
+	if got, want := offeredNames(t, readOnlyConfig), sorted(reads); !slices.Equal(got, want) {
 		t.Errorf("read-only server offers %v, want %v", got, want)
 	}
-	want = slices.Sorted(slices.Values(append(readNames, writeNames...)))
-	if got := names(writingConfig); !slices.Equal(got, want) {
+	allowing := readOnlyConfig
+	allowing.AllowWrites = true
+	if got, want := offeredNames(t, allowing), sorted(reads, writes); !slices.Equal(got, want) {
 		t.Errorf("writing server offers %v, want %v", got, want)
+	}
+}
+
+func TestOnlyALocalServerOffersTheToolsThatWriteItsFiles(t *testing.T) {
+	t.Parallel()
+	reads, writes, locals := toolKinds()
+	if len(locals) == 0 {
+		t.Fatal("no tool is marked local; the check has nothing to hold")
+	}
+	local := readOnlyConfig
+	local.Local = true
+	if got, want := offeredNames(t, local), sorted(reads, locals); !slices.Equal(got, want) {
+		t.Errorf("a local read-only server offers %v, want %v", got, want)
+	}
+	if got, want := offeredNames(t, writingConfig), sorted(reads, writes, locals); !slices.Equal(got, want) {
+		t.Errorf("a local writing server offers %v, want %v", got, want)
+	}
+}
+
+// TestAToolThatDoesNotAskChangesNothingOfOthers holds the tools that change
+// Mattermost without asking to what ADR-021 lets them be: neither read-only
+// nor destructive.
+func TestAToolThatDoesNotAskChangesNothingOfOthers(t *testing.T) {
+	t.Parallel()
+	found := 0
+	for _, spec := range server.AllSpecs() {
+		if spec.Unasked == "" {
+			continue
+		}
+		found++
+		hints := spec.Tool.Annotations
+		switch {
+		case spec.ReadOnly() || spec.Local:
+			t.Errorf("%s says why it does not ask, but it is not a tool that changes Mattermost", spec.Tool.Name)
+		case hints.DestructiveHint == nil || *hints.DestructiveHint:
+			t.Errorf("%s does not ask, and may destroy something", spec.Tool.Name)
+		}
+	}
+	if found == 0 {
+		t.Fatal("no tool goes without asking; the check has nothing to hold")
 	}
 }
 
@@ -188,9 +244,13 @@ func TestTheToolsPageDocumentsEveryToolAndOnlyThose(t *testing.T) {
 func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 	t.Parallel()
 	session := connect(t, writingConfig)
+	unasked := map[string]bool{}
+	for _, spec := range server.AllSpecs() {
+		unasked[spec.Tool.Name] = spec.Unasked != "" || spec.Local
+	}
 	written := 0
 	for _, tool := range listTools(t, writingConfig) {
-		if tool.Annotations.ReadOnlyHint {
+		if tool.Annotations.ReadOnlyHint || unasked[tool.Name] {
 			continue
 		}
 		written++

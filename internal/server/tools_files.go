@@ -1,0 +1,418 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/fileview"
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
+)
+
+// Files reach the model as content it can read, converted here, and reach the
+// disk only from a server that runs on the person's machine (ADR-029).
+
+// permalink is the address a person opens a post at, on any team.
+func permalink(base, postID string) string {
+	if postID == "" {
+		return ""
+	}
+	return strings.TrimRight(base, "/") + "/_redirect/pl/" + postID
+}
+
+// FileImage says how the image read_file returned compares with the one the
+// file holds: scaling can leave small text illegible.
+type FileImage struct {
+	Width            int    `json:"width" jsonschema:"the image's width in pixels, upright"`
+	Height           int    `json:"height" jsonschema:"the image's height in pixels, upright"`
+	Turned           bool   `json:"turned" jsonschema:"true when the image was stored turned or mirrored and was turned upright"`
+	Scaled           bool   `json:"scaled" jsonschema:"true when the image returned is smaller than the one stored, so small text in it may no longer be legible"`
+	ReturnedWidth    int    `json:"returned_width"`
+	ReturnedHeight   int    `json:"returned_height"`
+	ReturnedMIMEType string `json:"returned_mime_type" jsonschema:"differs from mime_type when the image was encoded again, or converted from a format clients do not take"`
+	ReturnedSize     int    `json:"returned_size" jsonschema:"in bytes"`
+	Frames           int    `json:"frames,omitempty" jsonschema:"how many frames an animated image has; only the first is returned"`
+	Pages            int    `json:"pages,omitempty" jsonschema:"how many pages a multi-page TIFF has; only the first is returned"`
+}
+
+// FileContent is what read_file found a file to be, and what came back of it.
+type FileContent struct {
+	FileID   string `json:"file_id"`
+	Name     string `json:"name"`
+	PostID   string `json:"post_id,omitempty" jsonschema:"the post the file is attached to"`
+	Kind     string `json:"kind" jsonschema:"what the file is, which decides what came back: text, a window of its lines; document, a window of the text extracted from a Word, PowerPoint or Excel file; archive, a window of the listing of a zip or tar archive's entries; image, the image, in the content beside this; audio and video, the file itself beside its description when it is small enough (see media_returned); binary, a description of its type and size only; too_large, over the most this tool reads, so not read"`
+	MIMEType string `json:"mime_type,omitempty" jsonschema:"the file's type, read from its bytes"`
+	Size     int64  `json:"size" jsonschema:"in bytes"`
+	WebURL   string `json:"web_url,omitempty" jsonschema:"the post the file is attached to, for a person to open"`
+	// The window's fields are pointers, so they are there, zero or not, for a
+	// file read as lines, and absent for one that is not.
+	Content       *string    `json:"content,omitempty" jsonschema:"the window's lines without their numbers"`
+	StartLine     *int       `json:"start_line,omitempty" jsonschema:"the first line in the window, counting from 1"`
+	EndLine       *int       `json:"end_line,omitempty" jsonschema:"the last line in the window"`
+	TotalLines    *int       `json:"total_lines,omitempty" jsonschema:"how many lines the whole text has"`
+	NextStartLine *int       `json:"next_start_line,omitempty" jsonschema:"where the next window starts: pass it as start_line for the lines that follow; absent when this window reaches the end"`
+	Image         *FileImage `json:"image,omitempty"`
+	MediaReturned *bool      `json:"media_returned,omitempty" jsonschema:"for audio and video: whether the file itself came back in the content"`
+}
+
+type readFileInput struct {
+	FileID    string `json:"file_id" jsonschema:"the file, as a post's files or search_files give it"`
+	StartLine int    `json:"start_line,omitempty" jsonschema:"the first line of the window, counting from 1 (the default); an answer that stops short of the end gives next_start_line, the value to pass here for the lines that follow"`
+	LineCount int    `json:"line_count,omitempty" jsonschema:"how many lines the window holds: 500 by default, at most 2000; a window also stops at 32 KiB of text"`
+}
+
+// fileOperationUses are the operations that read one file.
+func fileOperationUses() []Use {
+	return []Use{
+		{Operation: "GetFileInfo", Params: map[string]Coverage{"file_id": SetBy("file_id")}},
+		{Operation: "GetFile", Params: map[string]Coverage{"file_id": SetBy("file_id")}},
+	}
+}
+
+func readFileSpec() Spec {
+	return shaping(configuredToolSpec(
+		&mcp.Tool{
+			Name: "read_file",
+			Description: "Read a file attached to a post. Text comes back as a window of numbered lines: start_line and line_count " +
+				"choose it, and each answer says which lines it holds and where the next window starts. A Word, PowerPoint or Excel file " +
+				"comes back as the text extracted from it, and an archive (zip, tar, tar.gz, tar.bz2) as a listing of its entries, both in " +
+				"the same windows. An image (PNG, JPEG, GIF, WebP, BMP, TIFF) comes back as an image, turned upright and scaled down when it " +
+				"is large, with a note saying so. Small audio and video come back as themselves beside a description. A PDF or any other " +
+				fmt.Sprintf("file is described by its type and size, and a file over %d MiB is described without being read.", fileview.MaxFileBytes>>20),
+			Annotations: readOnly("Read file"),
+		},
+		fileOperationUses(),
+		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[readFileInput, FileContent] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input readFileInput) (*mcp.CallToolResult, FileContent, error) {
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return nil, FileContent{}, err
+				}
+				info, err := client.FileInfo(ctx, input.FileID)
+				if err != nil {
+					return nil, FileContent{}, err
+				}
+				view := fileview.Request{
+					Name:      info.Name,
+					WebURL:    permalink(cfg.URL, info.PostId),
+					StartLine: input.StartLine,
+					LineCount: input.LineCount,
+				}
+				if err := view.Validate(); err != nil {
+					return nil, FileContent{}, err
+				}
+				var read fileview.View
+				if info.Size > fileview.MaxFileBytes {
+					// Described rather than refused: the model needs to know the
+					// file is there and too large, not nothing.
+					read = fileview.TooLarge(view, fileview.MaxFileBytes, info.Size)
+				} else {
+					data, err := client.File(ctx, input.FileID)
+					if err != nil {
+						return nil, FileContent{}, err
+					}
+					if read, err = fileview.Read(ctx, view, data); err != nil {
+						return nil, FileContent{}, err
+					}
+				}
+				result, out := fileResult(input.FileID, info.PostId, view, read)
+				return result, out, nil
+			}
+		},
+	), map[string]string{
+		"start_line": "chooses the window of lines the converted text is returned in",
+		"line_count": "chooses the window of lines the converted text is returned in",
+	})
+}
+
+// fileResult puts a view of a file into a tool result. The text is what the
+// model reads, so it is the content itself, an image follows it, and the
+// structured answer carries the same facts for a client that parses them.
+func fileResult(fileID, postID string, request fileview.Request, view fileview.View) (*mcp.CallToolResult, FileContent) {
+	out := FileContent{
+		FileID:   fileID,
+		Name:     request.Name,
+		PostID:   postID,
+		Kind:     string(view.Kind),
+		MIMEType: view.MIMEType,
+		Size:     view.Size,
+		WebURL:   request.WebURL,
+	}
+	if window := view.Window; window != nil {
+		content, start, end, total := window.Content, window.StartLine, window.EndLine, window.TotalLines
+		out.Content, out.StartLine, out.EndLine, out.TotalLines = &content, &start, &end, &total
+		if next := window.NextStartLine; next > 0 {
+			out.NextStartLine = &next
+		}
+	}
+	content := []mcp.Content{&mcp.TextContent{Text: view.Text}}
+	if image := view.Image; image != nil {
+		content = append(content, &mcp.ImageContent{Data: image.Data, MIMEType: image.MIMEType})
+		out.Image = &FileImage{
+			Width: image.Width, Height: image.Height, Turned: image.Turned, Scaled: image.Scaled,
+			ReturnedWidth: image.ReturnedWidth, ReturnedHeight: image.ReturnedHeight,
+			ReturnedMIMEType: image.MIMEType, ReturnedSize: len(image.Data),
+			Frames: image.Frames, Pages: image.Pages,
+		}
+	}
+	if view.Kind == fileview.KindAudio || view.Kind == fileview.KindVideo {
+		returned := view.Media != nil
+		out.MediaReturned = &returned
+	}
+	if media := view.Media; media != nil {
+		if view.Kind == fileview.KindVideo {
+			// MCP has no video content; an embedded resource carries any bytes
+			// with their type. Its address names the file without being one a
+			// client could fetch, which would need the credential.
+			content = append(content, &mcp.EmbeddedResource{Resource: &mcp.ResourceContents{
+				URI: "mm-mcp://files/" + fileID, MIMEType: media.MIMEType, Blob: media.Data,
+			}})
+		} else {
+			content = append(content, &mcp.AudioContent{Data: media.Data, MIMEType: media.MIMEType})
+		}
+	}
+	return &mcp.CallToolResult{Content: content}, out
+}
+
+// FoundFile is a file a search found, with where it was posted.
+type FoundFile struct {
+	Attachment
+	PostID    string `json:"post_id"`
+	ChannelID string `json:"channel_id"`
+	Channel   string `json:"channel" jsonschema:"the channel's display name, or the other person's username for a direct message"`
+	Author    string `json:"author" jsonschema:"the username of whoever posted it"`
+	CreatedAt string `json:"created_at"`
+}
+
+// FileResults is what a file search found.
+type FileResults struct {
+	Files     []FoundFile `json:"files" jsonschema:"newest first"`
+	Truncated bool        `json:"truncated" jsonschema:"more files matched than the limit let through: narrow the terms, or raise the limit"`
+}
+
+type searchFilesInput struct {
+	Terms    string `json:"terms" jsonschema:"what to search for: words in the file's name, ext:pdf for a type, from:username, in:channel-name, on:, before: and after: with a YYYY-MM-DD date"`
+	TeamID   string `json:"team_id,omitempty" jsonschema:"search one team only; every team when not given"`
+	MatchAny bool   `json:"match_any,omitempty" jsonschema:"find files matching any of the words rather than all of them"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"how many files to return, at most 100; 20 when not given"`
+}
+
+func searchFilesSpec() Spec {
+	return shaping(toolSpec(
+		&mcp.Tool{
+			Name: "search_files",
+			Description: "Search the files attached to posts the user can read, by name and with Mattermost's search syntax: " +
+				"ext:pdf for a type, from:username, in:channel-name and dates. Each file comes with the post and channel it is in; read_file reads it.",
+			Annotations: readOnly("Search files"),
+		},
+		append([]Use{{
+			Operation: "SearchFiles",
+			Params: map[string]Coverage{
+				"team_id":                       SetBy("team_id"),
+				"body.terms":                    SetBy("terms"),
+				"body.is_or_search":             SetBy("match_any"),
+				"body.page":                     Fixed("0", "Team Edition's database search answers the first page with every match, and later pages with nothing"),
+				"body.per_page":                 Fixed(fmt.Sprint(maxPostsPerSearch), "the most the tool returns; it applies its limit itself"),
+				"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
+				"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of list_channels"),
+			},
+		}}, channelNameUses("a file names the channel it is in, from the channels the user belongs to")...),
+		func(clientFor ClientFor) mcp.ToolHandlerFor[searchFilesInput, FileResults] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input searchFilesInput) (*mcp.CallToolResult, FileResults, error) {
+				limit := input.Limit
+				switch {
+				case strings.TrimSpace(input.Terms) == "":
+					return nil, FileResults{}, fmt.Errorf("give terms to search for")
+				case limit == 0:
+					limit = defaultPostsPerSearch
+				case limit < 0 || limit > maxPostsPerSearch:
+					return nil, FileResults{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxPostsPerSearch, limit)
+				}
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return nil, FileResults{}, err
+				}
+				found, err := client.SearchFiles(ctx, mattermost.FileSearch{
+					TeamID: input.TeamID, Terms: input.Terms, MatchAny: input.MatchAny, PerPage: maxPostsPerSearch,
+				})
+				if err != nil {
+					return nil, FileResults{}, err
+				}
+				channels, err := channelNames(ctx, client)
+				if err != nil {
+					return nil, FileResults{}, err
+				}
+				var creators []string
+				for _, id := range found.Order {
+					if file := found.FileInfos[id]; file != nil {
+						creators = append(creators, file.CreatorId)
+					}
+				}
+				people, err := usernames(ctx, client, creators)
+				if err != nil {
+					return nil, FileResults{}, err
+				}
+				out := FileResults{Files: []FoundFile{}}
+				for _, id := range found.Order {
+					file := found.FileInfos[id]
+					if file == nil {
+						continue
+					}
+					if len(out.Files) == limit {
+						out.Truncated = true
+						break
+					}
+					out.Files = append(out.Files, FoundFile{
+						Attachment: toAttachment(file),
+						PostID:     file.PostId,
+						ChannelID:  file.ChannelId,
+						Channel:    channels[file.ChannelId],
+						Author:     people[file.CreatorId],
+						CreatedAt:  timestamp(file.CreateAt),
+					})
+				}
+				return nil, out, nil
+			}
+		},
+	), map[string]string{
+		"limit": "returns at most this many of the files Mattermost found, and says so when it cut some off",
+	})
+}
+
+// maxSavedFileBytes is the largest file save_file writes: Mattermost's own
+// default limit on an upload. It is held in memory on the way to the disk.
+const maxSavedFileBytes = 100 << 20
+
+// SavedFile is a file save_file wrote.
+type SavedFile struct {
+	FileID string `json:"file_id"`
+	Path   string `json:"path" jsonschema:"where the file was written, on the person's machine"`
+	Size   int64  `json:"size" jsonschema:"in bytes"`
+}
+
+type saveFileInput struct {
+	FileID string `json:"file_id" jsonschema:"the file to save, as a post's files or search_files give it"`
+}
+
+func saveFileSpec() Spec {
+	return local(configuredToolSpec(
+		&mcp.Tool{
+			Name: "save_file",
+			Description: "Save a file attached to a post into the person's download directory on this machine, under its own name, " +
+				"and answer with the path. An existing file is never overwritten: a number is added to the name instead. " +
+				"Use read_file to read a file; save_file is for when the person wants the file itself.",
+			Annotations: &mcp.ToolAnnotations{
+				Title:           "Save file",
+				ReadOnlyHint:    false,
+				DestructiveHint: ptr(false),
+				IdempotentHint:  false,
+				OpenWorldHint:   ptr(false),
+			},
+		},
+		fileOperationUses(),
+		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[saveFileInput, SavedFile] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input saveFileInput) (*mcp.CallToolResult, SavedFile, error) {
+				dir, err := downloadDir(cfg)
+				if err != nil {
+					return nil, SavedFile{}, err
+				}
+				client, err := clientFor(ctx, request)
+				if err != nil {
+					return nil, SavedFile{}, err
+				}
+				info, err := client.FileInfo(ctx, input.FileID)
+				if err != nil {
+					return nil, SavedFile{}, err
+				}
+				if info.Size > maxSavedFileBytes {
+					return nil, SavedFile{}, fmt.Errorf("%s is %d MiB, more than the %d MiB save_file writes; the person can download it from the post",
+						info.Name, info.Size>>20, maxSavedFileBytes>>20)
+				}
+				data, err := client.File(ctx, input.FileID)
+				if err != nil {
+					return nil, SavedFile{}, err
+				}
+				path, err := writeNew(dir, info.Name, data)
+				if err != nil {
+					return nil, SavedFile{}, err
+				}
+				return nil, SavedFile{FileID: input.FileID, Path: path, Size: int64(len(data))}, nil
+			}
+		},
+	))
+}
+
+// downloadDir is where save_file writes: the configured directory, or the
+// person's Downloads directory, made when it is not there yet.
+func downloadDir(cfg config.Config) (string, error) {
+	dir := cfg.DownloadDir
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("finding the Downloads directory: %w; set %s", err, config.EnvDownloadDir)
+		}
+		dir = filepath.Join(home, "Downloads")
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", fmt.Errorf("making the download directory: %w", err)
+	}
+	return dir, nil
+}
+
+// safeName is a file's name as save_file writes it: its last element only,
+// with what Windows forbids in a name replaced, so a name from Mattermost
+// cannot reach outside the download directory.
+func safeName(name string) string {
+	name = filepath.Base(filepath.Clean("/" + strings.ReplaceAll(name, "\\", "/")))
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+		return r
+	}, name)
+	name = strings.TrimRight(name, ". ")
+	if name == "" || name == "_" {
+		return "file"
+	}
+	return name
+}
+
+// writeNew writes data to a file of its own in dir: name, or name with a
+// number added when that is taken. It never opens an existing file.
+func writeNew(dir, name string, data []byte) (string, error) {
+	name = safeName(name)
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for n := 1; n <= 1000; n++ {
+		candidate := name
+		if n > 1 {
+			candidate = fmt.Sprintf("%s (%d)%s", stem, n, ext)
+		}
+		path := filepath.Join(dir, candidate)
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640) //nolint:gosec // the name is made safe and the directory is the person's own
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("writing %s: %w", path, err)
+		}
+		if _, err := file.Write(data); err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
+			return "", fmt.Errorf("writing %s: %w", path, err)
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(path)
+			return "", fmt.Errorf("writing %s: %w", path, err)
+		}
+		return path, nil
+	}
+	return "", fmt.Errorf("a thousand files named like %s are in %s already", name, dir)
+}

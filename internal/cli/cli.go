@@ -116,6 +116,7 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
 		return ExitConfig
 	}
+	cfg.Local = *transport == "stdio"
 	client := mattermost.New(cfg.URL, cfg.Token, network.NewSafeTransport())
 	mcpServer := server.New(cfg, server.Single(client))
 

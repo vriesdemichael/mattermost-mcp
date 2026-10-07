@@ -27,7 +27,7 @@ holds and why, and the alternatives it turned down.
 - [ADR-018: Agents and tasks write temporary files to .tmp](018-agents-write-temporary-files-to-tmp.md)
 - [ADR-019: The server is given a credential; acquiring one is a separate concern](019-credentials-are-supplied-not-acquired.md)
 - [ADR-020: stdio and Streamable HTTP from one server, single-tenant first](020-stdio-and-streamable-http-single-tenant-first.md)
-- [ADR-021: Read-only by default, and every write asks the person](021-read-only-by-default-and-every-write-asks.md)
+- [ADR-021: Read-only by default, and every write others see asks the person](021-read-only-by-default-and-every-write-asks.md)
 - [ADR-022: MCP Apps views, shown through one tool](022-mcp-apps-views-through-one-show-tool.md)
 - [ADR-023: Distributed as signed binaries, .mcpb bundles, and through the MCP Registry](023-distributed-as-signed-binaries-mcpb-bundles-and-the-mcp-registry.md)
 - [ADR-024: Mattermost is reached through its own client, at the commit of the newest supported release](024-mattermosts-client-at-the-newest-release.md)
@@ -35,3 +35,4 @@ holds and why, and the alternatives it turned down.
 - [ADR-026: Each supported release's specification and route table are vendored, as reference](026-the-openapi-specification-is-vendored-per-supported-release.md)
 - [ADR-027: A difference between supported releases is found from Mattermost's own files, before a test runs](027-a-difference-between-supported-releases-is-found-from-mattermosts-own-files.md)
 - [ADR-028: Every parameter of an operation a tool calls is accounted for, and the live suite proves the tool calls what it declares](028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)
+- [ADR-029: Files reach the model as content, and the disk only from a local server](029-files-reach-the-model-as-content-and-the-disk-only-locally.md)

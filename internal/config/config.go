@@ -16,24 +16,33 @@ const (
 	EnvURL                  = "MM_URL"
 	EnvToken                = "MM_TOKEN"
 	EnvAllowWrites          = "MM_MCP_ALLOW_WRITES"
+	EnvDownloadDir          = "MM_MCP_DOWNLOAD_DIR"
 	EnvBlockExternalNetwork = "MM_MCP_BLOCK_EXTERNAL_NETWORK"
 )
 
 // EnvironmentVariables is every variable mm-mcp reads. The unit-test seal
 // empties each of them, and a governance test fails when the source names one
 // that is not listed here (ADR-006).
-var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvBlockExternalNetwork}
+var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloadDir, EnvBlockExternalNetwork}
 
 // Config is a server's configuration.
 type Config struct {
 	URL         string
 	Token       string
 	AllowWrites bool
+	// DownloadDir is where save_file writes; empty means the person's
+	// Downloads directory.
+	DownloadDir string
+	// Local says the server runs on the person's own machine, for the one client
+	// that started it over stdio. It comes from how the server is served, not
+	// from the environment, and only a local server offers the tools that read
+	// or write this machine's files.
+	Local bool
 }
 
 // String leaves the token out, so a Config can be logged or printed in an error.
 func (c Config) String() string {
-	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t}", c.URL, c.AllowWrites)
+	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, DownloadDir: %q, Local: %t}", c.URL, c.AllowWrites, c.DownloadDir, c.Local)
 }
 
 // GoString is String, so %#v leaves the token out too.
@@ -60,7 +69,7 @@ func FromEnv(lookup func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{URL: address, Token: token, AllowWrites: allowWrites}, nil
+	return Config{URL: address, Token: token, AllowWrites: allowWrites, DownloadDir: strings.TrimSpace(lookup(EnvDownloadDir))}, nil
 }
 
 // ParseBool reads the usual spellings of true and false; empty is false.

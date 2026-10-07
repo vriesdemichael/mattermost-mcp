@@ -41,7 +41,7 @@ func Single(client *mattermost.Client) ClientFor {
 // Mattermost operations it calls.
 type Spec struct {
 	Tool     *mcp.Tool
-	Register func(*mcp.Server, ClientFor)
+	Register func(*mcp.Server, ClientFor, config.Config)
 	// Uses is every operation the tool calls, with what it does with each of the
 	// operation's parameters (ADR-028). The live suite checks that the tool calls
 	// exactly these, and the governance tests that each is accounted for in full
@@ -51,6 +51,27 @@ type Spec struct {
 	// parameter, such as a filter applied to what Mattermost returned, with what
 	// it does. Every argument is either set on a parameter or named here.
 	Shapes map[string]string
+	// Unasked says why a tool that changes Mattermost does not ask the person
+	// first: what it changes is theirs alone, or gone within seconds. Every
+	// other tool that changes Mattermost asks (ADR-021).
+	Unasked string
+	// Local marks a tool that writes files on the machine the server runs on,
+	// from what it reads in Mattermost. Only a server serving over stdio, on the
+	// person's own machine, offers it (ADR-029).
+	Local bool
+}
+
+// unasked is a tool that changes only what is the user's own, or what is gone
+// within seconds, so it does not ask before each call.
+func unasked(spec Spec, reason string) Spec {
+	spec.Unasked = reason
+	return spec
+}
+
+// local is a tool that reads or writes this machine's files.
+func local(spec Spec) Spec {
+	spec.Local = true
+	return spec
 }
 
 // shaping gives a spec the arguments that shape its answer.
@@ -106,23 +127,46 @@ func AllSpecs() []Spec {
 		getMeSpec(),
 		getUserSpec(),
 		searchUsersSpec(),
+		getStatusSpec(),
 		listTeamsSpec(),
 		listChannelsSpec(),
 		readChannelSpec(),
+		readUnreadSpec(),
 		readThreadSpec(),
+		listThreadsSpec(),
+		listPinnedSpec(),
+		listSavedSpec(),
 		searchPostsSpec(),
+		readFileSpec(),
+		searchFilesSpec(),
+		saveFileSpec(),
 		postMessageSpec(),
+		editPostSpec(),
+		deletePostSpec(),
 		addReactionSpec(),
+		removeReactionSpec(),
+		pinPostSpec(),
+		typingSpec(),
+		followThreadSpec(),
+		savePostSpec(),
+		draftMessageSpec(),
 	}
 }
 
 // Exposed is the part of the catalogue a configuration offers. A tool that
-// writes is offered only when writes are allowed, so a read-only server does
-// not list it at all (ADR-021).
+// changes Mattermost is offered only when writes are allowed, so a read-only
+// server does not list it at all (ADR-021). A tool that touches this machine's
+// files is offered only by a local server, whether writes are allowed or not:
+// it reads Mattermost and never changes it (ADR-029).
 func Exposed(cfg config.Config) []Spec {
 	var exposed []Spec
 	for _, spec := range AllSpecs() {
-		if spec.ReadOnly() || cfg.AllowWrites {
+		switch {
+		case spec.Local:
+			if cfg.Local {
+				exposed = append(exposed, spec)
+			}
+		case spec.ReadOnly() || cfg.AllowWrites:
 			exposed = append(exposed, spec)
 		}
 	}
@@ -136,7 +180,7 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 		&mcp.ServerOptions{Instructions: Instructions},
 	)
 	for _, spec := range Exposed(cfg) {
-		spec.Register(server, clientFor)
+		spec.Register(server, clientFor, cfg)
 	}
 	return server
 }
@@ -151,10 +195,19 @@ func toolSpec[In, Out any](tool *mcp.Tool, uses []Use, handler func(ClientFor) m
 	return Spec{
 		Tool: tool,
 		Uses: uses,
-		Register: func(server *mcp.Server, clientFor ClientFor) {
+		Register: func(server *mcp.Server, clientFor ClientFor, _ config.Config) {
 			mcp.AddTool(server, tool, handler(clientFor))
 		},
 	}
+}
+
+// configuredToolSpec is toolSpec for a tool that needs the configuration too.
+func configuredToolSpec[In, Out any](tool *mcp.Tool, uses []Use, handler func(ClientFor, config.Config) mcp.ToolHandlerFor[In, Out]) Spec {
+	spec := toolSpec[In, Out](tool, uses, nil)
+	spec.Register = func(server *mcp.Server, clientFor ClientFor, cfg config.Config) {
+		mcp.AddTool(server, tool, handler(clientFor, cfg))
+	}
+	return spec
 }
 
 // readOnly is the annotation of a tool that changes nothing in Mattermost.
