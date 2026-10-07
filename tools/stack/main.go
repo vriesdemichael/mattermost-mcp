@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/vriesdemichael/mm-mcp/internal/teststack"
 )
 
@@ -160,6 +161,9 @@ func up(ctx context.Context, checkout teststack.Checkout, instance teststack.Ins
 		return err
 	}
 	if err := teststack.Bootstrap(ctx, url); err != nil {
+		return err
+	}
+	if err := waitForDraftMigrations(ctx, instance); err != nil {
 		return err
 	}
 	fmt.Printf("%s is ready at %s, administrator %s, in %s.\n",
@@ -305,4 +309,45 @@ func status(checkout teststack.Checkout, instance teststack.Instance) error {
 		fmt.Printf("  %-40s %-8s %s\n", row.project, row.state, row.worktree)
 	}
 	return nil
+}
+
+// draftMigrations are Mattermost's one-off jobs that delete drafts, which a
+// new instance runs a few seconds after it starts and records as done in its
+// Systems table. The orphan one deletes every draft outside a thread: it takes
+// a draft whose RootId names no post for an orphan, and a channel's draft has
+// the RootId "", which names none. Run while the live suite seeds drafts, it
+// deletes them under the tests, so up waits for both.
+var draftMigrations = []string{model.MigrationKeyDeleteEmptyDrafts, model.MigrationKeyDeleteOrphanDrafts}
+
+// draftMigrationTimeout bounds the wait; the jobs take seconds.
+const draftMigrationTimeout = 3 * time.Minute
+
+// waitForDraftMigrations waits until the instance records every draft
+// migration as done. No API reads the Systems table, or these jobs, so it asks
+// the instance's PostgreSQL, as the user and database docker/*/compose.yml
+// give it.
+func waitForDraftMigrations(ctx context.Context, instance teststack.Instance) error {
+	query := fmt.Sprintf("SELECT count(*) FROM systems WHERE value = 'true' AND name IN ('%s')", strings.Join(draftMigrations, "', '"))
+	deadline := time.Now().Add(draftMigrationTimeout)
+	for {
+		var out bytes.Buffer
+		cmd := composeCommand(instance, "exec", "-T", "postgres", "psql", "-U", "mmuser", "-d", "mattermost", "-tAc", query)
+		cmd.Stdout = &out
+		err := cmd.Run()
+		if err == nil && strings.TrimSpace(out.String()) == strconv.Itoa(len(draftMigrations)) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("could not ask the instance's PostgreSQL whether Mattermost's draft migrations are done: %w", err)
+			}
+			return fmt.Errorf("the instance did not finish Mattermost's draft migrations (%s) within %s; `task stack:logs` shows why",
+				strings.Join(draftMigrations, ", "), draftMigrationTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
 }
