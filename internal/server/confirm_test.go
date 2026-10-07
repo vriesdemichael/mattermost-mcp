@@ -274,11 +274,19 @@ func TestAConfirmationQuotesTheStartOfAPostOnOneLine(t *testing.T) {
 	}
 }
 
-func TestAnEmojiIsNamedWithoutItsColons(t *testing.T) {
+func TestAnEmojiIsNamedWithoutItsColonsOrByItsCharacter(t *testing.T) {
 	t.Parallel()
-	for in, want := range map[string]string{":thumbsup:": "thumbsup", " eyes ": "eyes", "+1": "+1"} {
-		if got := emojiName(in); got != want {
-			t.Errorf("%q: got %q, want %q", in, got, want)
+	for in, want := range map[string]string{
+		":thumbsup:": "thumbsup", " eyes ": "eyes", "+1": "+1", "Tada": "tada",
+		"👍": "+1", "✅": "white_check_mark", "❤️": "heart",
+	} {
+		if got, err := emojiName(in); err != nil || got != want {
+			t.Errorf("%q: got %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "été"} {
+		if got, err := emojiName(in); err == nil {
+			t.Errorf("%q named %q", in, got)
 		}
 	}
 }

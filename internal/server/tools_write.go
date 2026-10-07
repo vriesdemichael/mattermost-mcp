@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"unicode/utf8"
 
@@ -31,9 +32,9 @@ func writes(title string, idempotent bool) *mcp.ToolAnnotations {
 }
 
 // overwrites is the annotation of a tool that replaces or removes something in
-// Mattermost.
-func overwrites(title string, idempotent bool) *mcp.ToolAnnotations {
-	annotations := writes(title, idempotent)
+// Mattermost; doing it again changes nothing more.
+func overwrites(title string) *mcp.ToolAnnotations {
+	annotations := writes(title, true)
 	annotations.DestructiveHint = ptr(true)
 	return annotations
 }
@@ -136,193 +137,205 @@ func postContextUses() []Use {
 	}
 }
 
-// postMessageInput is a post, or a reply.
-type postMessageInput struct {
-	ChannelID string       `json:"channel_id,omitempty" jsonschema:"the channel to post in, as list_channels gives it"`
-	ToUser    string       `json:"to_user,omitempty" jsonschema:"post in the direct message with this username instead, opening it when there is none yet"`
-	Message   string       `json:"message" jsonschema:"the text to post, in Mattermost Markdown"`
-	RootID    string       `json:"root_id,omitempty" jsonschema:"reply in the thread of this post: the post that started it or any reply in it"`
-	Files     []attachFile `json:"files,omitempty" jsonschema:"files to attach, at most 10: from a full path on this machine when the server runs on it, or text written for the post with a name"`
-}
-
-// replyTarget is where a post goes: its channel, and the thread's first post
-// when it is a reply.
-type replyTarget struct {
+// destination is where a post goes, as the question names it. A direct or
+// group message is opened only once the person accepts, so a declined post
+// leaves no conversation behind.
+type destination struct {
+	self      *model.User
+	label     string
 	channelID string
 	root      *model.Post
+	open      func(context.Context) (string, error)
+	size      destinationSize
 }
 
 // rootID is the id of the thread's first post, or empty for a post that starts
 // one.
-func (t replyTarget) rootID() string {
-	if t.root == nil {
+func (d destination) rootID() string {
+	if d.root == nil {
 		return ""
 	}
-	return t.root.Id
+	return d.root.Id
 }
 
-// target reads where a post goes: a channel, a direct message with a user, or
-// a thread. A reply goes in the thread's first post's channel, and Mattermost
-// takes only a thread's first post as a reply's root, so a reply to a reply
-// goes in the same thread. A direct message is opened when there is none yet,
-// which sends nothing and shows nobody anything.
-func target(ctx context.Context, client *mattermost.Client, channelID, toUser, rootID string) (replyTarget, error) {
-	switch {
-	case toUser != "" && (channelID != "" || rootID != ""):
-		return replyTarget{}, fmt.Errorf("give to_user alone: it names the direct message, which channel_id and root_id would name again")
-	case toUser != "":
-		other, err := client.UserByUsername(ctx, strings.TrimPrefix(toUser, "@"))
-		if err != nil {
-			return replyTarget{}, err
-		}
-		self, err := client.Me(ctx)
-		if err != nil {
-			return replyTarget{}, err
-		}
-		direct, err := client.DirectChannel(ctx, self.Id, other.Id)
-		if err != nil {
-			return replyTarget{}, err
-		}
-		return replyTarget{channelID: direct.Id}, nil
-	case rootID == "" && channelID == "":
-		return replyTarget{}, fmt.Errorf("give channel_id to post in a channel, to_user for a direct message, or root_id to reply in a thread")
-	case rootID == "":
-		return replyTarget{channelID: channelID}, nil
+// channel is the channel the post goes in, opening a direct or group message.
+func (d destination) channel(ctx context.Context) (string, error) {
+	if d.channelID != "" {
+		return d.channelID, nil
 	}
-	root, err := client.Post(ctx, rootID)
+	return d.open(ctx)
+}
+
+// posting is the input of a tool that posts a message somewhere.
+type posting interface {
+	text() string
+	attached() []attachFile
+	destination(ctx context.Context, client *mattermost.Client) (destination, error)
+	// typingIn names the channel and thread a typing indicator may be up in.
+	typingIn() (channelID, rootID string)
+}
+
+// inChannel is where a post in a known channel goes, as a reply in rootID's
+// thread when it is set. Mattermost takes only a thread's first post as a
+// reply's root, so a reply to a reply goes in the same thread.
+// GetPost, GetUser, GetChannel, GetUsersByIds, GetChannelStats.
+func inChannel(ctx context.Context, client *mattermost.Client, channelID, rootID string) (destination, error) {
+	var root *model.Post
+	if rootID != "" {
+		post, err := client.Post(ctx, rootID)
+		if err != nil {
+			return destination{}, err
+		}
+		if post.RootId != "" {
+			if post, err = client.Post(ctx, post.RootId); err != nil {
+				return destination{}, err
+			}
+		}
+		if channelID != "" && channelID != post.ChannelId {
+			return destination{}, fmt.Errorf("post %s is in channel %s, not %s; leave channel_id out to reply in its thread", rootID, post.ChannelId, channelID)
+		}
+		root, channelID = post, post.ChannelId
+	}
+	if channelID == "" {
+		return destination{}, fmt.Errorf("give channel_id to post in a channel, or root_id to reply in a thread")
+	}
+	self, err := client.Me(ctx)
 	if err != nil {
-		return replyTarget{}, err
+		return destination{}, err
 	}
-	if root.RootId != "" {
-		if root, err = client.Post(ctx, root.RootId); err != nil {
-			return replyTarget{}, err
-		}
+	channel, err := client.Channel(ctx, channelID)
+	if err != nil {
+		return destination{}, err
 	}
-	if channelID != "" && channelID != root.ChannelId {
-		return replyTarget{}, fmt.Errorf("post %s is in channel %s, not %s; leave channel_id out to reply in its thread", rootID, root.ChannelId, channelID)
+	if channel.DeleteAt > 0 {
+		return destination{}, fmt.Errorf("~%s is archived: it can be read but not posted in", channel.DisplayName)
 	}
-	return replyTarget{channelID: root.ChannelId, root: root}, nil
+	names, err := usernames(ctx, client, []string{otherInDirect(channel, self.Id)})
+	if err != nil {
+		return destination{}, err
+	}
+	return destination{
+		self:      self,
+		label:     place(channel, self.Id, names),
+		channelID: channelID,
+		root:      root,
+		size: func(ctx context.Context) (int64, error) {
+			stats, err := client.ChannelStats(ctx, channelID)
+			if err != nil {
+				return 0, err
+			}
+			return stats.MemberCount, nil
+		},
+	}, nil
 }
 
-// targetUses are the operations target calls, besides GetPost, which each tool
-// declares with its own reason.
-func targetUses() []Use {
-	return []Use{
-		{
-			Operation: "GetUserByUsername",
-			Params:    map[string]Coverage{"username": SetBy("to_user")},
-		},
-		{
-			Operation: "CreateDirectChannel",
-			Params:    map[string]Coverage{},
-		},
-	}
-}
-
-func postMessageSpec() Spec {
-	return configuredToolSpec(
-		&mcp.Tool{
-			Name: "post_message",
-			Description: "Post a message under the user's name: in a channel with channel_id, in a direct message with to_user, " +
-				"or as a reply in a thread with root_id, with files attached if asked. The person is asked to confirm each post, seeing " +
-				"the message, where it goes and every file it carries, before anything is sent or uploaded; " +
-				"if they decline or close the question, do not post it again unless they ask. " +
-				"Posting stops the typing indicator the typing tool showed there.",
-			Annotations: writes("Post message", false),
-		},
-		append([]Use{
+// postingSpec is a tool that posts what the person accepts: the message, the
+// files it carries, and where it goes (ADR-021, ADR-029, ADR-031). channel and
+// root say what sets the post's channel and thread, and inTeams whether its
+// posts can be in a team's channel.
+func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, inTeams bool) Spec {
+	return configuredToolSpec(tool,
+		uses(own, []Use{
 			{
 				Operation: "CreatePost",
 				Params: map[string]Coverage{
-					"body.channel_id": SetBy("channel_id"),
+					"body.channel_id": channel,
 					"body.message":    SetBy("message"),
-					"body.root_id":    SetBy("root_id"),
+					"body.root_id":    root,
 					"body.file_ids":   SetBy("files"),
-					"body.props":      Omitted("props carry integrations' attachments and Mattermost's own settings for a post; a person's post is its text"),
-					"body.metadata":   Omitted("metadata such as a post's priority is a Mattermost feature beyond posting text, which the person is not shown"),
-					"set_online":      Omitted("Mattermost's default marks the user online when they post, as its own client does"),
-					"silent":          Omitted("a silent post notifies nobody it mentions, which the person would have to be told about when confirming"),
+					"body.props": Fixed(`{"ai_generated_by": the user's id}`,
+						"marks the post as written with AI, which Mattermost shows; MM_MCP_MARK_AI_GENERATED=false leaves it out"),
+					"body.metadata": Omitted("metadata such as a post's priority is a Mattermost feature beyond posting text, which the person is not shown"),
+					"set_online":    Omitted("Mattermost's default marks the user online when they post, as its own client does"),
+					"silent":        Omitted("a silent post notifies nobody it mentions, which the person would have to be told about when confirming"),
 				},
 				Releases: "11.7 has no silent parameter, which the tool never sends",
 			},
 			{
 				Operation: "UploadFile",
 				Params: map[string]Coverage{
-					"body.channel_id": SetBy("channel_id"),
+					"body.channel_id": channel,
 					"body.files":      SetBy("files"),
 					"body.client_ids": Omitted("ids a client gives uploads it sends at once, to match them up; the tool uploads one file at a time"),
 					"channel_id":      Omitted("Mattermost's client sends the channel as the form's channel_id field instead"),
 					"filename":        Omitted("the file's name travels with its part of the form"),
 				},
 			},
-			{
-				Operation: "GetChannel",
-				Params:    map[string]Coverage{"channel_id": SetBy("channel_id")},
-			},
-			{
-				Operation: "GetPost",
-				Params: map[string]Coverage{
-					"post_id":         SetBy("root_id"),
-					"include_deleted": Omitted("a deleted post has no thread to reply in"),
-				},
-			},
-			{
-				Operation: "GetUser",
-				Params:    map[string]Coverage{"user_id": Fixed("me", "the confirmation names the user the post appears under")},
-			},
-			{
-				Operation: "GetUsersByIds",
-				Params:    map[string]Coverage{"since": Omitted("the tool reads each username, whenever it changed")},
-			},
-		}, targetUses()...),
-		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[postMessageInput, Post] {
-			bind := func(input postMessageInput) (string, error) {
-				files, err := loadAttachments(cfg, input.Files)
+		}, messageUses(inTeams), describeUses(inTeams)),
+		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[In, Post] {
+			bind := func(input In) (string, error) {
+				files, err := loadAttachments(cfg, input.attached())
 				if err != nil {
 					return "", err
 				}
 				return fingerprint(files), nil
 			}
-			ask := askingBound("post_message", bind, postConfirmation(clientFor, cfg),
-				func(ctx context.Context, request *mcp.CallToolRequest, input postMessageInput) (*mcp.CallToolResult, Post, error) {
+			ask := askingBound(tool.Name, bind,
+				func(ctx context.Context, request *mcp.CallToolRequest, input In) (confirmation, error) {
+					files, err := loadAttachments(cfg, input.attached())
+					if err != nil {
+						return confirmation{}, err
+					}
+					client, err := clientFor(ctx, request)
+					if err != nil {
+						return confirmation{}, err
+					}
+					where, err := input.destination(ctx, client)
+					if err != nil {
+						return confirmation{}, err
+					}
+					checked, err := checkMessage(ctx, client, input.text(), where.label, where.size)
+					if err != nil {
+						return confirmation{}, err
+					}
+					return postQuestion(ctx, client, where, input.text(), files, checked, cfg.MarkAIGenerated)
+				},
+				func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Post, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
 						return nil, Post{}, err
 					}
-					where, err := target(ctx, client, input.ChannelID, input.ToUser, input.RootID)
+					where, err := input.destination(ctx, client)
 					if err != nil {
 						return nil, Post{}, err
 					}
-					files, err := loadAttachments(cfg, input.Files)
+					files, err := loadAttachments(cfg, input.attached())
+					if err != nil {
+						return nil, Post{}, err
+					}
+					channelID, err := where.channel(ctx)
 					if err != nil {
 						return nil, Post{}, err
 					}
 					fileIDs := make([]string, 0, len(files))
 					for _, file := range files {
-						id, err := client.Upload(ctx, where.channelID, file.name, file.data)
+						id, err := client.Upload(ctx, channelID, file.name, file.data)
 						if err != nil {
 							return nil, Post{}, err
 						}
 						fileIDs = append(fileIDs, id)
 					}
-					created, err := client.CreatePost(ctx, where.channelID, where.rootID(), input.Message, fileIDs)
+					created, err := client.CreatePost(ctx, mattermost.NewPost{
+						ChannelID: channelID, RootID: where.rootID(), Message: input.text(), FileIDs: fileIDs,
+						Props: aiMarker(cfg.MarkAIGenerated, where.self.Id),
+					})
 					if err != nil {
 						return nil, Post{}, err
 					}
 					stopTyping(created.ChannelId, created.RootId)
-					posted, err := withAuthors(ctx, client, []*model.Post{created})
+					posted, err := describePosts(ctx, client, []*model.Post{created})
 					if err != nil {
 						return nil, Post{}, err
 					}
 					return nil, posted[0], nil
 				})
-			return func(ctx context.Context, request *mcp.CallToolRequest, input postMessageInput) (*mcp.CallToolResult, Post, error) {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Post, error) {
 				result, posted, err := ask(ctx, request, input)
 				// The indicator stays while the person is being asked, which is
 				// when they are finishing the message, and goes once they have
 				// answered either way.
 				if result == nil || result.RequestState == "" {
-					stopTyping(input.ChannelID, input.RootID)
+					stopTyping(input.typingIn())
 				}
 				return result, posted, err
 			}
@@ -330,96 +343,266 @@ func postMessageSpec() Spec {
 	)
 }
 
-// postConfirmation asks to post: as whom, where, in reply to what, the
-// message as it will be sent, and every file it carries.
-func postConfirmation(clientFor ClientFor, cfg config.Config) func(context.Context, *mcp.CallToolRequest, postMessageInput) (confirmation, error) {
-	return func(ctx context.Context, request *mcp.CallToolRequest, input postMessageInput) (confirmation, error) {
-		if strings.TrimSpace(input.Message) == "" && len(input.Files) == 0 {
-			return confirmation{}, fmt.Errorf("the message is empty")
-		}
-		files, err := loadAttachments(cfg, input.Files)
-		if err != nil {
-			return confirmation{}, err
-		}
-		attached := describeAttachments(files)
-		carrying := ""
-		if len(files) > 0 {
-			carrying = fmt.Sprintf(" with %d %s", len(files), plural(int64(len(files)), "file", "files"))
-		}
-		client, err := clientFor(ctx, request)
-		if err != nil {
-			return confirmation{}, err
-		}
-		where, err := target(ctx, client, input.ChannelID, input.ToUser, input.RootID)
-		if err != nil {
-			return confirmation{}, err
-		}
-		self, err := client.Me(ctx)
-		if err != nil {
-			return confirmation{}, err
-		}
-		channel, err := client.Channel(ctx, where.channelID)
-		if err != nil {
-			return confirmation{}, err
-		}
-		wanted := []string{otherInDirect(channel, self.Id)}
-		if where.root != nil {
-			wanted = append(wanted, where.root.UserId)
-		}
-		names, err := usernames(ctx, client, wanted)
-		if err != nil {
-			return confirmation{}, err
-		}
-		names[self.Id] = self.Username
-		in := place(channel, self.Id, names)
-		if where.root == nil {
-			return confirmation{
-				Message: fmt.Sprintf("Post as @%s in %s:\n\n%s%s", self.Username, in, input.Message, attached),
-				Label:   "Post this message" + carrying + " in " + in,
-			}, nil
-		}
-		author := names[where.root.UserId]
-		if author == "" {
-			author = where.root.UserId
-		}
+// postQuestion asks to post: as whom, where, in reply to what, the message as
+// it will be sent, what its mentions do, and every file it carries.
+func postQuestion(ctx context.Context, client *mattermost.Client, where destination, message string, files []attachment, checked checkedMessage, marked bool) (confirmation, error) {
+	carrying := ""
+	if len(files) > 0 {
+		carrying = fmt.Sprintf(" with %d %s", len(files), plural(int64(len(files)), "file", "files"))
+	}
+	tail := describeAttachments(files) + checked.note() + aiNote(marked)
+	if where.root == nil {
 		return confirmation{
-			Message: fmt.Sprintf("Reply as @%s in %s, in the thread @%s started with:\n“%s”\n\nThe reply:\n\n%s%s",
-				self.Username, in, author, excerpt(where.root.Message), input.Message, attached),
-			Label: "Post this reply" + carrying + " in @" + author + "'s thread",
+			Message: fmt.Sprintf("Post as @%s in %s:\n\n%s%s", where.self.Username, where.label, message, tail),
+			Label:   "Post this message" + carrying + " in " + where.label,
 		}, nil
+	}
+	names, err := usernames(ctx, client, []string{where.root.UserId})
+	if err != nil {
+		return confirmation{}, err
+	}
+	author := names[where.root.UserId]
+	if author == "" {
+		author = where.root.UserId
+	}
+	return confirmation{
+		Message: fmt.Sprintf("Reply as @%s in %s, in the thread @%s started with:\n“%s”\n\nThe reply:\n\n%s%s",
+			where.self.Username, where.label, author, excerpt(where.root.Message), message, tail),
+		Label: "Post this reply" + carrying + " in @" + author + "'s thread",
+	}, nil
+}
+
+// postingDescription ends the description of every tool that posts.
+const postingDescription = " The message is Mattermost Markdown, at most as long as the server takes, and every @mention must name someone who exists. " +
+	"The person is asked to confirm each post, seeing the message, where it goes and every file it carries, before anything is sent or uploaded; " +
+	"if they decline or close the question, do not post it again unless they ask. Posting takes down the typing indicator shown there."
+
+// filesField is the files argument every tool that posts takes.
+type filesField struct {
+	Files []attachFile `json:"files,omitempty" jsonschema:"files to attach, at most 10: from a full path on this machine when the server runs on it, or text written for the post with a name"`
+}
+
+func (f filesField) attached() []attachFile { return f.Files }
+
+type createPostInput struct {
+	ChannelID string `json:"channel_id,omitempty" jsonschema:"the channel to post in, as get_user_channels or get_channel_info gives it"`
+	RootID    string `json:"root_id,omitempty" jsonschema:"reply in the thread of this post: the post that started it or any reply in it"`
+	Message   string `json:"message" jsonschema:"the text to post, in Mattermost Markdown"`
+	filesField
+}
+
+func (in createPostInput) text() string { return in.Message }
+func (in createPostInput) destination(ctx context.Context, client *mattermost.Client) (destination, error) {
+	return inChannel(ctx, client, in.ChannelID, in.RootID)
+}
+func (in createPostInput) typingIn() (string, string) { return in.ChannelID, in.RootID }
+
+func createPostSpec() Spec {
+	return postingSpec[createPostInput](
+		&mcp.Tool{
+			Name: "create_post",
+			Description: "Post a message in a channel under the user's name, or with root_id a reply in the thread of any post. " +
+				"To message people directly use dm, and group_message only when the person asks for a group conversation." + postingDescription,
+			Annotations: writes("Create post", false),
+		},
+		[]Use{
+			{Operation: "GetChannel", Params: map[string]Coverage{"channel_id": SetBy("channel_id")}},
+			{
+				Operation: "GetPost",
+				Params: map[string]Coverage{
+					"post_id":         SetBy("root_id"),
+					"include_deleted": Omitted("a deleted post has no thread to reply in"),
+				},
+			},
+		},
+		SetBy("channel_id"), SetBy("root_id"), true,
+	)
+}
+
+type dmInput struct {
+	Username string `json:"username,omitempty" jsonschema:"the person to message, with or without @; the user themselves when not given"`
+	Message  string `json:"message" jsonschema:"the text to send, in Mattermost Markdown"`
+	filesField
+}
+
+func (in dmInput) text() string               { return in.Message }
+func (in dmInput) typingIn() (string, string) { return "", "" }
+func (in dmInput) destination(ctx context.Context, client *mattermost.Client) (destination, error) {
+	self, err := client.Me(ctx)
+	if err != nil {
+		return destination{}, err
+	}
+	other := self
+	if name := strings.TrimPrefix(strings.TrimSpace(in.Username), "@"); name != "" && !strings.EqualFold(name, self.Username) {
+		found, err := lookUpUsers(ctx, client, []string{name})
+		if err != nil {
+			return destination{}, err
+		}
+		other = found[0]
+	}
+	if other.DeleteAt > 0 {
+		return destination{}, fmt.Errorf("@%s is deactivated, and cannot be messaged", other.Username)
+	}
+	label := "your direct message with @" + other.Username
+	people := int64(2)
+	if other.Id == self.Id {
+		label, people = "your direct message to yourself", 1
+	}
+	return destination{
+		self:  self,
+		label: label,
+		open: func(ctx context.Context) (string, error) {
+			channel, err := client.DirectChannel(ctx, self.Id, other.Id)
+			if err != nil {
+				return "", err
+			}
+			return channel.Id, nil
+		},
+		size: func(context.Context) (int64, error) { return people, nil },
+	}, nil
+}
+
+// peopleUses are the operations lookUpUsers calls for a name.
+func peopleUses(arg string) []Use {
+	return []Use{
+		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+		{Operation: "SearchUsers", Params: suggestionSearch(SetBy(arg))},
 	}
 }
 
-type editPostInput struct {
+func dmSpec() Spec {
+	return postingSpec[dmInput](
+		&mcp.Tool{
+			Name: "dm",
+			Description: "Send a direct message to one person under the user's name, or to the user themselves when no username is given. " +
+				"This is how to message people: \"message Alice and Bob\" is two direct messages, one to each." + postingDescription,
+			Annotations: writes("Send direct message", false),
+		},
+		uses(peopleUses("username"), []Use{
+			{Operation: "CreateDirectChannel", Params: map[string]Coverage{}},
+			{
+				Operation: "GetUser",
+				Params:    map[string]Coverage{"user_id": Fixed("me", "the message is sent under the user's name, and the question says whose")},
+			},
+		}),
+		SetBy("username"), Omitted("a reply in a direct message's thread is a create_post with root_id"), false,
+	)
+}
+
+// Mattermost's limits on a group message: at least three people and at most
+// eight, the user included.
+const (
+	minGroupOthers = 2
+	maxGroupOthers = 7
+)
+
+type groupMessageInput struct {
+	Usernames []string `json:"usernames" jsonschema:"the people to message together, two to seven of them, with or without @, the user left out"`
+	Message   string   `json:"message" jsonschema:"the text to send, in Mattermost Markdown"`
+	filesField
+}
+
+func (in groupMessageInput) text() string               { return in.Message }
+func (in groupMessageInput) typingIn() (string, string) { return "", "" }
+func (in groupMessageInput) destination(ctx context.Context, client *mattermost.Client) (destination, error) {
+	self, err := client.Me(ctx)
+	if err != nil {
+		return destination{}, err
+	}
+	var names []string
+	for _, name := range in.Usernames {
+		if name = strings.TrimPrefix(strings.TrimSpace(name), "@"); name != "" && !strings.EqualFold(name, self.Username) && !containsFold(names, name) {
+			names = append(names, name)
+		}
+	}
+	if len(names) < minGroupOthers || len(names) > maxGroupOthers {
+		return destination{}, fmt.Errorf("a group message is with %d to %d people besides the user, not %d; message one person with dm",
+			minGroupOthers, maxGroupOthers, len(names))
+	}
+	people, err := lookUpUsers(ctx, client, names)
+	if err != nil {
+		return destination{}, err
+	}
+	ids := []string{self.Id}
+	var mentioned []string
+	for _, person := range people {
+		if person.DeleteAt > 0 {
+			return destination{}, fmt.Errorf("@%s is deactivated, and cannot be messaged", person.Username)
+		}
+		ids = append(ids, person.Id)
+		mentioned = append(mentioned, "@"+person.Username)
+	}
+	return destination{
+		self:  self,
+		label: "the group message with you and " + strings.Join(mentioned, ", "),
+		open: func(ctx context.Context) (string, error) {
+			channel, err := client.GroupChannel(ctx, ids)
+			if err != nil {
+				return "", err
+			}
+			return channel.Id, nil
+		},
+		size: func(context.Context) (int64, error) { return int64(len(ids)), nil },
+	}, nil
+}
+
+func containsFold(names []string, name string) bool {
+	for _, n := range names {
+		if strings.EqualFold(n, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func groupMessageSpec() Spec {
+	return postingSpec[groupMessageInput](
+		&mcp.Tool{
+			Name: "group_message",
+			Description: "Send one message to a group of two to seven people together, under the user's name, in the group conversation " +
+				"Mattermost keeps for exactly those people. Only when the person asks for a group conversation: to message several people, " +
+				"send each a direct message with dm." + postingDescription,
+			Annotations: writes("Send group message", false),
+		},
+		uses(peopleUses("usernames"), []Use{
+			{Operation: "CreateGroupChannel", Params: map[string]Coverage{}},
+			{
+				Operation: "GetUser",
+				Params:    map[string]Coverage{"user_id": Fixed("me", "the message is sent under the user's name, and the user is in the group")},
+			},
+		}),
+		SetBy("usernames"), Omitted("a reply in a group message's thread is a create_post with root_id"), false,
+	)
+}
+
+type updatePostInput struct {
 	PostID  string `json:"post_id" jsonschema:"the post to edit, which must be the user's own"`
 	Message string `json:"message" jsonschema:"the post's new text in full, in Mattermost Markdown; it replaces the old text"`
 }
 
-func editPostSpec() Spec {
-	return toolSpec(
+func updatePostSpec() Spec {
+	return configuredToolSpec(
 		&mcp.Tool{
-			Name: "edit_post",
-			Description: "Replace the text of one of the user's own posts. Mattermost marks the post as edited. The person is asked to " +
-				"confirm each edit, seeing the old text and the new; if they decline or close the question, do not edit it again unless they ask.",
-			Annotations: overwrites("Edit post", true),
+			Name: "update_post",
+			Description: "Replace the text of one of the user's own posts; Mattermost marks the post as edited. The new text is checked " +
+				"as a new post's is. The person is asked to confirm each edit, seeing the old text and the new; if they decline or close " +
+				"the question, do not edit it again unless they ask.",
+			Annotations: overwrites("Update post"),
 		},
-		append([]Use{{
+		uses([]Use{{
 			Operation: "PatchPost",
 			Params: map[string]Coverage{
 				"post_id":            SetBy("post_id"),
 				"body.message":       SetBy("message"),
+				"body.props":         Fixed(`the post's own props, with {"ai_generated_by": the user's id}`, "marks the post as written with AI, keeping every other property; MM_MCP_MARK_AI_GENERATED=false leaves the props as they are"),
 				"body.file_ids":      Omitted("an edit changes the text; the attachments stay as they are"),
 				"body.has_reactions": Omitted("Mattermost keeps it in step with the reactions itself"),
 				"body.is_pinned":     Omitted("pin_post pins and unpins, asking about that on its own"),
-				"body.props":         Omitted("props carry integrations' attachments and Mattermost's own settings for a post; an edit changes the text"),
 			},
-		}}, postContextUses()...),
-		func(clientFor ClientFor) mcp.ToolHandlerFor[editPostInput, Post] {
-			return asking("edit_post",
-				func(ctx context.Context, request *mcp.CallToolRequest, input editPostInput) (confirmation, error) {
-					if strings.TrimSpace(input.Message) == "" {
-						return confirmation{}, fmt.Errorf("the new text is empty; delete_post removes a post")
-					}
+		}}, postContextUses(), messageUses(true), describeUses(true)),
+		func(clientFor ClientFor, cfg config.Config) mcp.ToolHandlerFor[updatePostInput, Post] {
+			return asking("update_post",
+				func(ctx context.Context, request *mcp.CallToolRequest, input updatePostInput) (confirmation, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
 						return confirmation{}, err
@@ -431,25 +614,42 @@ func editPostSpec() Spec {
 					if p.post.Message == input.Message {
 						return confirmation{}, fmt.Errorf("the post already reads exactly so; there is nothing to edit")
 					}
+					checked, err := checkMessage(ctx, client, input.Message, p.in, func(ctx context.Context) (int64, error) {
+						stats, err := client.ChannelStats(ctx, p.channel.Id)
+						if err != nil {
+							return 0, err
+						}
+						return stats.MemberCount, nil
+					})
+					if err != nil {
+						return confirmation{}, err
+					}
 					return confirmation{
-						Message: fmt.Sprintf("Edit your post in %s as @%s.\n\nIt reads now:\n\n%s\n\nIt will read:\n\n%s",
-							p.in, p.self.Username, p.post.Message, input.Message),
+						Message: fmt.Sprintf("Edit your post in %s as @%s.\n\nIt reads now:\n\n%s\n\nIt will read:\n\n%s%s%s",
+							p.in, p.self.Username, p.post.Message, input.Message, checked.note(), aiNote(cfg.MarkAIGenerated)),
 						Label: "Replace the text of your post in " + p.in,
 					}, nil
 				},
-				func(ctx context.Context, request *mcp.CallToolRequest, input editPostInput) (*mcp.CallToolResult, Post, error) {
+				func(ctx context.Context, request *mcp.CallToolRequest, input updatePostInput) (*mcp.CallToolResult, Post, error) {
 					client, err := clientFor(ctx, request)
 					if err != nil {
 						return nil, Post{}, err
 					}
-					if _, err := ownPost(ctx, client, input.PostID, "edit"); err != nil {
-						return nil, Post{}, err
-					}
-					edited, err := client.EditPost(ctx, input.PostID, input.Message)
+					p, err := ownPost(ctx, client, input.PostID, "edit")
 					if err != nil {
 						return nil, Post{}, err
 					}
-					posts, err := withAuthors(ctx, client, []*model.Post{edited})
+					var props model.StringInterface
+					if marker := aiMarker(cfg.MarkAIGenerated, p.self.Id); marker != nil {
+						props = model.StringInterface{}
+						maps.Copy(props, p.post.GetProps())
+						maps.Copy(props, marker)
+					}
+					edited, err := client.EditPost(ctx, input.PostID, input.Message, props)
+					if err != nil {
+						return nil, Post{}, err
+					}
+					posts, err := describePosts(ctx, client, []*model.Post{edited})
 					if err != nil {
 						return nil, Post{}, err
 					}
@@ -492,12 +692,12 @@ func deletePostSpec() Spec {
 			Description: "Delete one of the user's own posts. Deleting the post that starts a thread deletes every reply in it, " +
 				"other people's included. The person is asked to confirm each deletion, seeing the post and how many replies go with it; " +
 				"if they decline or close the question, do not delete it again unless they ask.",
-			Annotations: overwrites("Delete post", true),
+			Annotations: overwrites("Delete post"),
 		},
-		append([]Use{{
+		uses([]Use{{
 			Operation: "DeletePost",
 			Params:    map[string]Coverage{"post_id": SetBy("post_id")},
-		}}, postContextUses()...),
+		}}, postContextUses()),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[deletePostInput, Deleted] {
 			return asking("delete_post",
 				func(ctx context.Context, request *mcp.CallToolRequest, input deletePostInput) (confirmation, error) {
@@ -547,147 +747,6 @@ func plural(n int64, one, many string) string {
 	return many
 }
 
-// Reaction is a reaction the user added or removed.
-type Reaction struct {
-	PostID    string `json:"post_id"`
-	EmojiName string `json:"emoji_name"`
-}
-
-type reactionInput struct {
-	PostID    string `json:"post_id" jsonschema:"the post to react to"`
-	EmojiName string `json:"emoji_name" jsonschema:"the emoji's name, such as thumbsup, white_check_mark or eyes, with or without the colons"`
-}
-
-// emojiName is an emoji's name as Mattermost stores it, without the colons a
-// message writes around it.
-func emojiName(name string) string {
-	return strings.Trim(strings.TrimSpace(name), ":")
-}
-
-// reacted reports whether the user reacted to the post with the emoji.
-func reacted(p postInContext, emoji string) bool {
-	if p.post.Metadata == nil {
-		return false
-	}
-	for _, reaction := range p.post.Metadata.Reactions {
-		if reaction.UserId == p.self.Id && reaction.EmojiName == emoji {
-			return true
-		}
-	}
-	return false
-}
-
-func addReactionSpec() Spec {
-	return toolSpec(
-		&mcp.Tool{
-			Name: "add_reaction",
-			Description: "React to a post with an emoji, under the user's name. The person is asked to confirm each reaction, " +
-				"seeing the emoji and the post, before it is added; if they decline or close the question, do not react again unless they ask.",
-			Annotations: writes("Add reaction", true),
-		},
-		append([]Use{{
-			Operation: "SaveReaction",
-			Params: map[string]Coverage{
-				"body.post_id":    SetBy("post_id"),
-				"body.emoji_name": SetBy("emoji_name"),
-				"body.user_id":    Fixed("the user's own id", "a user reacts as themselves; Mattermost refuses a reaction for anyone else"),
-				"body.create_at":  Omitted("Mattermost records when the reaction was made"),
-			},
-		}}, postContextUses()...),
-		func(clientFor ClientFor) mcp.ToolHandlerFor[reactionInput, Reaction] {
-			return asking("add_reaction",
-				reactionConfirmation(clientFor, func(p postInContext, emoji string) (confirmation, error) {
-					return confirmation{
-						Message: fmt.Sprintf("React as @%s with :%s: to @%s's post in %s:\n“%s”",
-							p.self.Username, emoji, p.author, p.in, excerpt(p.post.Message)),
-						Label: fmt.Sprintf("Add :%s: to @%s's post", emoji, p.author),
-					}, nil
-				}),
-				func(ctx context.Context, request *mcp.CallToolRequest, input reactionInput) (*mcp.CallToolResult, Reaction, error) {
-					client, err := clientFor(ctx, request)
-					if err != nil {
-						return nil, Reaction{}, err
-					}
-					self, err := client.Me(ctx)
-					if err != nil {
-						return nil, Reaction{}, err
-					}
-					reaction, err := client.React(ctx, self.Id, input.PostID, emojiName(input.EmojiName))
-					if err != nil {
-						return nil, Reaction{}, err
-					}
-					return nil, Reaction{PostID: reaction.PostId, EmojiName: reaction.EmojiName}, nil
-				})
-		},
-	)
-}
-
-func removeReactionSpec() Spec {
-	return toolSpec(
-		&mcp.Tool{
-			Name: "remove_reaction",
-			Description: "Take back one of the user's reactions to a post. The person is asked to confirm, seeing the emoji and the post; " +
-				"if they decline or close the question, do not try again unless they ask.",
-			Annotations: overwrites("Remove reaction", true),
-		},
-		append([]Use{{
-			Operation: "DeleteReaction",
-			Params: map[string]Coverage{
-				"user_id":    Fixed("me", "a user takes back only their own reaction"),
-				"post_id":    SetBy("post_id"),
-				"emoji_name": SetBy("emoji_name"),
-			},
-		}}, postContextUses()...),
-		func(clientFor ClientFor) mcp.ToolHandlerFor[reactionInput, Reaction] {
-			return asking("remove_reaction",
-				reactionConfirmation(clientFor, func(p postInContext, emoji string) (confirmation, error) {
-					if !reacted(p, emoji) {
-						return confirmation{}, fmt.Errorf("@%s has not reacted with :%s: to that post", p.self.Username, emoji)
-					}
-					return confirmation{
-						Message: fmt.Sprintf("Take back your :%s: on @%s's post in %s:\n“%s”", emoji, p.author, p.in, excerpt(p.post.Message)),
-						Label:   fmt.Sprintf("Remove your :%s: from @%s's post", emoji, p.author),
-					}, nil
-				}),
-				func(ctx context.Context, request *mcp.CallToolRequest, input reactionInput) (*mcp.CallToolResult, Reaction, error) {
-					client, err := clientFor(ctx, request)
-					if err != nil {
-						return nil, Reaction{}, err
-					}
-					self, err := client.Me(ctx)
-					if err != nil {
-						return nil, Reaction{}, err
-					}
-					emoji := emojiName(input.EmojiName)
-					if err := client.Unreact(ctx, self.Id, input.PostID, emoji); err != nil {
-						return nil, Reaction{}, err
-					}
-					return nil, Reaction{PostID: input.PostID, EmojiName: emoji}, nil
-				})
-		},
-	)
-}
-
-// reactionConfirmation reads the post a reaction is about and asks what ask
-// builds from it.
-func reactionConfirmation(clientFor ClientFor, ask func(postInContext, string) (confirmation, error)) func(context.Context, *mcp.CallToolRequest, reactionInput) (confirmation, error) {
-	return func(ctx context.Context, request *mcp.CallToolRequest, input reactionInput) (confirmation, error) {
-		emoji := emojiName(input.EmojiName)
-		if emoji == "" {
-			return confirmation{}, fmt.Errorf("emoji_name is empty")
-		}
-		client, err := clientFor(ctx, request)
-		if err != nil {
-			return confirmation{}, err
-		}
-		p, err := readPostInContext(ctx, client, input.PostID)
-		if err != nil {
-			return confirmation{}, err
-		}
-		return ask(p, emoji)
-	}
-}
-
 // Pinned is a post's pinned state after pin_post.
 type Pinned struct {
 	PostID string `json:"post_id"`
@@ -707,10 +766,10 @@ func pinPostSpec() Spec {
 				"pinned false. The person is asked to confirm, seeing the post; if they decline or close the question, do not try again unless they ask.",
 			Annotations: writes("Pin post", true),
 		},
-		append([]Use{
+		uses([]Use{
 			{Operation: "PinPost", Params: map[string]Coverage{"post_id": SetBy("post_id")}},
 			{Operation: "UnpinPost", Params: map[string]Coverage{"post_id": SetBy("post_id")}},
-		}, postContextUses()...),
+		}, postContextUses()),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[pinPostInput, Pinned] {
 			return asking("pin_post",
 				func(ctx context.Context, request *mcp.CallToolRequest, input pinPostInput) (confirmation, error) {

@@ -36,3 +36,5 @@ holds and why, and the alternatives it turned down.
 - [ADR-027: A difference between supported releases is found from Mattermost's own files, before a test runs](027-a-difference-between-supported-releases-is-found-from-mattermosts-own-files.md)
 - [ADR-028: Every parameter of an operation a tool calls is accounted for, and the live suite proves the tool calls what it declares](028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)
 - [ADR-029: Files reach the model as content, and the disk only from a local server](029-files-reach-the-model-as-content-and-the-disk-only-locally.md)
+- [ADR-030: Names are matched leniently, and a refusal names the next step](030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)
+- [ADR-031: A message is checked before anyone is asked to post it, and says it was written with AI](031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)

@@ -2,6 +2,7 @@ package mattermost
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/mattermost/mattermost/server/public/model"
 )
@@ -208,4 +209,92 @@ func (c *Client) SearchFiles(ctx context.Context, search FileSearch) (*model.Fil
 		Page:           &page,
 		PerPage:        &search.PerPage,
 	}))
+}
+
+// Team is one team, by id. GetTeam.
+func (c *Client) Team(ctx context.Context, id string) (*model.Team, error) {
+	return result(c.api.GetTeam(ctx, id, ""))
+}
+
+// PostsSince is every post in a channel created, edited or deleted after a
+// time, in milliseconds. GetPostsForChannel, with since.
+func (c *Client) PostsSince(ctx context.Context, channelID string, since int64, collapsed bool) (*model.PostList, error) {
+	return result(c.api.GetPostsSince(ctx, channelID, since, collapsed))
+}
+
+// TeamByName is the team with the given address name. GetTeamByName.
+func (c *Client) TeamByName(ctx context.Context, name string) (*model.Team, error) {
+	return result(c.api.GetTeamByName(ctx, name, ""))
+}
+
+// SearchChannels is a team's public channels whose name or display name has
+// a word starting with term. SearchChannels.
+func (c *Client) SearchChannels(ctx context.Context, teamID, term string) ([]*model.Channel, error) {
+	return result(c.api.SearchChannels(ctx, teamID, &model.ChannelSearch{Term: term}))
+}
+
+// PublicChannels is a page of a team's public channels. GetPublicChannelsForTeam.
+func (c *Client) PublicChannels(ctx context.Context, teamID string, page, perPage int) ([]*model.Channel, error) {
+	return result(c.api.GetPublicChannelsForTeam(ctx, teamID, page, perPage, ""))
+}
+
+// ArchivedChannels is a page of a team's archived channels the user may see.
+// GetDeletedChannelsForTeam.
+func (c *Client) ArchivedChannels(ctx context.Context, teamID string, page, perPage int) ([]*model.Channel, error) {
+	return result(c.api.GetDeletedChannelsForTeam(ctx, teamID, page, perPage, ""))
+}
+
+// ChannelStats is how many members, guests, pinned posts and files a channel
+// has. GetChannelStats.
+func (c *Client) ChannelStats(ctx context.Context, channelID string) (*model.ChannelStats, error) {
+	return result(c.api.GetChannelStats(ctx, channelID, "", false))
+}
+
+// UserByEmail is the user with the given email address, when the identity
+// may see addresses. GetUserByEmail.
+func (c *Client) UserByEmail(ctx context.Context, email string) (*model.User, error) {
+	return result(c.api.GetUserByEmail(ctx, email, ""))
+}
+
+// ClientConfig is the part of the server's configuration it tells every
+// client, such as the longest message it takes. GetClientConfig.
+func (c *Client) ClientConfig(ctx context.Context) (map[string]string, error) {
+	return result(c.api.GetClientConfig(ctx, ""))
+}
+
+// GroupChannel is the group message between the given users, the user among
+// them, created when it does not exist yet. CreateGroupChannel.
+func (c *Client) GroupChannel(ctx context.Context, userIDs []string) (*model.Channel, error) {
+	return result(c.api.CreateGroupChannel(ctx, userIDs))
+}
+
+// Emoji is the server's custom emoji with the given name. GetEmojiByName.
+func (c *Client) Emoji(ctx context.Context, name string) (*model.Emoji, error) {
+	return result(c.api.GetEmojiByName(ctx, name))
+}
+
+// AutocompleteEmoji is the server's custom emoji whose names start with
+// prefix. AutocompleteEmoji.
+func (c *Client) AutocompleteEmoji(ctx context.Context, prefix string) ([]*model.Emoji, error) {
+	return result(c.api.AutocompleteEmoji(ctx, prefix, ""))
+}
+
+// Preference is one of the user's preferences, or nil when they never set it.
+// Mattermost answers a request for one never set with the error it gives a
+// failure, so the tool reads the category, which holds only those set and is
+// not found when none is. GetPreferencesByCategory.
+func (c *Client) Preference(ctx context.Context, userID, category, name string) (*model.Preference, error) {
+	preferences, response, err := c.api.GetPreferencesByCategory(ctx, userID, category)
+	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, translate(response, err)
+	}
+	for i := range preferences {
+		if preferences[i].Name == name {
+			return &preferences[i], nil
+		}
+	}
+	return nil, nil
 }

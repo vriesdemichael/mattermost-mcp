@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
@@ -18,6 +19,9 @@ import (
 
 // Files reach the model as content it can read, converted here, and reach the
 // disk only from a server that runs on the person's machine (ADR-029).
+
+// pdfType is a PDF's media type, which read_file returns whole when small.
+const pdfType = "application/pdf"
 
 // permalink is the address a person opens a post at, on any team.
 func permalink(base, postID string) string {
@@ -60,6 +64,8 @@ type FileContent struct {
 	NextStartLine *int       `json:"next_start_line,omitempty" jsonschema:"where the next window starts: pass it as start_line for the lines that follow; absent when this window reaches the end"`
 	Image         *FileImage `json:"image,omitempty"`
 	MediaReturned *bool      `json:"media_returned,omitempty" jsonschema:"for audio and video: whether the file itself came back in the content"`
+	// DocumentReturned says a PDF came back whole, for a client that reads it.
+	DocumentReturned *bool `json:"document_returned,omitempty" jsonschema:"for a PDF: whether the file itself came back in the content, as an embedded resource a client that reads PDFs can read"`
 }
 
 type readFileInput struct {
@@ -84,7 +90,7 @@ func readFileSpec() Spec {
 				"choose it, and each answer says which lines it holds and where the next window starts. A Word, PowerPoint or Excel file " +
 				"comes back as the text extracted from it, and an archive (zip, tar, tar.gz, tar.bz2) as a listing of its entries, both in " +
 				"the same windows. An image (PNG, JPEG, GIF, WebP, BMP, TIFF) comes back as an image, turned upright and scaled down when it " +
-				"is large, with a note saying so. Small audio and video come back as themselves beside a description. A PDF or any other " +
+				"is large, with a note saying so. Small audio, video and PDF files come back as themselves beside a description. Any other " +
 				fmt.Sprintf("file is described by its type and size, and a file over %d MiB is described without being read.", fileview.MaxFileBytes>>20),
 			Annotations: readOnly("Read file"),
 		},
@@ -109,6 +115,7 @@ func readFileSpec() Spec {
 					return nil, FileContent{}, err
 				}
 				var read fileview.View
+				var pdf []byte
 				if info.Size > fileview.MaxFileBytes {
 					// Described rather than refused: the model needs to know the
 					// file is there and too large, not nothing.
@@ -121,8 +128,13 @@ func readFileSpec() Spec {
 					if read, err = fileview.Read(ctx, view, data); err != nil {
 						return nil, FileContent{}, err
 					}
+					// By its bytes or by what Mattermost recorded: a PDF that is all
+					// text reads as text, and is still a PDF to a client.
+					if (read.MIMEType == pdfType || info.MimeType == pdfType) && len(data) <= fileview.MediaBytes {
+						pdf = data
+					}
 				}
-				result, out := fileResult(input.FileID, info.PostId, view, read)
+				result, out := fileResult(input.FileID, info.PostId, view, read, pdf)
 				return result, out, nil
 			}
 		},
@@ -135,7 +147,7 @@ func readFileSpec() Spec {
 // fileResult puts a view of a file into a tool result. The text is what the
 // model reads, so it is the content itself, an image follows it, and the
 // structured answer carries the same facts for a client that parses them.
-func fileResult(fileID, postID string, request fileview.Request, view fileview.View) (*mcp.CallToolResult, FileContent) {
+func fileResult(fileID, postID string, request fileview.Request, view fileview.View, pdf []byte) (*mcp.CallToolResult, FileContent) {
 	out := FileContent{
 		FileID:   fileID,
 		Name:     request.Name,
@@ -166,6 +178,15 @@ func fileResult(fileID, postID string, request fileview.Request, view fileview.V
 		returned := view.Media != nil
 		out.MediaReturned = &returned
 	}
+	if pdf != nil {
+		// Converting a PDF is the client's to do: one that reads PDFs reads it
+		// from the resource, and one that does not still has the description.
+		content = append(content, &mcp.EmbeddedResource{Resource: &mcp.ResourceContents{
+			URI: "mm-mcp://files/" + fileID, MIMEType: pdfType, Blob: pdf,
+		}})
+		returned := true
+		out.DocumentReturned = &returned
+	}
 	if media := view.Media; media != nil {
 		if view.Kind == fileview.KindVideo {
 			// MCP has no video content; an embedded resource carries any bytes
@@ -186,7 +207,8 @@ type FoundFile struct {
 	Attachment
 	PostID    string `json:"post_id"`
 	ChannelID string `json:"channel_id"`
-	Channel   string `json:"channel" jsonschema:"the channel's display name, or the other person's username for a direct message"`
+	Channel   string `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
+	Team      string `json:"team,omitempty"`
 	Author    string `json:"author" jsonschema:"the username of whoever posted it"`
 	CreatedAt string `json:"created_at"`
 }
@@ -194,11 +216,12 @@ type FoundFile struct {
 // FileResults is what a file search found.
 type FileResults struct {
 	Files     []FoundFile `json:"files" jsonschema:"newest first"`
-	Truncated bool        `json:"truncated" jsonschema:"more files matched than the limit let through: narrow the terms, or raise the limit"`
+	Truncated bool        `json:"truncated" jsonschema:"more files matched than the limit let through: narrow the search, or raise the limit"`
 }
 
 type searchFilesInput struct {
-	Terms    string `json:"terms" jsonschema:"what to search for: words in the file's name, ext:pdf for a type, from:username, in:channel-name, on:, before: and after: with a YYYY-MM-DD date"`
+	Terms string `json:"terms,omitempty" jsonschema:"words in the file's name, or in its text where the server extracts it; ext:pdf for a type"`
+	searchFilters
 	TeamID   string `json:"team_id,omitempty" jsonschema:"search one team only; every team when not given"`
 	MatchAny bool   `json:"match_any,omitempty" jsonschema:"find files matching any of the words rather than all of them"`
 	Limit    int    `json:"limit,omitempty" jsonschema:"how many files to return, at most 100; 20 when not given"`
@@ -208,28 +231,29 @@ func searchFilesSpec() Spec {
 	return shaping(toolSpec(
 		&mcp.Tool{
 			Name: "search_files",
-			Description: "Search the files attached to posts the user can read, by name and with Mattermost's search syntax: " +
-				"ext:pdf for a type, from:username, in:channel-name and dates. Each file comes with the post and channel it is in; read_file reads it.",
+			Description: "Search the files attached to posts the user can read: by name, by text where the server extracts it, by type with " +
+				"ext:pdf, and by who posted them, in which channel and when, through from, in, before, after and on. Each file comes " +
+				"with the post and channel it is in; read_file reads it.",
 			Annotations: readOnly("Search files"),
 		},
-		append([]Use{{
-			Operation: "SearchFiles",
-			Params: map[string]Coverage{
-				"team_id":                       SetBy("team_id"),
-				"body.terms":                    SetBy("terms"),
-				"body.is_or_search":             SetBy("match_any"),
-				"body.page":                     Fixed("0", "Team Edition's database search answers the first page with every match, and later pages with nothing"),
-				"body.per_page":                 Fixed(fmt.Sprint(maxPostsPerSearch), "the most the tool returns; it applies its limit itself"),
-				"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
-				"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of list_channels"),
+		uses([]Use{
+			{
+				Operation: "SearchFiles",
+				Params: map[string]Coverage{
+					"team_id":                       SetBy("team_id"),
+					"body.terms":                    SetBy("terms"),
+					"body.is_or_search":             SetBy("match_any"),
+					"body.page":                     Fixed("0", "Team Edition's database search answers the first page with every match, and later pages with nothing"),
+					"body.per_page":                 Fixed(fmt.Sprint(maxPostsPerSearch), "the most the tool returns; it applies its limit itself"),
+					"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
+					"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
+				},
 			},
-		}}, channelNameUses("a file names the channel it is in, from the channels the user belongs to")...),
+		}, channelLookupUses("in"), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchFilesInput, FileResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchFilesInput) (*mcp.CallToolResult, FileResults, error) {
 				limit := input.Limit
 				switch {
-				case strings.TrimSpace(input.Terms) == "":
-					return nil, FileResults{}, fmt.Errorf("give terms to search for")
 				case limit == 0:
 					limit = defaultPostsPerSearch
 				case limit < 0 || limit > maxPostsPerSearch:
@@ -239,51 +263,55 @@ func searchFilesSpec() Spec {
 				if err != nil {
 					return nil, FileResults{}, err
 				}
+				terms, teamID, err := searchTerms(ctx, client, input.Terms, input.TeamID, input.searchFilters)
+				if err != nil {
+					return nil, FileResults{}, err
+				}
 				found, err := client.SearchFiles(ctx, mattermost.FileSearch{
-					TeamID: input.TeamID, Terms: input.Terms, MatchAny: input.MatchAny, PerPage: maxPostsPerSearch,
+					TeamID: teamID, Terms: terms, MatchAny: input.MatchAny, PerPage: maxPostsPerSearch,
 				})
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				channels, err := channelNames(ctx, client)
-				if err != nil {
-					return nil, FileResults{}, err
-				}
-				var creators []string
+				var files []*model.FileInfo
+				truncated := false
 				for _, id := range found.Order {
 					if file := found.FileInfos[id]; file != nil {
-						creators = append(creators, file.CreatorId)
+						if len(files) == limit {
+							truncated = true
+							break
+						}
+						files = append(files, file)
 					}
 				}
-				people, err := usernames(ctx, client, creators)
+				// A file is named where it was posted as a post is: its channel,
+				// team and author, read once for all of them.
+				posted := make([]*model.Post, 0, len(files))
+				for _, file := range files {
+					posted = append(posted, &model.Post{ChannelId: file.ChannelId, UserId: file.CreatorId})
+				}
+				described, err := describePosts(ctx, client, posted)
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				out := FileResults{Files: []FoundFile{}}
-				for _, id := range found.Order {
-					file := found.FileInfos[id]
-					if file == nil {
-						continue
-					}
-					if len(out.Files) == limit {
-						out.Truncated = true
-						break
-					}
+				out := FileResults{Files: make([]FoundFile, 0, len(files)), Truncated: truncated}
+				for i, file := range files {
 					out.Files = append(out.Files, FoundFile{
 						Attachment: toAttachment(file),
 						PostID:     file.PostId,
 						ChannelID:  file.ChannelId,
-						Channel:    channels[file.ChannelId],
-						Author:     people[file.CreatorId],
+						Channel:    described[i].Channel,
+						Team:       described[i].Team,
+						Author:     described[i].Author,
 						CreatedAt:  timestamp(file.CreateAt),
 					})
 				}
 				return nil, out, nil
 			}
 		},
-	), map[string]string{
+	), withShapes(searchFilterShapes, map[string]string{
 		"limit": "returns at most this many of the files Mattermost found, and says so when it cut some off",
-	})
+	}))
 }
 
 // maxSavedFileBytes is the largest file save_file writes: Mattermost's own

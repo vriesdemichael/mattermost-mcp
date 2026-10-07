@@ -8,86 +8,26 @@ that it works in a closed domain, your one Mattermost server
 Each tool also accounts for every parameter of the Mattermost endpoints it
 calls: which argument sets it, or why it is fixed or left out
 ([ADR-028](adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)).
-Messages are returned as their authors wrote them, oldest first, with times in
-UTC.
 
-## Reading
+Every post comes back in one shape: its author's username and name, its channel
+and team by name, its files with their ids, reactions with who reacted, whether
+it is pinned or marked as written with AI, its thread, and when it was edited.
+Times are in UTC. A tool that takes a name, of a channel, a team or a person,
+matches it in any case, whole or in part; an ambiguous name is refused with every
+candidate, and an unknown one with the closest names
+([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
+
+## People
 
 `get_me`: Who am I
 :   The Mattermost user the server acts as: id, username, name, nickname,
     position, roles, and whether it is a bot. Call it to check the connection
     and whose access the other tools use.
 
-`list_teams`: List teams
-:   The teams the user belongs to. A channel belongs to a team, so this is where
-    finding a conversation starts.
-
-`list_channels`: List channels
-:   The channels the user belongs to, direct and group messages included, with
-    how many messages and mentions are unread in each, most recently active
-    first. A direct message is named after the other person. `team_id` keeps
-    one team's channels, with the direct and group messages, which belong to no
-    team; `unread_only` keeps the channels with something unread.
-
-`read_channel`: Read channel
-:   A channel's messages, the newest 30 by default and at most 200, returned
-    oldest first with each author's username, replies counted, reactions and
-    attachments listed. `before` pages back from a post, `after` catches up from
-    one; `more_before` says whether older messages may exist.
-    `collapse_threads` leaves the replies out and shows each thread by the post
-    that started it, with its reply count and last reply, as Mattermost shows a
-    channel with collapsed reply threads.
-
-`read_unread`: Read unread posts
-:   Catches up on a channel from where you stopped reading: a few posts you have
-    read, then the ones you have not, oldest first, with the first unread one
-    named. It marks nothing read: what you have read is yours to record
-    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
-
-`read_thread`: Read thread
-:   A whole thread: the post that started it and every reply, oldest first.
-    Give any post in it.
-
-`list_threads`: List threads
-:   The threads you follow, as Mattermost's threads view lists them, most
-    recently replied to first: the post that started each, who took part, and
-    how many replies and mentions you have not read. `team_id` keeps one team's,
-    `unread_only` those with unread replies.
-
-`list_pinned`: List pinned posts
-:   The posts pinned to a channel.
-
-`list_saved`: List saved posts
-:   The posts you saved to come back to, each with its channel.
-
-`search_posts`: Search posts
-:   The messages the user can read that match a search, most recent first, each
-    with its author and channel, across every team or within one. The terms use
-    Mattermost's search syntax: words, `"a phrase"`, `-excluded`, `#hashtag`,
-    `@username` for mentions, and `from:`, `in:`, `on:`, `before:` and
-    `after:`. `match_any` finds posts with any of the words instead of all of
-    them. Returns at most `limit` posts, 20 by default and at most 100, and says
-    when more matched: Team Edition's search does not page, so narrow the terms
-    to see the rest.
-
-`read_file`: Read file
-:   A file attached to a post, as content the model can read
-    ([ADR-029](adr/029-files-reach-the-model-as-content-and-the-disk-only-locally.md)):
-    text in windows of numbered lines, chosen with `start_line` and
-    `line_count`; Word, PowerPoint and Excel files as their text; zip and tar
-    archives as a listing; images as images, turned upright and scaled down
-    when large; small audio and video as themselves. Anything else, a PDF
-    included, is described by its type and size, with the post's link for you
-    to open. Files over 64 MiB are described without being read.
-
-`search_files`: Search files
-:   Files attached to posts you can read, found by name and with Mattermost's
-    search syntax, such as `ext:pdf`, `from:` and `in:`, each with the post and
-    channel it is in.
-
-`get_user`: Get user
-:   One user, by `username` or by `user_id`: name, nickname, position and
-    whether they are a bot.
+`get_users`: Get users
+:   People by username, user id or email address, any mix of them in one call,
+    with whether each is a bot or deactivated. An email address finds someone
+    only when the server shows you addresses.
 
 `search_users`: Search users
 :   Users whose username, name, nickname or email address contains a term,
@@ -96,6 +36,95 @@ UTC.
 `get_status`: Get status
 :   Whether people are around: online, away, do not disturb or offline, when
     they were last active, and the status message they set.
+
+## Teams and channels
+
+`get_user_teams`: List the user's teams
+:   The teams you belong to.
+
+`get_team_info`: Get team
+:   A team by id or name. An open team you are not in is found by the exact name
+    in its address.
+
+`get_user_channels`: List the user's channels
+:   The channels you belong to, direct and group messages included, most
+    recently active first, each with its team and how many messages and
+    mentions are unread. `team_id` keeps one team's, `unread_only` those with
+    something unread.
+
+`get_channel_info`: Get channel
+:   A channel by id or name, among your own channels and the public channels of
+    your teams, saying whether you belong to it and whether it is archived.
+
+`search_channels`: Search channels
+:   Channels by part of their name: your own, and public ones you have not
+    joined.
+
+`list_team_channels`: List a team's channels
+:   A team's public channels, a page at a time.
+
+`list_archived_channels`: List archived channels
+:   A team's archived channels, a page at a time. An archived channel can be
+    read but not posted in.
+
+`get_channel_stats`: Get channel stats
+:   How many people belong to a channel, how many are guests, and how many posts
+    are pinned and files shared in it.
+
+## Reading
+
+`read_channel`: Read channel
+:   A channel's messages, the newest 30 by default and at most 200, oldest
+    first. `before` pages back from a post, `after` catches up from one, and
+    `since` reads what was written from a time on. `collapse_threads` leaves the
+    replies out and shows each thread by the post that started it, as Mattermost
+    shows a channel with collapsed reply threads.
+
+`read_unread`: Read unread posts
+:   Catches up on a channel from where you stopped reading: a few posts you have
+    read, then the ones you have not, oldest first, with the first unread one
+    named. It marks nothing read: what you have read is yours to record
+    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+
+`read_post`: Read post
+:   A post and the whole thread it is in, oldest first. Give any post in the
+    thread; `include_thread` false reads the post alone.
+
+`list_threads`: List threads
+:   The threads you follow, as Mattermost's threads view lists them, most
+    recently replied to first: the post that started each, who took part, and
+    how many replies and mentions you have not read.
+
+`list_pinned_posts`: List pinned posts
+:   The posts pinned to a channel.
+
+`list_saved`: List saved posts
+:   The posts you saved to come back to.
+
+`search_posts`: Search posts
+:   Messages you can read, across every team or one, by words, and by who wrote
+    them, where and when through `from`, `in`, `before`, `after` and `on`, so no
+    search syntax is needed. `@username` finds where someone was mentioned.
+    Returns at most `limit` posts, 20 by default and at most 100, and says when
+    more matched: Team Edition's search does not page, so narrow the search to
+    see the rest.
+
+## Files
+
+`read_file`: Read file
+:   A file attached to a post, as content the model can read
+    ([ADR-029](adr/029-files-reach-the-model-as-content-and-the-disk-only-locally.md)):
+    text in windows of numbered lines, chosen with `start_line` and
+    `line_count`; Word, PowerPoint and Excel files as their text; zip and tar
+    archives as a listing; images as images, turned upright and scaled down
+    when large; small audio, video and PDF files as themselves, for a client
+    that can read them. Anything else is described by its type and size, with
+    the post's link. Files over 64 MiB are described without being read.
+
+`search_files`: Search files
+:   Files attached to posts you can read, by name, by type with `ext:pdf`, and by
+    `from`, `in`, `before`, `after` and `on`, each with the post and channel it
+    is in.
 
 ## Writing
 
@@ -109,10 +138,17 @@ Each call asks you through your MCP client: it shows what will change, where,
 and under whose name, and acts only when you tick the box and accept. A client
 that cannot show the question gets an error, and nothing is written.
 
-`post_message`: Post message
-:   Posts a message in a channel, in a direct message with `to_user`, or with
-    `root_id` as a reply in the thread of any post in it. The question shows
-    the message as it will be sent, the channel or direct message it goes to
+Every message is checked before you are asked
+([ADR-031](adr/031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)):
+one longer than the server takes is refused with its length and the limit, an
+@mention of someone nobody is is refused with the closest usernames, and the
+question says how many people `@here`, `@channel` and `@all` reach and who of
+those mentioned is deactivated. Posts and edits are marked as written with AI,
+as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
+
+`create_post`: Create post
+:   Posts a message in a channel, or with `root_id` replies in the thread of any
+    post in it. The question shows the message as it will be sent, the channel
     and, for a reply, the start of the thread. Posting takes down the typing
     indicator `typing` put up there. Returns the post.
 
@@ -120,9 +156,20 @@ that cannot show the question gets an error, and nothing is written.
     `content`, or, when the server runs on your machine over stdio, a file by
     its full `path`. The question lists each file with its size, type and the
     path it was read from. The files are uploaded only once you accept, and a
-    file changed after you were asked is refused.
+    file changed after you were asked is refused. `dm` and `group_message` take
+    `files` too.
 
-`edit_post`: Edit post
+`dm`: Send direct message
+:   Sends a direct message to one person, or to yourself when no username is
+    given. This is how to message people: "message Alice and Bob" is two direct
+    messages.
+
+`group_message`: Send group message
+:   Sends one message to two to seven people together, in the group conversation
+    Mattermost keeps for exactly them. Only when you ask for a group
+    conversation.
+
+`update_post`: Update post
 :   Replaces the text of one of your own posts. The question shows the old text
     and the new. Another person's post is refused, even with an administrator's
     credential.
@@ -133,9 +180,9 @@ that cannot show the question gets an error, and nothing is written.
     many.
 
 `add_reaction`: Add reaction
-:   Reacts to a post with an emoji, such as `thumbsup`. The question shows the
-    emoji and the start of the post. Reacting again with the same emoji
-    changes nothing.
+:   Reacts to a post with an emoji, by name, such as `thumbsup`, or as itself,
+    such as 👍. An unknown name is refused with the closest ones. Reacting again
+    with the same emoji changes nothing.
 
 `remove_reaction`: Remove reaction
 :   Takes back one of your reactions.
@@ -143,11 +190,15 @@ that cannot show the question gets an error, and nothing is written.
 `pin_post`: Pin post
 :   Pins a post to its channel for everyone, or unpins it with `pinned` false.
 
+`delete_draft`: Delete draft
+:   Deletes your draft in a channel or thread. It may hold words you have not
+    sent, so the question shows it first.
+
 ### Yours alone, or gone in seconds: not asked
 
 `typing`: Show typing
 :   Shows you typing in a channel or thread while a message is written, kept up
-    until `post_message` posts there, `stop` is sent, or a minute passes.
+    until `create_post` posts there, `stop` is sent, or a minute passes.
 
 `follow_thread`: Follow thread
 :   Follows a thread, so its replies notify you and it appears in
@@ -156,10 +207,19 @@ that cannot show the question gets an error, and nothing is written.
 `save_post`: Save post
 :   Saves a post among your saved posts, or removes it with `saved` false.
 
-`draft_message`: Draft message
-:   Puts a message in your message box in Mattermost as a draft, in a channel, a
-    direct message or a thread, for you to change and send yourself. A
-    different draft already there is left alone.
+`set_post_reminder`: Set post reminder
+:   Has Mattermost remind you of a post at a time, as its "Remind me" does. A
+    time without an offset is read in the timezone you set in Mattermost.
+
+`save_draft`: Save draft
+:   Puts a message in your message box in Mattermost as a draft, in a channel or
+    a thread, for you to change and send yourself. The message is checked as a
+    post's is, and its notes say what its mentions will do. A different draft
+    already there is never replaced, and a draft is refused when your drafts do
+    not sync, since you would never see it.
+
+`list_drafts`: List drafts
+:   Your drafts, in channels and threads, with where each is.
 
 ## On your machine
 
@@ -173,3 +233,12 @@ not to Mattermost
     `MM_MCP_DOWNLOAD_DIR` and your Downloads directory by default, under its own
     name, and answers with the path. An existing file is never overwritten: a
     number is added to the name instead. Files up to 100 MiB.
+
+## Not offered
+
+- **Scheduled posts.** Mattermost's scheduled posts need a licence, and Team
+  Edition, which mm-mcp is tested against, refuses them
+  ([ADR-004](adr/004-live-tests-against-a-real-mattermost.md)).
+- **Marking anything read or unread.** What you have read is yours to record,
+  and a model reading a channel is not you reading it
+  ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).

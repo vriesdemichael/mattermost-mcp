@@ -8,6 +8,8 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 )
 
 // UserSummary is the part of a Mattermost user a tool returns: who the user is,
@@ -23,20 +25,23 @@ type UserSummary struct {
 	Roles     string `json:"roles" jsonschema:"space-separated, such as system_user or system_admin"`
 	Locale    string `json:"locale"`
 	IsBot     bool   `json:"is_bot"`
+	// Deactivated users can be read but not reached.
+	Deactivated bool `json:"deactivated,omitempty" jsonschema:"a deactivated user can no longer sign in or be notified"`
 }
 
 func summarise(user *model.User) UserSummary {
 	return UserSummary{
-		ID:        user.Id,
-		Username:  user.Username,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		Nickname:  user.Nickname,
-		Position:  user.Position,
-		Email:     user.Email,
-		Roles:     user.Roles,
-		Locale:    user.Locale,
-		IsBot:     user.IsBot,
+		ID:          user.Id,
+		Username:    user.Username,
+		FirstName:   user.FirstName,
+		LastName:    user.LastName,
+		Nickname:    user.Nickname,
+		Position:    user.Position,
+		Email:       user.Email,
+		Roles:       user.Roles,
+		Locale:      user.Locale,
+		IsBot:       user.IsBot,
+		Deactivated: user.DeleteAt > 0,
 	}
 }
 
@@ -72,44 +77,143 @@ func getMeSpec() Spec {
 	)
 }
 
-type getUserInput struct {
-	Username string `json:"username,omitempty" jsonschema:"the username, without the @"`
-	UserID   string `json:"user_id,omitempty" jsonschema:"the user's id, such as a post's author_id"`
+type getUsersInput struct {
+	Users []string `json:"users" jsonschema:"the people to look up, at most 100, each by username (with or without @), user id, or email address"`
 }
 
-func getUserSpec() Spec {
-	return toolSpec(
+func getUsersSpec() Spec {
+	return shaping(toolSpec(
 		&mcp.Tool{
-			Name:        "get_user",
-			Description: "Look up one Mattermost user by username or by id: their name, nickname, position and whether they are a bot. Give one of the two.",
-			Annotations: readOnly("Get user"),
+			Name: "get_users",
+			Description: "Look up people by username, user id or email address, any mix of them in one call: their name, nickname, position, " +
+				"whether they are a bot and whether they are deactivated. An unknown name is refused with the closest usernames.",
+			Annotations: readOnly("Get users"),
 		},
 		[]Use{
-			{Operation: "GetUserByUsername", Params: map[string]Coverage{"username": SetBy("username")}},
-			{Operation: "GetUser", Params: map[string]Coverage{"user_id": SetBy("user_id")}},
+			{Operation: "GetUsersByIds", Params: map[string]Coverage{"since": Omitted("the tool reads each user as they are now")}},
+			{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+			{Operation: "GetUserByEmail", Params: map[string]Coverage{"email": SetBy("users")}},
+			{Operation: "SearchUsers", Params: suggestionSearch(SetBy("users"))},
 		},
-		func(clientFor ClientFor) mcp.ToolHandlerFor[getUserInput, UserSummary] {
-			return func(ctx context.Context, request *mcp.CallToolRequest, input getUserInput) (*mcp.CallToolResult, UserSummary, error) {
-				if (input.Username == "") == (input.UserID == "") {
-					return nil, UserSummary{}, fmt.Errorf("give a username or a user_id, one of the two")
+		func(clientFor ClientFor) mcp.ToolHandlerFor[getUsersInput, Users] {
+			return func(ctx context.Context, request *mcp.CallToolRequest, input getUsersInput) (*mcp.CallToolResult, Users, error) {
+				switch {
+				case len(input.Users) == 0:
+					return nil, Users{}, fmt.Errorf("give the usernames, user ids or email addresses to look up")
+				case len(input.Users) > 100:
+					return nil, Users{}, fmt.Errorf("look up at most 100 people at once, not %d", len(input.Users))
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
-					return nil, UserSummary{}, err
+					return nil, Users{}, err
 				}
-				var user *model.User
-				if input.Username != "" {
-					user, err = client.UserByUsername(ctx, strings.TrimPrefix(input.Username, "@"))
-				} else {
-					user, err = client.User(ctx, input.UserID)
-				}
+				found, err := lookUpUsers(ctx, client, input.Users)
 				if err != nil {
-					return nil, UserSummary{}, err
+					return nil, Users{}, err
 				}
-				return nil, summarise(user), nil
+				out := Users{Users: make([]UserSummary, 0, len(found))}
+				for _, user := range found {
+					out.Users = append(out.Users, summarise(user))
+				}
+				return nil, out, nil
 			}
 		},
-	)
+	), nil)
+}
+
+// lookUpUsers is the users the given references name, in their order: an
+// email address, a user id, or a username. A reference shaped like an id that
+// names no user is tried as a username. Unknown references are refused
+// together, each with the closest usernames.
+func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) ([]*model.User, error) {
+	byRef := map[string]*model.User{}
+	var ids, names []string
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		switch {
+		case strings.Contains(strings.TrimPrefix(ref, "@"), "@"):
+			user, err := client.UserByEmail(ctx, ref)
+			if err != nil && !notFound(err) {
+				return nil, err
+			}
+			if user != nil {
+				byRef[ref] = user
+			}
+		case mattermostID.MatchString(ref):
+			ids = append(ids, ref)
+		default:
+			names = append(names, strings.TrimPrefix(ref, "@"))
+		}
+	}
+	if len(ids) > 0 {
+		users, err := client.Users(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			byRef[user.Id] = user
+		}
+		for _, id := range ids {
+			if byRef[id] == nil {
+				names = append(names, id)
+			}
+		}
+	}
+	if len(names) > 0 {
+		users, err := client.UsersByUsernames(ctx, names)
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			byRef[user.Username] = user
+		}
+	}
+	var out []*model.User
+	var unknown []string
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		user := byRef[ref]
+		if user == nil {
+			user = byRef[strings.TrimPrefix(ref, "@")]
+		}
+		if user == nil {
+			unknown = append(unknown, ref)
+			continue
+		}
+		out = append(out, user)
+	}
+	if len(unknown) > 0 {
+		return nil, unknownUsers(ctx, client, unknown)
+	}
+	return out, nil
+}
+
+// unknownUsers is the error for references that name no user, with the
+// closest usernames for each, so the model corrects itself.
+func unknownUsers(ctx context.Context, client *mattermost.Client, unknown []string) error {
+	var parts []string
+	for _, ref := range unknown {
+		name := strings.TrimPrefix(ref, "@")
+		var known []string
+		if users, err := client.SearchUsers(ctx, &model.UserSearch{Term: firstWord(name), Limit: 20}); err == nil {
+			for _, user := range users {
+				known = append(known, user.Username)
+			}
+		}
+		if near := closest(name, known, 3); len(near) > 0 {
+			parts = append(parts, fmt.Sprintf("%q (closest: %s)", ref, quoteAll(near)))
+		} else {
+			parts = append(parts, fmt.Sprintf("%q", ref))
+		}
+	}
+	return fmt.Errorf("no user is known as %s. search_users finds people by part of their name", strings.Join(parts, ", "))
+}
+
+// firstWord is the start of a name to search by, short enough that a typo
+// further on still finds the name meant.
+func firstWord(name string) string {
+	runes := []rune(name)
+	return string(runes[:min(3, len(runes))])
 }
 
 // The most users one search returns, and how many when not told.

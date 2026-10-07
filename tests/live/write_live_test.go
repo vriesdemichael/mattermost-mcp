@@ -63,7 +63,7 @@ func writingSession(t *testing.T, admin *model.Client4, user *model.User, answer
 func postMessage(t *testing.T, session *mcp.ClientSession, arguments map[string]any) server.Post {
 	t.Helper()
 	var posted server.Post
-	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "post_message", Arguments: arguments}), &posted)
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: arguments}), &posted)
 	return posted
 }
 
@@ -156,7 +156,7 @@ func TestPostMessageRefusesAReplyToAPostInAnotherChannel(t *testing.T) {
 	root := postAs(t, clientAs(t, user), there.Id, "", "over there")
 	session, questions := writingSession(t, admin, user, accept)
 
-	result := callTool(t, session, &mcp.CallToolParams{Name: "post_message", Arguments: map[string]any{
+	result := callTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: map[string]any{
 		"channel_id": here.Id, "root_id": root.Id, "message": "lost",
 	}})
 	if !result.IsError {
@@ -204,8 +204,8 @@ func TestAWriteThePersonDidNotAcceptChangesNothing(t *testing.T) {
 			}
 
 			for _, params := range []*mcp.CallToolParams{
-				{Name: "post_message", Arguments: map[string]any{"channel_id": channel.Id, "message": "unwanted"}},
-				{Name: "add_reaction", Arguments: map[string]any{"post_id": target.Id, "emoji_name": "thumbsup"}},
+				{Name: "create_post", Arguments: map[string]any{"channel_id": channel.Id, "message": "unwanted"}},
+				{Name: "add_reaction", Arguments: map[string]any{"post_id": target.Id, "emoji": "thumbsup"}},
 			} {
 				result, err := tryTool(t, session, params)
 				var refused *jsonrpc.Error
@@ -240,7 +240,7 @@ func TestAddReactionReactsAsThePersonAndAgainChangesNothing(t *testing.T) {
 	react := func() {
 		var reaction server.Reaction
 		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "add_reaction", Arguments: map[string]any{
-			"post_id": target.Id, "emoji_name": ":thumbsup:",
+			"post_id": target.Id, "emoji": ":thumbsup:",
 		}}), &reaction)
 		if reaction.PostID != target.Id || reaction.EmojiName != "thumbsup" {
 			t.Fatalf("the tool answered %+v", reaction)

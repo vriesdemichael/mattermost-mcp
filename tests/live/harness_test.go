@@ -92,11 +92,14 @@ func instanceURL() (string, error) {
 }
 
 // uniqueName is a fixture name: the prefix lt-, the kind of fixture, and a
-// random part. Never a timestamp (ADR-008).
+// random part. Never a timestamp (ADR-008). The random part is hex with x for
+// e: Postgres's text search reads digits, an e and digits, such as 27e7, as a
+// number, which splits a username so that searching for a mention of it finds
+// nothing, and a test would fail on the name it drew.
 func uniqueName(kind string) string {
 	random := make([]byte, 6)
 	_, _ = rand.Read(random)
-	return fmt.Sprintf("lt-%s-%s", kind, hex.EncodeToString(random))
+	return fmt.Sprintf("lt-%s-%s", kind, strings.ReplaceAll(hex.EncodeToString(random), "e", "x"))
 }
 
 func check(t *testing.T, err error) {
@@ -192,7 +195,7 @@ func mcpWriting(t *testing.T, token string, answer func(*mcp.ElicitParams) *mcp.
 			return answer(request.Params), nil
 		}}
 	}
-	return mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true}, options)
+	return mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true, MarkAIGenerated: true}, options)
 }
 
 func mcpWith(t *testing.T, cfg config.Config, options *mcp.ClientOptions) *mcp.ClientSession {

@@ -20,6 +20,13 @@ the server's env block. No setting is a command-line flag that carries a secret
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
     `true`, `false`, `1`, `0`, `yes`, `no`, `on` and `off`.
 
+`MM_MCP_MARK_AI_GENERATED`
+:   Optional, `true` by default. Every post and edit the model writes carries
+    Mattermost's own marker for text written with AI, which its web app shows
+    beside the post's time
+    ([ADR-031](adr/031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)).
+    `false` leaves it out.
+
 `MM_MCP_DOWNLOAD_DIR`
 :   Optional. The directory `save_file` writes attachments to, when the server
     runs over stdio on your own machine. Your Downloads directory by default.
