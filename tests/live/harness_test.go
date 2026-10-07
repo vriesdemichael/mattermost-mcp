@@ -19,12 +19,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/vriesdemichael/mm-mcp/internal/apisurface"
 	"github.com/vriesdemichael/mm-mcp/internal/config"
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 	"github.com/vriesdemichael/mm-mcp/internal/network"
@@ -49,7 +51,19 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "no Mattermost answers at %s (%v); start one with `task stack:up`\n", liveURL, err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	newest, err = apisurface.LoadSpec(filepath.Join("..", "..", "openapi", "mattermost-latest.json"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	if code == 0 && wholeSuite() {
+		if missing := declaredButNeverCalled(); len(missing) > 0 {
+			fmt.Fprintf(os.Stderr, "tools declare operations no live test saw them call (ADR-028):\n  %s\n", strings.Join(missing, "\n  "))
+			code = 1
+		}
+	}
+	os.Exit(code)
 }
 
 // instanceURL is the address of the instance this checkout's `task stack:up`
@@ -147,10 +161,12 @@ func sessionToken(t *testing.T, user *model.User) string {
 }
 
 // mcpAs is an MCP client talking to mm-mcp in memory, which acts with token.
+// Call its tools through callTool, which checks what they send (ADR-028).
 func mcpAs(t *testing.T, token string) *mcp.ClientSession {
 	t.Helper()
 	cfg := config.Config{URL: liveURL, Token: token}
-	client := mattermost.New(cfg.URL, cfg.Token, network.NewSafeTransport())
+	rec := &recorder{inner: network.NewSafeTransport()}
+	client := mattermost.New(cfg.URL, cfg.Token, rec)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.New(cfg, server.Single(client)).Connect(t.Context(), serverTransport, nil)
 	if err != nil {
@@ -162,5 +178,7 @@ func mcpAs(t *testing.T, token string) *mcp.ClientSession {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = session.Close() })
+	recorders.Store(session, rec)
+	t.Cleanup(func() { recorders.Delete(session) })
 	return session
 }

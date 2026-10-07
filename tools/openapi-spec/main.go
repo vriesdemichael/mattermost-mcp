@@ -1,16 +1,18 @@
-// Command openapi-spec vendors Mattermost's OpenAPI specification for each
-// supported release (ADR-026).
+// Command openapi-spec vendors what each supported Mattermost release says and
+// does at its API (ADR-026).
 //
-//	go run ./tools/openapi-spec refresh   # fetch and write openapi/mattermost-<stack>.json
-//	go run ./tools/openapi-spec check     # fail when a vendored spec is not its stack's release
+//	go run ./tools/openapi-spec refresh   # write openapi/mattermost-<stack>.json and openapi/routes-<stack>.json
+//	go run ./tools/openapi-spec check     # fail when a vendored file is not its stack's release
 //
-// Mattermost does not publish a specification per release. It keeps the
-// sources in its server repository under api/v4/source, tagged with every
-// release, and builds one document by concatenating them in the order
-// api/Makefile lists. This does the same at the tag each test stack runs, so
-// the vendored document describes the release the live suite tests. The release
-// is read from the image tag in docker/<stack>/compose.yml and written into the
-// document as info.x-mattermost-release; it is stated nowhere else.
+// Both come from Mattermost's repository at the tag each test stack runs, read
+// from a sparse clone under .tmp/. The specification: Mattermost does not
+// publish one per release; it keeps the sources under api/v4/source and builds
+// one document by concatenating them in the order api/Makefile lists, and this
+// does the same. The route table: every endpoint the release's own router
+// registers in server/channels/api4, which is what the server serves whatever
+// the specification says. The release is read from the image tag in
+// docker/<stack>/compose.yml and written into both files; it is stated nowhere
+// else.
 //
 // `refresh` needs the network; `check` does not, and runs in quality:verify.
 package main
@@ -18,13 +20,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,19 +37,29 @@ var (
 	sourceInMake = regexp.MustCompile(`cat \$\(V4_SRC\)/([\w.-]+\.yaml) >> \$\(V4_YAML\)`)
 )
 
+// RouteTable is a release's route table as vendored.
+type RouteTable struct {
+	Release string  `json:"release"`
+	Routes  []Route `json:"routes"`
+}
+
 func main() {
 	if len(os.Args) != 2 || (os.Args[1] != "refresh" && os.Args[1] != "check") {
 		fail(fmt.Errorf("usage: openapi-spec refresh|check"))
 	}
 	if os.Args[1] == "refresh" {
-		client := &http.Client{Timeout: time.Minute}
 		for _, stack := range stacks {
 			tag, err := StackRelease(stack)
 			fail(err)
-			document, err := assemble(client, tag)
+			dir, err := checkout(tag)
 			fail(err)
-			fail(write(stack, document))
-			fmt.Printf("Vendored the Mattermost %s specification as %s.\n", tag, specPath(stack))
+			document, err := assemble(dir, tag)
+			fail(err)
+			fail(write(specPath(stack), document))
+			routes, err := routesFrom(dir)
+			fail(err)
+			fail(write(routesPath(stack), RouteTable{Release: tag, Routes: routes}))
+			fmt.Printf("Vendored Mattermost %s: %s and %s, %d routes.\n", tag, specPath(stack), routesPath(stack), len(routes))
 		}
 		return
 	}
@@ -60,11 +70,14 @@ func main() {
 		if got := VendoredRelease(stack); got != want {
 			stale = append(stale, fmt.Sprintf("%s describes %q; the %s stack runs %s", specPath(stack), got, stack, want))
 		}
+		if got := vendoredRoutesRelease(stack); got != want {
+			stale = append(stale, fmt.Sprintf("%s describes %q; the %s stack runs %s", routesPath(stack), got, stack, want))
+		}
 	}
 	if len(stale) > 0 {
 		fail(fmt.Errorf("%s\nrun `task openapi:refresh`", strings.Join(stale, "\n")))
 	}
-	fmt.Println("Each vendored specification describes the release its stack runs.")
+	fmt.Println("Each vendored specification and route table describes the release its stack runs.")
 }
 
 func fail(err error) {
@@ -76,6 +89,22 @@ func fail(err error) {
 
 func specPath(stack string) string {
 	return filepath.Join("openapi", "mattermost-"+stack+".json")
+}
+
+func routesPath(stack string) string {
+	return filepath.Join("openapi", "routes-"+stack+".json")
+}
+
+func vendoredRoutesRelease(stack string) string {
+	raw, err := os.ReadFile(routesPath(stack))
+	if err != nil {
+		return ""
+	}
+	var table RouteTable
+	if json.Unmarshal(raw, &table) != nil {
+		return ""
+	}
+	return table.Release
 }
 
 // StackRelease is the Mattermost release a test stack runs, from its compose file.
@@ -120,37 +149,63 @@ func SourceOrder(makefile string) ([]string, error) {
 	return files, nil
 }
 
-func assemble(client *http.Client, tag string) (map[string]any, error) {
-	fetch := func(path string) (string, error) {
-		url := fmt.Sprintf("https://raw.githubusercontent.com/mattermost/mattermost/v%s/api/%s", tag, path)
-		response, err := client.Get(url) //nolint:noctx // a command-line tool with a client timeout
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = response.Body.Close() }()
-		if response.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("%s answered %s", url, response.Status)
-		}
-		body, err := io.ReadAll(response.Body)
-		return string(body), err
-	}
-	makefile, err := fetch("Makefile")
+// assemble builds the specification from a checkout of the release's tag.
+func assemble(checkout, tag string) (map[string]any, error) {
+	makefile, err := os.ReadFile(filepath.Join(checkout, "api", "Makefile"))
 	if err != nil {
 		return nil, err
 	}
-	files, err := SourceOrder(makefile)
+	files, err := SourceOrder(string(makefile))
 	if err != nil {
 		return nil, err
 	}
 	var source strings.Builder
 	for _, name := range files {
-		part, err := fetch("v4/source/" + name)
+		part, err := os.ReadFile(filepath.Join(checkout, "api", "v4", "source", name))
 		if err != nil {
 			return nil, err
 		}
-		source.WriteString(part)
+		source.Write(part)
 	}
 	return Decode(source.String(), tag)
+}
+
+// routesFrom extracts the route table from a checkout of the release's tag.
+func routesFrom(checkout string) ([]Route, error) {
+	dir := filepath.Join(checkout, "server", "channels", "api4")
+	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return nil, err
+	}
+	sources := map[string]string{}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		sources[filepath.Base(path)] = string(raw)
+	}
+	return ExtractRoutes(sources)
+}
+
+// checkout is a sparse clone of Mattermost's repository at the release's tag,
+// holding only the API sources, under .tmp/ and reused by a later refresh.
+func checkout(tag string) (string, error) {
+	dir := filepath.Join(".tmp", "mattermost-src", tag)
+	if _, err := os.Stat(filepath.Join(dir, "api", "Makefile")); err == nil {
+		return dir, nil
+	}
+	_ = os.RemoveAll(dir)
+	steps := [][]string{
+		{"clone", "--quiet", "--depth", "1", "--filter=blob:none", "--sparse", "--branch", "v" + tag, "https://github.com/mattermost/mattermost.git", dir},
+		{"-C", dir, "sparse-checkout", "set", "api", "server/channels/api4"},
+	}
+	for _, args := range steps {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	return dir, nil
 }
 
 // Decode reads the assembled YAML into a document JSON can hold, and records
@@ -244,13 +299,13 @@ func StringKeys(node any) any {
 	}
 }
 
-func write(stack string, document map[string]any) error {
+func write(path string, document any) error {
 	encoded, err := json.MarshalIndent(document, "", " ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll("openapi", 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(specPath(stack), append(encoded, '\n'), 0o600)
+	return os.WriteFile(path, append(encoded, '\n'), 0o600)
 }

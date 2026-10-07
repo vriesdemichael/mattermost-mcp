@@ -16,10 +16,7 @@ import (
 
 func callGetMe(t *testing.T, session *mcp.ClientSession) (*mcp.CallToolResult, server.UserSummary) {
 	t.Helper()
-	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "get_me", Arguments: map[string]any{}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := callTool(t, session, &mcp.CallToolParams{Name: "get_me", Arguments: map[string]any{}})
 	var user server.UserSummary
 	if !result.IsError {
 		raw, err := json.Marshal(result.StructuredContent)

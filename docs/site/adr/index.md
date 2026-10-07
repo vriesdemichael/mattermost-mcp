@@ -32,4 +32,6 @@ holds and why, and the alternatives it turned down.
 - [ADR-023: Distributed as signed binaries, .mcpb bundles, and through the MCP Registry](023-distributed-as-signed-binaries-mcpb-bundles-and-the-mcp-registry.md)
 - [ADR-024: Mattermost is reached through its own client, at the commit of the newest supported release](024-mattermosts-client-at-the-newest-release.md)
 - [ADR-025: The supported window runs from the oldest supported Extended Support Release to the newest release](025-supported-mattermost-releases.md)
-- [ADR-026: The OpenAPI specification is vendored per supported release, as reference](026-the-openapi-specification-is-vendored-per-supported-release.md)
+- [ADR-026: Each supported release's specification and route table are vendored, as reference](026-the-openapi-specification-is-vendored-per-supported-release.md)
+- [ADR-027: A difference between supported releases is found from Mattermost's own files, before a test runs](027-a-difference-between-supported-releases-is-found-from-mattermosts-own-files.md)
+- [ADR-028: Every parameter of an operation a tool calls is accounted for, and the live suite proves the tool calls what it declares](028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)

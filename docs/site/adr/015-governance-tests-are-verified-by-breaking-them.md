@@ -5,7 +5,7 @@ search:
 
 # ADR-015: Governance tests are verified by breaking them
 
-A governance test asserts an invariant over everything of one kind the repository holds, rather than a behaviour of one function, so that one added later is held to it without anyone remembering to. Each lives in a file named governance_test.go beside what it guards, and runs with the unit suite. Three rules govern them. Break a guard before trusting it. Prefer making a contradiction unrepresentable over testing for it: when two declarations answer the same question, derive one from the other. And keep the set listed here, which `TestTheGovernanceRecordListsExactlyTheGovernanceTests` holds in both directions. The set:
+A governance test asserts an invariant over everything of one kind the repository holds, rather than a behaviour of one function, so that one added later is held to it without anyone remembering to. Each lives in a file whose name ends in governance_test.go, beside what it guards, and runs with the unit suite. Three rules govern them. Break a guard before trusting it. Prefer making a contradiction unrepresentable over testing for it: when two declarations answer the same question, derive one from the other. And keep the set listed here, which `TestTheGovernanceRecordListsExactlyTheGovernanceTests` holds in both directions. The set:
 
 - `TestEveryToolDeclaresItsHintsAndTitle`: every MCP tool states a title and all four hints.
 - `TestNoToolIsOpenWorld`: no MCP tool is annotated open-world.
@@ -13,6 +13,10 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestAllowingWritesAddsExactlyTheToolsThatWrite`: allowing writes adds exactly the tools not annotated read-only.
 - `TestEveryToolIsCalledByALiveTest`: every MCP tool is called by name in tests/live.
 - `TestTheToolsPageDocumentsEveryToolAndOnlyThose`: the tools page documents exactly the tools the server has.
+- `TestEveryToolDeclaresTheOperationsItCalls`: every tool declares the operations it calls, each in the newest specification and served by the newest router.
+- `TestEveryParameterOfACalledOperationIsAccountedFor`: every parameter and body field of a called operation is set, fixed or omitted with a reason.
+- `TestEveryToolArgumentSetsAParameterItCalls`: every argument a tool takes sets a parameter it declares, and every declared argument is taken.
+- `TestEveryDifferenceBetweenSupportedReleasesIsHandled`: an operation that differs on the oldest supported release is handled, said so, and listed on the releases page.
 - `TestTheRepositorysRecordsLoad`: every decision record parses, and no two share a number.
 - `TestTheRecordIndexIsCurrent`: the record index is what the records generate.
 - `TestEveryADRMentionHasARecord`: nothing in the repository names a record that does not exist.

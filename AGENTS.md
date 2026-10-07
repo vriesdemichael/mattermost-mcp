@@ -60,7 +60,8 @@ removing a record, and `openapi:refresh` after a stack's image tag changes.
 | `internal/repository` | repository-wide governance tests |
 | `tests/live` | the live suite (build tag `live`) |
 | `tools/` | one Go command per directory, each with its reason in its package comment |
-| `openapi/` | the vendored specification of each supported release, as reference |
+| `internal/apisurface` | reads the vendored specifications and route tables: matching, parameters, release differences |
+| `openapi/` | the vendored specification and route table of each supported release, as reference |
 
 ## Fixing a bug
 
@@ -86,12 +87,19 @@ Then break each new test by reverting its fix and watch it fail.
    annotation), and a description written for the model that reads it. Reach
    Mattermost only through the `ClientFor` it is given
    ([ADR-020](docs/site/adr/020-stdio-and-streamable-http-single-tenant-first.md)).
-3. Add its spec to `AllSpecs`.
-4. Read the operation in `openapi/mattermost-latest.json` for every parameter it
-   takes, and compare with `openapi/mattermost-esr.json`: a difference is
-   handled in the call ([ADR-025](docs/site/adr/025-supported-mattermost-releases.md)).
-5. Write the live test in `tests/live/`, seeding what it needs with helpers that
-   own their fixtures ([ADR-008](docs/site/adr/008-a-live-test-seeds-and-owns-its-fixtures.md)).
+3. Declare its `Uses`: every operation it calls, by operationId in
+   `openapi/mattermost-latest.json`, and for every parameter and body field of
+   each, `SetBy(arg)`, `Fixed(value, reason)` or `Omitted(reason)`
+   ([ADR-028](docs/site/adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)).
+   When `TestEveryDifferenceBetweenSupportedReleasesIsHandled` names a
+   difference on the ESR, handle it in the call, say how in `Releases`, and list
+   the operation on `docs/site/mattermost-releases.md`
+   ([ADR-027](docs/site/adr/027-a-difference-between-supported-releases-is-found-from-mattermosts-own-files.md)).
+4. Add its spec to `AllSpecs`.
+5. Write the live test in `tests/live/`, calling the tool through `callTool`,
+   which fails on a request to an operation the tool does not declare, and
+   seeding what it needs with helpers that own their fixtures
+   ([ADR-008](docs/site/adr/008-a-live-test-seeds-and-owns-its-fixtures.md)).
 6. Document it on `docs/site/tools.md`.
 
 ## Gotchas
