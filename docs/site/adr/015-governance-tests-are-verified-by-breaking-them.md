@@ -28,8 +28,10 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestNoRecordNamesAMattermostVersion`: no record restates which Mattermost releases are supported.
 - `TestTheGovernanceRecordListsExactlyTheGovernanceTests`: this list and the governance tests agree.
 - `TestEveryActionIsPinnedToACommit`: every workflow action is pinned to a release's commit, with the release named beside it.
+- `TestEveryToolVersionIsPinnedInOnePlace`: no workflow or task states a tool's version; each reads it from .github/tool-versions.env, and CONTRIBUTING.md installs the Task CI runs (ADR-002).
 - `TestEveryVariableTheSourceNamesIsListed`: every environment variable the shipped code names is in config.EnvironmentVariables, which the seal empties.
 - `TestTheConfigurationPageNamesEveryVariableAndOnlyThose`: the configuration page documents exactly the variables mm-mcp reads.
+- `TestTheBundleSetsEveryVariableAPersonConfigures`: the .mcpb manifest sets every variable mm-mcp reads but the test-only network block, and server.json's are written from it (ADR-023).
 - `TestEveryTestPackageIsSealed`: every package under cmd/ and internal/ with tests seals its process.
 
 Break a governance test before adding it, and before trusting one you did not write: record what breaks it, and that you saw it fail. Add it to the list above in the same change. A guard that scans the tree also fails when it finds too little to scan, so a scan that has stopped matching cannot report perfect compliance. Do not write a test that compares a value to something derived from it.

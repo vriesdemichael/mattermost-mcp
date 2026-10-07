@@ -2,8 +2,9 @@ name: Release
 
 # A push to main releases when its commits call for one (ADR-013). main moves only
 # when next is fast-forwarded onto it (ADR-011), so this runs once per promotion.
-# A manual run repeats a release that failed partway: every step below can run
-# again over what an earlier run already published.
+# A manual run repeats a release that failed partway: the tag the earlier run
+# left on the commit names the version again (tools/release), and every step
+# below can run again over what that run already published.
 on:
   push:
     branches:
@@ -262,10 +263,12 @@ jobs:
       id-token: write
     env:
       VERSION: ${{ needs.determine-version.outputs.version }}
-      MCP_PUBLISHER_VERSION: v1.8.1
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve the pinned tool versions
+        run: grep -E "^[A-Za-z_][A-Za-z0-9_]*=" .github/tool-versions.env >> "$GITHUB_ENV"
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -464,8 +467,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
+      - name: Resolve the pinned tool versions
+        run: grep -E "^[A-Za-z_][A-Za-z0-9_]*=" .github/tool-versions.env >> "$GITHUB_ENV"
+
       - name: Setup Task
-        run: go install github.com/go-task/task/v3/cmd/task@v3.48.0
+        run: go install "github.com/go-task/task/v3/cmd/task@${{ env.GO_TASK_VERSION }}"
 
       - name: Publish the versioned docs to GitHub Pages
         env:

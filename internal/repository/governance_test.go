@@ -1,10 +1,12 @@
 package repository_test
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -264,6 +266,99 @@ func TestTheConfigurationPageNamesEveryVariableAndOnlyThose(t *testing.T) {
 	slices.Sort(names)
 	if want := slices.Sorted(slices.Values(config.EnvironmentVariables)); !slices.Equal(names, want) {
 		t.Fatalf("the configuration page documents %v; mm-mcp reads %v", names, want)
+	}
+}
+
+// TestTheBundleSetsEveryVariableAPersonConfigures holds the .mcpb manifest to
+// what mm-mcp reads: a variable missing from it is a setting a bundle's user
+// cannot reach. server.json's variables are written from the manifest by
+// tools/mcpb, so this holds them too (ADR-023). The network block is for
+// mm-mcp's own tests and is never a person's to set.
+func TestTheBundleSetsEveryVariableAPersonConfigures(t *testing.T) {
+	t.Parallel()
+	var manifest struct {
+		Server struct {
+			MCPConfig struct {
+				Env map[string]string `json:"env"`
+			} `json:"mcp_config"`
+		} `json:"server"`
+	}
+	if err := json.Unmarshal([]byte(read(t, filepath.Join(root, "mcpb", "manifest.json"))), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	set := slices.Sorted(maps.Keys(manifest.Server.MCPConfig.Env))
+	if len(set) == 0 {
+		t.Fatal("the manifest sets no variables; the read has stopped matching")
+	}
+	var want []string
+	for _, name := range config.EnvironmentVariables {
+		if name != config.EnvBlockExternalNetwork {
+			want = append(want, name)
+		}
+	}
+	slices.Sort(want)
+	if !slices.Equal(set, want) {
+		t.Fatalf("mcpb/manifest.json sets %v; mm-mcp reads %v", set, want)
+	}
+}
+
+var (
+	toolVersionKey = regexp.MustCompile(`(?m)^([A-Z][A-Z0-9_]*_VERSION)=(\S+)$`)
+	// A version written out: a module or package at one, or an input or
+	// variable naming one, rather than reading it from the pinned file.
+	literalVersion = regexp.MustCompile(`@v?\d+\.\d+|^\s*(?:[a-z]+-version|[A-Z][A-Z0-9_]*_VERSION):\s*['"]?[^\s'"$]`)
+	versionUse     = regexp.MustCompile(`(?:env\.|\$\{?)([A-Z][A-Z0-9_]*_VERSION)\b`)
+	taskInstall    = regexp.MustCompile(`go-task/task/v3/cmd/task@(\S+)`)
+)
+
+// TestEveryToolVersionIsPinnedInOnePlace holds ADR-002: a tool's version is
+// written in .github/tool-versions.env and read from there by the workflows
+// and the Taskfile, never stated in one of them alone, and the Task a
+// contributor is told to install is the one CI runs.
+func TestEveryToolVersionIsPinnedInOnePlace(t *testing.T) {
+	t.Parallel()
+	pinned := map[string]string{}
+	for _, match := range toolVersionKey.FindAllStringSubmatch(read(t, filepath.Join(root, ".github", "tool-versions.env")), -1) {
+		pinned[match[1]] = match[2]
+	}
+	if pinned["GO_TASK_VERSION"] == "" {
+		t.Fatalf("found %v in .github/tool-versions.env; the read has stopped matching", pinned)
+	}
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = append(files, filepath.Join(root, "Taskfile.yml"))
+	used := 0
+	for _, file := range files {
+		for number, line := range strings.Split(read(t, file), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") || strings.Contains(trimmed, "uses:") {
+				continue
+			}
+			where := filepath.Base(file) + ":" + strconv.Itoa(number+1)
+			if literalVersion.MatchString(line) {
+				t.Errorf("%s states a version; pin it in .github/tool-versions.env and read it from there: %s", where, trimmed)
+			}
+			for _, use := range versionUse.FindAllStringSubmatch(line, -1) {
+				used++
+				if _, ok := pinned[use[1]]; !ok {
+					t.Errorf("%s reads %s, which .github/tool-versions.env does not pin", where, use[1])
+				}
+			}
+		}
+	}
+	if used == 0 {
+		t.Fatal("no workflow or task reads a pinned version; the scan has stopped matching")
+	}
+	installs := taskInstall.FindAllStringSubmatch(read(t, filepath.Join(root, "CONTRIBUTING.md")), -1)
+	if len(installs) == 0 {
+		t.Fatal("CONTRIBUTING.md no longer says how to install Task; the scan has stopped matching")
+	}
+	for _, install := range installs {
+		if install[1] != pinned["GO_TASK_VERSION"] {
+			t.Errorf("CONTRIBUTING.md installs Task %s; CI installs %s", install[1], pinned["GO_TASK_VERSION"])
+		}
 	}
 }
 

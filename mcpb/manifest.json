@@ -4,7 +4,7 @@
   "display_name": "mm-mcp for Mattermost",
   "version": "0.0.0",
   "description": "Read, search and post in Mattermost as yourself or a bot.",
-  "long_description": "mm-mcp connects an MCP client to one Mattermost server, as the person or bot whose token it is given. It is read-only unless writes are allowed, and a tool that writes asks you before it acts.",
+  "long_description": "mm-mcp connects an MCP client to one Mattermost server, as the person or bot whose token it is given. It is read-only unless writes are allowed. Then a change others see, such as a post, a reply, an edit, a reaction or a pin, asks you before it acts; following a thread, saving a post, a reminder, a draft only you see and the typing indicator do not.",
   "author": {
     "name": "Michaël de Vries",
     "url": "https://github.com/vriesdemichael"
@@ -25,7 +25,9 @@
       "env": {
         "MM_URL": "${user_config.mattermost_url}",
         "MM_TOKEN": "${user_config.mattermost_token}",
-        "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}"
+        "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
+        "MM_MCP_MARK_AI_GENERATED": "${user_config.mark_ai_generated}",
+        "MM_MCP_DOWNLOAD_DIR": "${user_config.download_dir}"
       }
     }
   },
@@ -46,8 +48,22 @@
     "allow_writes": {
       "type": "boolean",
       "title": "Allow posting",
-      "description": "Offer the tools that post and change things. Each one still asks you before it acts.",
+      "description": "Offer the tools that post and change things. Each change others see asks you before it acts; following a thread, saving a post or a draft, reminders and typing do not.",
       "default": false,
+      "required": false
+    },
+    "mark_ai_generated": {
+      "type": "boolean",
+      "title": "Mark posts as written with AI",
+      "description": "Mark every post and edit the model writes with Mattermost's own marker for text written with AI.",
+      "default": true,
+      "required": false
+    },
+    "download_dir": {
+      "type": "directory",
+      "title": "Download directory",
+      "description": "Where save_file writes attachments. Leave it empty for your Downloads directory.",
+      "default": "",
       "required": false
     }
   },
