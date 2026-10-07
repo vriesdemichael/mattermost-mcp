@@ -190,8 +190,12 @@ func TestReadChannelReturnsTheConversationOldestFirstAndPagesThroughIt(t *testin
 
 	latest := readChannel(t, session, map[string]any{"channel_id": channel.Id, "limit": 2})
 	want := []string{user.Username + ": two", other.Username + ": three"}
-	if got := messages(latest.Posts); !slices.Equal(got, want) || !latest.MoreBefore {
-		t.Fatalf("the newest two: got %v (more_before %v), want %v", got, latest.MoreBefore, want)
+	if got := messages(latest.Posts); !slices.Equal(got, want) || latest.NextCursor == "" {
+		t.Fatalf("the newest two: got %v (next cursor %q), want %v", got, latest.NextCursor, want)
+	}
+	older := readChannel(t, session, map[string]any{"channel_id": channel.Id, "limit": 2, "cursor": latest.NextCursor})
+	if got := messages(older.Posts); !slices.Contains(got, other.Username+": one") {
+		t.Fatalf("the page before the newest two: got %v", got)
 	}
 
 	earlier := readChannel(t, session, map[string]any{"channel_id": channel.Id, "before": second.Id})

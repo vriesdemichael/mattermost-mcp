@@ -216,17 +216,26 @@ func describeDrafts(ctx context.Context, client *mattermost.Client, drafts []*mo
 	return out, nil
 }
 
-// Drafts is the user's drafts.
+// Drafts is a page of the user's drafts.
 type Drafts struct {
 	Drafts []Draft `json:"drafts" jsonschema:"most recently changed first"`
+	pageInfo
 }
+
+// The most drafts one call returns, and how many when not told.
+const (
+	maxDrafts     = 100
+	defaultDrafts = 20
+)
 
 type listDraftsInput struct {
 	TeamID string `json:"team_id,omitempty" jsonschema:"only this team's drafts, with those in direct and group messages; every team's when not given"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"how many drafts a page holds, at most 100; 20 when not given"`
+	pageArgs
 }
 
 func listDraftsSpec() Spec {
-	return toolSpec(
+	return shaping(toolSpec(
 		&mcp.Tool{
 			Name:        "list_drafts",
 			Description: "The drafts in the user's message boxes, in channels and threads, with where each is: what they have started and not sent.",
@@ -248,6 +257,14 @@ func listDraftsSpec() Spec {
 		}, describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listDraftsInput, Drafts] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listDraftsInput) (*mcp.CallToolResult, Drafts, error) {
+				limit, err := limitOf(input.Limit, defaultDrafts, maxDrafts)
+				if err != nil {
+					return nil, Drafts{}, err
+				}
+				at, err := openCursor("list_drafts", input, input.Cursor)
+				if err != nil {
+					return nil, Drafts{}, err
+				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
 					return nil, Drafts{}, err
@@ -283,14 +300,15 @@ func listDraftsSpec() Spec {
 					}
 				}
 				slices.SortStableFunc(drafts, func(a, b *model.Draft) int { return int(b.UpdateAt - a.UpdateAt) })
-				described, err := describeDrafts(ctx, client, drafts)
+				page, next := offsetPage(drafts, at, limit)
+				described, err := describeDrafts(ctx, client, page)
 				if err != nil {
 					return nil, Drafts{}, err
 				}
-				return nil, Drafts{Drafts: described}, nil
+				return nil, Drafts{Drafts: described, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
-	)
+	), pagingShapes)
 }
 
 func deleteDraftSpec() Spec {

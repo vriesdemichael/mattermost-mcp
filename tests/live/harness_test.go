@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -293,4 +294,54 @@ func eventually(t *testing.T, within time.Duration, check func() (bool, string))
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+}
+
+// everyPage calls a list tool page by page, limit at a time, from first until
+// it answers without a next_cursor (ADR-032), and returns each page's items
+// by key: the field list of each answer holds them, and the field key of each
+// names it. first is the first call, written as a literal so the scan that
+// finds which tools the suite calls sees it.
+func everyPage(t *testing.T, session *mcp.ClientSession, first *mcp.CallToolParams, limit int, list, key string) [][]string {
+	t.Helper()
+	asked := maps.Clone(first.Arguments.(map[string]any))
+	asked["limit"] = limit
+	var pages [][]string
+	for range 50 {
+		result := callTool(t, session, &mcp.CallToolParams{Name: first.Name, Arguments: asked})
+		var answer map[string]any
+		structured(t, result, &answer)
+		items, _ := answer[list].([]any)
+		var page []string
+		for _, item := range items {
+			page = append(page, fmt.Sprint(item.(map[string]any)[key]))
+		}
+		if len(page) > limit {
+			t.Fatalf("%s gave %d items on a page of %d", first.Name, len(page), limit)
+		}
+		pages = append(pages, page)
+		next, _ := answer["next_cursor"].(string)
+		if next == "" {
+			return pages
+		}
+		asked["cursor"] = next
+	}
+	t.Fatalf("%s gave a next_cursor fifty pages on", first.Name)
+	return nil
+}
+
+// flat is every item of every page, in order, failing the test on one seen twice.
+func flat(t *testing.T, pages [][]string) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	var out []string
+	for _, page := range pages {
+		for _, item := range page {
+			if seen[item] {
+				t.Fatalf("%s is on two pages: %v", item, pages)
+			}
+			seen[item] = true
+			out = append(out, item)
+		}
+	}
+	return out
 }

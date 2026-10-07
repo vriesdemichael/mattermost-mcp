@@ -170,13 +170,17 @@ func TestSearchPostsReturnsAtMostTheLimitAndSaysWhenItCutSomeOff(t *testing.T) {
 
 	eventually(t, 30*time.Second, func() (bool, string) {
 		found := searchPosts(t, session, map[string]any{"terms": term})
-		return len(found.Posts) == 3 && !found.Truncated, fmt.Sprint(foundMessages(found))
+		return len(found.Posts) == 3 && found.NextCursor == "", fmt.Sprint(foundMessages(found))
 	})
 	cut := searchPosts(t, session, map[string]any{"terms": term, "limit": 2})
-	if len(cut.Posts) != 2 || !cut.Truncated {
-		t.Fatalf("limit 2 of 3: got %v (truncated %v)", foundMessages(cut), cut.Truncated)
+	if len(cut.Posts) != 2 || cut.NextCursor == "" {
+		t.Fatalf("limit 2 of 3: got %v (next cursor %q)", foundMessages(cut), cut.NextCursor)
 	}
 	if want := []string{term + " number 1", term + " number 2"}; !slices.Equal(foundMessages(cut), want) {
 		t.Fatalf("limit 2 kept %v; want the two most recent, %v", foundMessages(cut), want)
+	}
+	rest := searchPosts(t, session, map[string]any{"terms": term, "limit": 2, "cursor": cut.NextCursor})
+	if got := foundMessages(rest); !slices.Equal(got, []string{term + " number 0"}) || rest.NextCursor != "" {
+		t.Fatalf("the next page: got %v (next cursor %q)", got, rest.NextCursor)
 	}
 }

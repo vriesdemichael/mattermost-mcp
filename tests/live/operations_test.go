@@ -29,6 +29,8 @@ type recorder struct {
 	inner    http.RoundTripper
 	mu       sync.Mutex
 	requests []string
+	// last is the operations the session's last tool call reached, in order.
+	last []string
 }
 
 func (r *recorder) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -77,9 +79,13 @@ func tryTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParam
 	rec.take()
 	result, err := session.CallTool(t.Context(), params)
 	declared := declaredOperations(params.Name)
+	var reached []string
 	for _, request := range rec.take() {
 		method, path, _ := strings.Cut(request, " ")
 		op, ok := newest.Match(method, path)
+		if ok {
+			reached = append(reached, op.ID)
+		}
 		switch {
 		case !ok:
 			t.Errorf("%s sent %s, which no operation of the %s specification matches", params.Name, request, newest.Release)
@@ -94,6 +100,9 @@ func tryTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParam
 			observedMu.Unlock()
 		}
 	}
+	rec.mu.Lock()
+	rec.last = reached
+	rec.mu.Unlock()
 	return result, err
 }
 
@@ -128,4 +137,24 @@ func declaredButNeverCalled() []string {
 		}
 	}
 	return missing
+}
+
+// reachedLast is how many times the session's last tool call reached an
+// operation, for a test of how a tool pages through Mattermost.
+func reachedLast(t *testing.T, session *mcp.ClientSession, operation string) int {
+	t.Helper()
+	value, ok := recorders.Load(session)
+	if !ok {
+		t.Fatal("the session was not made by mcpAs, so its requests are not recorded")
+	}
+	rec := value.(*recorder)
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	count := 0
+	for _, reached := range rec.last {
+		if reached == operation {
+			count++
+		}
+	}
+	return count
 }

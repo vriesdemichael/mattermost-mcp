@@ -64,9 +64,21 @@ func (c *Client) Posts(ctx context.Context, page PostsPage) (*model.PostList, er
 	}
 }
 
-// Thread is a post's whole thread: its root and every reply. GetPostThread.
-func (c *Client) Thread(ctx context.Context, postID string) (*model.PostList, error) {
-	return result(c.api.GetPostThread(ctx, postID, "", false))
+// ThreadPage asks for a stretch of a thread: perPage posts, oldest first, from
+// the start or after a post and its time. GetPostThread.
+type ThreadPage struct {
+	PostID       string
+	PerPage      int
+	FromPost     string
+	FromCreateAt int64
+}
+
+// Thread is a stretch of a post's thread, its first post and replies, with
+// whether more follow in the list's HasNext.
+func (c *Client) Thread(ctx context.Context, page ThreadPage) (*model.PostList, error) {
+	return result(c.api.GetPostThreadWithOpts(ctx, page.PostID, "", model.GetPostsOptions{
+		PerPage: page.PerPage, FromPost: page.FromPost, FromCreateAt: page.FromCreateAt, Direction: "down",
+	}))
 }
 
 // Users is the users with the given ids. GetUsersByIds.
@@ -130,10 +142,12 @@ func (c *Client) PinnedPosts(ctx context.Context, channelID string) (*model.Post
 	return result(c.api.GetPinnedPosts(ctx, channelID, ""))
 }
 
-// SavedPosts is a page of the posts the user saved, newest first.
-// GetFlaggedPostsForUser.
-func (c *Client) SavedPosts(ctx context.Context, perPage int) (*model.PostList, error) {
-	return result(c.api.GetFlaggedPostsForUser(ctx, me, 0, perPage))
+// SavedPosts is up to perPage of the posts the user saved, newest first,
+// skipping the first offset of them. Mattermost's getFlaggedPostsForUser
+// hands its page parameter to the database as an offset in posts, not as a
+// page number, so the offset goes where the page would. GetFlaggedPostsForUser.
+func (c *Client) SavedPosts(ctx context.Context, offset, perPage int) (*model.PostList, error) {
+	return result(c.api.GetFlaggedPostsForUser(ctx, me, offset, perPage))
 }
 
 // UnreadPosts is a channel's posts around where the user stopped reading: up
@@ -144,10 +158,10 @@ func (c *Client) UnreadPosts(ctx context.Context, userID, channelID string, befo
 }
 
 // Threads is a page of the threads the user follows in a team, direct and
-// group messages included, most recently active first, with who took part.
-// GetUserThreads.
-func (c *Client) Threads(ctx context.Context, userID, teamID string, perPage uint64) (*model.Threads, error) {
-	return result(c.api.GetUserThreads(ctx, userID, teamID, model.GetUserThreadsOpts{PageSize: perPage, Extended: true}))
+// group messages included, most recently active first, with who took part:
+// the first page, or the one after the thread before names. GetUserThreads.
+func (c *Client) Threads(ctx context.Context, userID, teamID string, perPage uint64, before string) (*model.Threads, error) {
+	return result(c.api.GetUserThreads(ctx, userID, teamID, model.GetUserThreadsOpts{PageSize: perPage, Extended: true, Before: before}))
 }
 
 // Statuses is the presence of the given users. GetUsersStatusesByIds.

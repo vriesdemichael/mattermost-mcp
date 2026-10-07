@@ -12,6 +12,11 @@ from CONTRIBUTING.md an agent must not lose
   Commit subjects are Conventional Commits; the type decides the release
   ([ADR-011](docs/site/adr/011-next-integrates-and-main-releases.md),
   [ADR-013](docs/site/adr/013-releases-are-cut-from-conventional-commits-on-main.md)).
+- **Close issues from the commit that fixes them**, with a keyword in its body,
+  one per issue: `Closes #5, closes #6`. It takes effect when the commit
+  reaches main ([ADR-017](docs/site/adr/017-planning-in-github-issues.md)).
+- **Every list pages by cursor**: `limit` and `cursor` in, `next_cursor` out,
+  read to its end ([ADR-032](docs/site/adr/032-every-list-pages-by-an-opaque-cursor.md)).
 - **Every tool is called by a live test**, through an
   `mcp.CallToolParams{Name: "..."}` literal
   ([ADR-004](docs/site/adr/004-live-tests-against-a-real-mattermost.md)).
@@ -90,6 +95,8 @@ Then break each new test by reverting its fix and watch it fail.
    A tool that writes takes `writes` instead, and wraps its handler in `asking`
    with a question naming what it writes, where, and as whom
    ([ADR-021](docs/site/adr/021-read-only-by-default-and-every-write-asks.md)).
+   A tool that answers with a list embeds `pageArgs` and `pageInfo` and pages
+   with `openCursor` ([ADR-032](docs/site/adr/032-every-list-pages-by-an-opaque-cursor.md)).
 3. Declare its `Uses`: every operation it calls, by operationId in
    `openapi/mattermost-latest.json`, and for every parameter and body field of
    each, `SetBy(arg)`, `Fixed(value, reason)` or `Omitted(reason)`

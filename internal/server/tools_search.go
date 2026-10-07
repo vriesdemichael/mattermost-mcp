@@ -22,11 +22,10 @@ const (
 	defaultPostsPerSearch = 20
 )
 
-// SearchResults is what a search found.
+// SearchResults is a page of posts a search found.
 type SearchResults struct {
-	Posts []Post `json:"posts" jsonschema:"the posts found, as Mattermost ranks them, most recent first, each with its channel and team"`
-	// Truncated says more matched than the limit let through.
-	Truncated bool `json:"truncated" jsonschema:"more posts matched than the limit let through: narrow the search, or raise the limit"`
+	Posts []Post `json:"posts" jsonschema:"the posts, most recent first, each with its channel and team"`
+	pageInfo
 }
 
 // searchFilters narrow a search, so the model never writes Mattermost's
@@ -91,7 +90,8 @@ type searchPostsInput struct {
 	searchFilters
 	TeamID   string `json:"team_id,omitempty" jsonschema:"search only this team; every team the user is in when not given"`
 	MatchAny bool   `json:"match_any,omitempty" jsonschema:"find posts with any of the words rather than all of them"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"how many posts to return, at most 100; 20 when not given"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"how many posts a page holds, at most 100; 20 when not given"`
+	pageArgs
 }
 
 func searchPostsSpec() Spec {
@@ -101,7 +101,7 @@ func searchPostsSpec() Spec {
 			"body.is_or_search": SetBy("match_any"),
 			"body.page": Fixed("0", "Mattermost's database search, which Team Edition uses, answers the first page with every match "+
 				"and later pages with nothing; only Elasticsearch, a licensed feature, pages (the live suite shows both)"),
-			"body.per_page":                 Fixed("100", "the database search ignores it; the tool asks for its own maximum and applies limit to the answer"),
+			"body.per_page":                 Fixed("100", "the database search ignores it and answers with every match; the tool pages through that answer itself"),
 			"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
 			"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 		}
@@ -128,12 +128,13 @@ func searchPostsSpec() Spec {
 		}, channelLookupUses("in"), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchPostsInput, SearchResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchPostsInput) (*mcp.CallToolResult, SearchResults, error) {
-				limit := input.Limit
-				switch {
-				case limit == 0:
-					limit = defaultPostsPerSearch
-				case limit < 0 || limit > maxPostsPerSearch:
-					return nil, SearchResults{}, fmt.Errorf("limit must be between 1 and %d, not %d", maxPostsPerSearch, limit)
+				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)
+				if err != nil {
+					return nil, SearchResults{}, err
+				}
+				at, err := openCursor("search_posts", input, input.Cursor)
+				if err != nil {
+					return nil, SearchResults{}, err
 				}
 				client, err := clientFor(ctx, request)
 				if err != nil {
@@ -149,20 +150,18 @@ func searchPostsSpec() Spec {
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				truncated := len(list.Order) > limit
-				if truncated {
-					list.Order = list.Order[:limit]
-				}
-				posts, err := listedPosts(ctx, client, list, false)
+				// The database search answers with every match at once; a page is a
+				// slice of it, which a search run again for the next page finds the
+				// same unless posts were written or deleted since.
+				page, next := offsetPage(newestFirst(orderedPosts(list, false)), at, limit)
+				posts, err := describePosts(ctx, client, page)
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				return nil, SearchResults{Posts: posts, Truncated: truncated}, nil
+				return nil, SearchResults{Posts: posts, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
-	), withShapes(searchFilterShapes, map[string]string{
-		"limit": "returns at most this many of the posts Mattermost found, and says so when it cut some off",
-	}))
+	), withShapes(searchFilterShapes, pagingShapes))
 }
 
 // withShapes joins maps of shaping arguments.

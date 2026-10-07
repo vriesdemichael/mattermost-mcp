@@ -277,3 +277,55 @@ func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 		t.Fatal("the writing server offers no tool that writes; the check has nothing to hold")
 	}
 }
+
+// boundedByInput are the tools whose list is as long as their input asks for,
+// and so needs no paging.
+var boundedByInput = map[string]string{
+	"get_users":  "one user for each reference given, at most 100",
+	"get_status": "one status for each username given, at most 100",
+}
+
+// TestEveryListPagesByCursor holds every tool that answers with a list to the
+// one way of paging (ADR-032): it takes cursor, and answers with next_cursor.
+// A list is an answer holding an array of objects and no id of its own: a
+// single post or draft names itself by its id, and its files are its own.
+func TestEveryListPagesByCursor(t *testing.T) {
+	t.Parallel()
+	lists := 0
+	for _, tool := range listTools(t, writingConfig) {
+		output, _ := tool.OutputSchema.(map[string]any)
+		properties, _ := output["properties"].(map[string]any)
+		listing := false
+		for _, property := range properties {
+			described := property.(map[string]any)
+			items, _ := described["items"].(map[string]any)
+			if strings.Contains(fmt.Sprint(described["type"]), "array") && strings.Contains(fmt.Sprint(items["type"]), "object") {
+				listing = true
+			}
+		}
+		if _, single := properties["id"]; !listing || single {
+			continue
+		}
+		lists++
+		if reason, ok := boundedByInput[tool.Name]; ok {
+			if strings.TrimSpace(reason) == "" {
+				t.Errorf("%s is exempt from paging without a reason", tool.Name)
+			}
+			continue
+		}
+		input, _ := tool.InputSchema.(map[string]any)
+		arguments, _ := input["properties"].(map[string]any)
+		if _, ok := arguments["cursor"]; !ok {
+			t.Errorf("%s answers with a list and takes no cursor", tool.Name)
+		}
+		if _, ok := arguments["limit"]; !ok {
+			t.Errorf("%s answers with a list and takes no limit", tool.Name)
+		}
+		if _, ok := properties["next_cursor"]; !ok {
+			t.Errorf("%s answers with a list and no next_cursor", tool.Name)
+		}
+	}
+	if lists == 0 {
+		t.Fatal("no tool answers with a list; the check has stopped matching")
+	}
+}
