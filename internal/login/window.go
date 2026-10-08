@@ -43,6 +43,8 @@ type Window interface {
 	// WaitForToken waits while the person logs in, and answers with the
 	// session token Mattermost sets for the server at address once they have.
 	WaitForToken(ctx context.Context, address string) (string, error)
+	// Cookies is every cookie the browser holds, HttpOnly ones included.
+	Cookies(ctx context.Context) ([]Cookie, error)
 	// Navigate opens address in the window's page.
 	Navigate(ctx context.Context, address string) error
 	// Evaluate runs a script in the window's page and waits for the promise
