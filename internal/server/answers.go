@@ -11,18 +11,43 @@ import (
 )
 
 // What the read tools return. Field names are Mattermost's own, so a model that
-// knows the API reads them without translation; times are RFC 3339 in UTC
-// rather than Mattermost's milliseconds, so a model reads them without
-// arithmetic; and every post comes in one shape, which names its author,
+// knows the API reads them without translation; times are RFC 3339 in the
+// person's own timezone, with its offset, rather than Mattermost's
+// milliseconds, so a model reads them as the person would, without arithmetic; and every post comes in one shape, which names its author,
 // channel and team, so no tool exists only to look those up.
 
-// timestamp is a Mattermost time, milliseconds since the epoch, as RFC 3339,
-// or empty for zero, which Mattermost uses for "never".
-func timestamp(ms int64) string {
+// timestamp is a Mattermost time, milliseconds since the epoch, as RFC 3339 in
+// zone, or empty for zero, which Mattermost uses for "never".
+func timestamp(ms int64, zone *time.Location) string {
 	if ms == 0 {
 		return ""
 	}
-	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+	return time.UnixMilli(ms).In(zone).Format(time.RFC3339)
+}
+
+// zoneOf is the timezone to give the person times in: the one they set in
+// Mattermost, or UTC when they set none or it does not load here. The offset
+// every time carries says which.
+func zoneOf(user *model.User) *time.Location {
+	if zone, err := userZone(user); err == nil {
+		return zone
+	}
+	return time.UTC
+}
+
+// zoneUse is the GetUser personZone calls.
+var zoneUse = Use{
+	Operation: "GetUser",
+	Params:    map[string]Coverage{"user_id": Fixed("me", "times are given in the person's own timezone")},
+}
+
+// personZone is zoneOf the person the client acts as. GetUser.
+func personZone(ctx context.Context, client *mattermost.Client) (*time.Location, error) {
+	self, err := client.Me(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return zoneOf(self), nil
 }
 
 // Post is one message as a tool returns it.
@@ -56,6 +81,7 @@ type Post struct {
 type surroundings struct {
 	client   *mattermost.Client
 	self     *model.User
+	zone     *time.Location
 	channels map[string]*model.Channel
 	teams    map[string]*model.Team
 	people   map[string]*model.User
@@ -64,19 +90,26 @@ type surroundings struct {
 // describePosts is posts as the tools return them.
 // GetUser, GetChannel, GetTeam, GetUsersByIds.
 func describePosts(ctx context.Context, client *mattermost.Client, posts []*model.Post) ([]Post, error) {
+	out, _, err := describe(ctx, client, posts)
+	return out, err
+}
+
+// describe is describePosts, and the person's timezone it gave their times in,
+// for an answer with times of its own beside the posts.
+func describe(ctx context.Context, client *mattermost.Client, posts []*model.Post) ([]Post, *time.Location, error) {
 	around, err := readSurroundings(ctx, client, posts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := make([]Post, 0, len(posts))
 	for _, post := range posts {
 		out = append(out, around.post(post))
 	}
-	return out, nil
+	return out, around.zone, nil
 }
 
 func readSurroundings(ctx context.Context, client *mattermost.Client, posts []*model.Post) (surroundings, error) {
-	around := surroundings{client: client, channels: map[string]*model.Channel{}, teams: map[string]*model.Team{}, people: map[string]*model.User{}}
+	around := surroundings{client: client, zone: time.UTC, channels: map[string]*model.Channel{}, teams: map[string]*model.Team{}, people: map[string]*model.User{}}
 	if len(posts) == 0 {
 		return around, nil
 	}
@@ -85,6 +118,7 @@ func readSurroundings(ctx context.Context, client *mattermost.Client, posts []*m
 		return surroundings{}, err
 	}
 	around.self = self
+	around.zone = zoneOf(self)
 	var wanted []string
 	for _, post := range posts {
 		wanted = append(wanted, post.UserId)
@@ -136,12 +170,12 @@ func (s surroundings) post(post *model.Post) Post {
 		ChannelID:   post.ChannelId,
 		Author:      post.UserId,
 		AuthorID:    post.UserId,
-		CreatedAt:   timestamp(post.CreateAt),
-		EditedAt:    timestamp(post.EditAt),
+		CreatedAt:   timestamp(post.CreateAt, s.zone),
+		EditedAt:    timestamp(post.EditAt, s.zone),
 		Message:     post.Message,
 		RootID:      post.RootId,
 		ReplyCount:  post.ReplyCount,
-		LastReplyAt: timestamp(post.LastReplyAt),
+		LastReplyAt: timestamp(post.LastReplyAt, s.zone),
 		Pinned:      post.IsPinned,
 		AIGenerated: post.GetProp(model.PostPropsAIGeneratedByUserID) != nil,
 		Files:       attachments(post),
@@ -151,7 +185,7 @@ func (s surroundings) post(post *model.Post) Post {
 		out.Author, out.AuthorName = author.Username, displayName(author)
 	}
 	if channel := s.channels[post.ChannelId]; channel != nil && s.self != nil {
-		out.Channel = toChannel(channel, s.self.Id, s.usernames()).DisplayName
+		out.Channel = toChannel(channel, s.self.Id, s.usernames(), s.zone).DisplayName
 		if team := s.teams[channel.TeamId]; team != nil {
 			out.Team = team.DisplayName
 		}

@@ -385,7 +385,11 @@ func createChannelSpec() Spec {
 						return nil, Channel{}, err
 					}
 					member := true
-					out := toChannel(created, "", nil)
+					zone, err := personZone(ctx, client)
+					if err != nil {
+						return nil, Channel{}, err
+					}
+					out := toChannel(created, "", nil, zone)
 					out.Member = &member
 					if team, err := client.Team(ctx, created.TeamId); err == nil {
 						out.Team = team.DisplayName

@@ -25,7 +25,7 @@ type UserSummary struct {
 	Email     string `json:"email" jsonschema:"empty when the server hides email addresses from this identity"`
 	Roles     string `json:"roles" jsonschema:"space-separated, such as system_user or system_admin"`
 	Locale    string `json:"locale"`
-	Timezone  string `json:"timezone,omitempty" jsonschema:"the timezone they set in Mattermost, such as Europe/Amsterdam; the times the tools return are in UTC"`
+	Timezone  string `json:"timezone,omitempty" jsonschema:"the timezone they set in Mattermost, such as Europe/Amsterdam; the times the tools return are in it, with its offset"`
 	IsBot     bool   `json:"is_bot"`
 	// Deactivated users can be read but not reached.
 	Deactivated bool `json:"deactivated,omitempty" jsonschema:"a deactivated user can no longer sign in or be notified"`
@@ -399,6 +399,7 @@ func getStatusSpec() Spec {
 		[]Use{
 			{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
 			{Operation: "GetUsersStatusesByIds", Params: map[string]Coverage{}},
+			zoneUse,
 			{Operation: "SearchUsers", Params: suggestionSearch(Fixed("starts of an unknown username, longest first", "finds the usernames closest to one that is unknown, among however many share its first letters"))},
 		},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getStatusInput, Statuses] {
@@ -444,9 +445,13 @@ func getStatusSpec() Spec {
 				for _, status := range statuses {
 					byID[status.UserId] = status
 				}
+				zone, err := personZone(ctx, client)
+				if err != nil {
+					return nil, Statuses{}, err
+				}
 				out := Statuses{Users: []UserStatus{}}
 				for _, name := range wanted {
-					out.Users = append(out.Users, toStatus(byName[name], byID[byName[name].Id]))
+					out.Users = append(out.Users, toStatus(byName[name], byID[byName[name].Id], zone))
 				}
 				return nil, out, nil
 			}
@@ -456,20 +461,20 @@ func getStatusSpec() Spec {
 	})
 }
 
-func toStatus(user *model.User, status *model.Status) UserStatus {
+func toStatus(user *model.User, status *model.Status, zone *time.Location) UserStatus {
 	out := UserStatus{Username: user.Username, Status: model.StatusOffline}
 	if status != nil {
-		out.Status, out.SetByHand, out.LastActivityAt = status.Status, status.Manual, timestamp(status.LastActivityAt)
+		out.Status, out.SetByHand, out.LastActivityAt = status.Status, status.Manual, timestamp(status.LastActivityAt, zone)
 		if status.Status == model.StatusDnd && status.DNDEndTime > 0 {
 			// Unlike Mattermost's other times, a do-not-disturb end is in seconds.
-			out.DNDUntil = timestamp(status.DNDEndTime * 1000)
+			out.DNDUntil = timestamp(status.DNDEndTime*1000, zone)
 		}
 	}
 	if custom := user.GetCustomStatus(); custom != nil && (custom.Text != "" || custom.Emoji != "") &&
 		(custom.ExpiresAt.IsZero() || custom.ExpiresAt.After(time.Now())) {
 		out.CustomEmoji, out.CustomText = custom.Emoji, custom.Text
 		if !custom.ExpiresAt.IsZero() {
-			out.CustomUntil = custom.ExpiresAt.UTC().Format(time.RFC3339)
+			out.CustomUntil = custom.ExpiresAt.In(zone).Format(time.RFC3339)
 		}
 	}
 	return out

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -360,7 +361,7 @@ func readMyChannels(ctx context.Context, client *mattermost.Client) (myChannels,
 
 // describe is one channel as a tool returns it, named as the person knows it.
 func (m myChannels) describe(channel *model.Channel) Channel {
-	out := toChannel(channel, m.self.Id, m.people)
+	out := toChannel(channel, m.self.Id, m.people, zoneOf(m.self))
 	if team := m.teams[channel.TeamId]; team != nil {
 		out.Team = team.DisplayName
 	}
@@ -377,7 +378,7 @@ func otherInDirect(channel *model.Channel, self string) string {
 	return channel.GetOtherUserIdForDM(self)
 }
 
-func toChannel(channel *model.Channel, self string, names map[string]string) Channel {
+func toChannel(channel *model.Channel, self string, names map[string]string, zone *time.Location) Channel {
 	display := channel.DisplayName
 	if channel.Type == model.ChannelTypeDirect {
 		// A direct message to oneself names the user on both sides.
@@ -396,7 +397,7 @@ func toChannel(channel *model.Channel, self string, names map[string]string) Cha
 		Type:        channelTypes[channel.Type],
 		Purpose:     channel.Purpose,
 		Header:      channel.Header,
-		LastPostAt:  timestamp(channel.LastPostAt),
+		LastPostAt:  timestamp(channel.LastPostAt, zone),
 		Archived:    channel.DeleteAt > 0,
 	}
 }
@@ -616,6 +617,7 @@ func teamChannelsSpec(name, title, description, operation string, list func(cont
 	return shaping(toolSpec(
 		&mcp.Tool{Name: name, Description: description, Annotations: readOnly(title)},
 		[]Use{
+			zoneUse,
 			{
 				Operation: operation,
 				Params: map[string]Coverage{
@@ -670,9 +672,13 @@ func teamChannelsSpec(name, title, description, operation string, list func(cont
 					return strings.Compare(a.Id, b.Id)
 				})
 				channels, next := offsetPage(all, at, limit)
+				zone, err := personZone(ctx, client)
+				if err != nil {
+					return nil, Channels{}, err
+				}
 				out := Channels{Channels: make([]Channel, 0, len(channels)), pageInfo: pageInfo{NextCursor: next}}
 				for _, channel := range channels {
-					listed := toChannel(channel, "", nil)
+					listed := toChannel(channel, "", nil, zone)
 					listed.Team = team.DisplayName
 					out.Channels = append(out.Channels, listed)
 				}

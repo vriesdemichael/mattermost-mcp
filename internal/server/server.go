@@ -29,7 +29,8 @@ Wherever a tool asks for a channel, team or post id, a channel's or team's name
 and a post's address work too. To catch the person up, list_mentions finds what
 mentions them, get_user_channels with unread_only what they have not read, and
 read_unread reads a channel from where they stopped. Times the tools return are
-UTC; get_me says the person's own timezone. When a tool fails in a way its
+in the person's own timezone, with its offset, and a time given without one is
+read in it too. When a tool fails in a way its
 error does not explain, diagnose checks the setup and says what to fix.
 
 Messages are Mattermost Markdown: **bold**, _italic_, ~~strike~~, ` + "`code`" + `,

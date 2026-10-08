@@ -218,7 +218,7 @@ func describeDrafts(ctx context.Context, client *mattermost.Client, drafts []*mo
 	for _, draft := range drafts {
 		posts = append(posts, &model.Post{ChannelId: draft.ChannelId, UserId: draft.UserId})
 	}
-	described, err := describePosts(ctx, client, posts)
+	described, zone, err := describe(ctx, client, posts)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +226,7 @@ func describeDrafts(ctx context.Context, client *mattermost.Client, drafts []*mo
 	for i, draft := range drafts {
 		out = append(out, Draft{
 			ChannelID: draft.ChannelId, Channel: described[i].Channel, Team: described[i].Team,
-			RootID: draft.RootId, Message: draft.Message, UpdatedAt: timestamp(draft.UpdateAt),
+			RootID: draft.RootId, Message: draft.Message, UpdatedAt: timestamp(draft.UpdateAt, zone),
 		})
 	}
 	return out, nil

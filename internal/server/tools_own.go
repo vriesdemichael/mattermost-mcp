@@ -168,7 +168,7 @@ func typingSpec() Spec {
 				if err != nil {
 					return nil, Typing{}, err
 				}
-				answer.Typing, answer.Until = true, until.UTC().Format(time.RFC3339)
+				answer.Typing, answer.Until = true, until.In(zoneOf(self)).Format(time.RFC3339)
 				return nil, answer, nil
 			}
 		},
