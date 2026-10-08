@@ -37,7 +37,9 @@ it is posted
   draft only you see and the typing indicator do not
   ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
 - **One server, one identity.** It acts as whoever owns the token it is given: a
-  personal access token, a bot's token, or a session token from your own login
+  personal access token, a bot's token, or the session of your own login in your
+  browser through `mm-mcp login`, single sign-on included, for servers where
+  personal access tokens are off
   ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
 - **stdio or HTTP.** A desktop or IDE client starts it as a local process; over
   Streamable HTTP it serves a loopback address for now

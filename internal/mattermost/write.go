@@ -206,3 +206,9 @@ func (c *Client) ClearCustomStatus(ctx context.Context, userID string) error {
 	response, err := c.api.RemoveUserCustomStatus(ctx, userID)
 	return done(response, err)
 }
+
+// Logout ends the session the client acts with. Logout.
+func (c *Client) Logout(ctx context.Context) error {
+	response, err := c.api.Logout(ctx)
+	return done(response, err)
+}

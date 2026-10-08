@@ -130,3 +130,31 @@ func TestARelativeDownloadDirectoryIsRefused(t *testing.T) {
 		t.Fatalf("got %q, %v", cfg.DownloadDir, err)
 	}
 }
+
+func TestAStoredLoginIsUsedOnlyWhenNoTokenIsSet(t *testing.T) {
+	t.Parallel()
+	stored := func(address string) (string, bool, error) {
+		if address == "https://chat.example.com" {
+			return "stored-token", true, nil
+		}
+		return "", false, nil
+	}
+	noToken := map[string]string{config.EnvURL: "https://chat.example.com/"}
+
+	cfg, err := config.Load(testsupport.Env(noToken), stored)
+	if err != nil || cfg.Token != "stored-token" || !cfg.TokenStored {
+		t.Fatalf("with a stored login: %v, %v", cfg, err)
+	}
+	cfg, err = config.Load(testsupport.Env(valid()), stored)
+	if err != nil || cfg.Token != "token-value" || cfg.TokenStored {
+		t.Fatalf("with MM_TOKEN set: %v, %v", cfg, err)
+	}
+	_, err = config.Load(testsupport.Env(map[string]string{config.EnvURL: "https://other.example.com"}), stored)
+	if err == nil || !strings.Contains(err.Error(), "mm-mcp login --url https://other.example.com") {
+		t.Fatalf("with nothing stored: %v", err)
+	}
+	_, err = config.Load(testsupport.Env(noToken), func(string) (string, bool, error) { return "", false, fmt.Errorf("locked") })
+	if err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Fatalf("with the store unreadable: %v", err)
+	}
+}

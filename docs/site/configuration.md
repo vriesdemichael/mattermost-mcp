@@ -15,8 +15,9 @@ the server's env block. No setting is a command-line flag that carries a secret
     named, so set the address Mattermost is served at.
 
 `MM_TOKEN`
-:   Required. The credential mm-mcp acts with: a personal access token, a bot
-    token, or a session token. The server acts as whoever owns it.
+:   The credential mm-mcp acts with: a personal access token, a bot token, or
+    a session token. The server acts as whoever owns it. Leave it unset after
+    `mm-mcp login`, and the session that stored for `MM_URL` is used.
 
 `MM_MCP_ALLOW_WRITES`
 :   Optional, `false` by default. `true` offers the tools that post and change
@@ -61,6 +62,16 @@ the server's env block. No setting is a command-line flag that carries a secret
 
 `mm-mcp serve --transport http [--host 127.0.0.1] [--port 8765]`
 :   Runs it over Streamable HTTP, on a loopback address only.
+
+`mm-mcp login [--url https://chat.example.com] [--browser path]`
+:   Opens the server's login page in a browser window of its own, the first
+    Chrome, Edge or Chromium installed or the one `--browser` names, waits for
+    you to log in, and keeps the session in your system's credential store for
+    that server. `--url` is `MM_URL` when not given
+    ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+
+`mm-mcp logout [--url https://chat.example.com]`
+:   Ends the stored session at Mattermost, and forgets it.
 
 `mm-mcp version`
 :   Prints the installed version.

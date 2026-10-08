@@ -30,8 +30,11 @@ var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloa
 
 // Config is a server's configuration.
 type Config struct {
-	URL         string
-	Token       string
+	URL   string
+	Token string
+	// TokenStored says the token is the one `mm-mcp login` stored, MM_TOKEN
+	// being unset.
+	TokenStored bool
 	AllowWrites bool
 	// MarkAIGenerated marks every post and edit the model writes as written
 	// with AI, as Mattermost shows it. On unless turned off.
@@ -66,13 +69,34 @@ func errorf(format string, args ...any) error { return &Error{msg: fmt.Sprintf(f
 
 // FromEnv reads a Config through lookup, which returns "" for a variable that is not set.
 func FromEnv(lookup func(string) string) (Config, error) {
+	return Load(lookup, nil)
+}
+
+// Stored finds the token `mm-mcp login` stored for the server at an address,
+// and says whether there is one.
+type Stored func(address string) (token string, found bool, err error)
+
+// Load is FromEnv, with the token stored for MM_URL used when MM_TOKEN is not
+// set (ADR-019). stored may be nil, and then MM_TOKEN is required.
+func Load(lookup func(string) string, stored Stored) (Config, error) {
 	address, err := parseURL(lookup(EnvURL))
 	if err != nil {
 		return Config{}, err
 	}
 	token := strings.TrimSpace(lookup(EnvToken))
+	fromStore := false
+	if token == "" && stored != nil {
+		found := false
+		token, found, err = stored(address)
+		switch {
+		case err != nil:
+			return Config{}, errorf("%s is not set, and the token `mm-mcp login` stores could not be read: %v.", EnvToken, err)
+		case found:
+			fromStore = true
+		}
+	}
 	if token == "" {
-		return Config{}, errorf("%s is not set. Put a personal access token, a bot token or a session token in the MCP client's env block for this server.", EnvToken)
+		return Config{}, errorf("%s is not set, and no login is stored for %s. Run `mm-mcp login --url %s` once, or put a personal access token, a bot token or a session token in the MCP client's env block for this server.", EnvToken, address, address)
 	}
 	allowWrites, err := ParseBool(EnvAllowWrites, lookup(EnvAllowWrites))
 	if err != nil {
@@ -91,7 +115,7 @@ func FromEnv(lookup func(string) string) (Config, error) {
 		return Config{}, errorf("%s must be a full path, not %q.", EnvDownloadDir, downloadDir)
 	}
 	return Config{
-		URL: address, Token: token, AllowWrites: allowWrites, MarkAIGenerated: markAI,
+		URL: address, Token: token, TokenStored: fromStore, AllowWrites: allowWrites, MarkAIGenerated: markAI,
 		DownloadDir: downloadDir,
 		CAFile:      strings.TrimSpace(lookup(EnvCAFile)),
 	}, nil
@@ -108,6 +132,10 @@ func ParseBool(name, raw string) (bool, error) {
 		return false, errorf("%s must be true or false, not %q.", name, raw)
 	}
 }
+
+// ParseURL reads an MM_URL value: an http or https address, without a query
+// or the API's own /api/v4.
+func ParseURL(raw string) (string, error) { return parseURL(raw) }
 
 func parseURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)

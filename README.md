@@ -27,7 +27,8 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
   ask. The question is an MCP elicitation, so posting needs a client that shows
   one, such as Claude Code.
 - **Your token, a bot's, or your own login.** A personal access token, a bot
-  token, or the session token from logging in yourself, for servers where
+  token, or your own login through `mm-mcp login`, single sign-on included,
+  kept in your system's credential store, for servers where
   personal access tokens are switched off.
 - **Mattermost's own client.** Requests and answers use the server's own Go
   client and types, not a hand-written description of the API.
@@ -46,7 +47,8 @@ Install mm-mcp with `brew install vriesdemichael/tap/mm-mcp`,
 download the binary for your machine from the
 [latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest).
 Then get a personal access token in Mattermost under **Profile → Security →
-Personal Access Tokens**.
+Personal Access Tokens**, or, where those are switched off, log in once with
+`mm-mcp login --url https://chat.example.com` and leave `MM_TOKEN` out.
 
 ```json
 {

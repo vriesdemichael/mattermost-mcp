@@ -1,0 +1,73 @@
+// Package credstore keeps the session token `mm-mcp login` obtained in the
+// operating system's own credential store: the Windows Credential Manager,
+// the macOS keychain, or the Secret Service of a Linux desktop (ADR-019). A
+// token is stored per Mattermost server, under the server's address.
+package credstore
+
+import (
+	"errors"
+	"fmt"
+	"runtime"
+	"strings"
+
+	"github.com/zalando/go-keyring"
+)
+
+// service is the name the tokens are stored under.
+const service = "mm-mcp"
+
+// Store keeps token for the server at address.
+func Store(address, token string) error {
+	if err := keyring.Set(service, key(address), token); err != nil {
+		return fmt.Errorf("storing the token in the system's credential store: %w", err)
+	}
+	return nil
+}
+
+// Load is the token stored for the server at address, and whether there is one.
+func Load(address string) (string, bool, error) {
+	token, err := keyring.Get(service, key(address))
+	switch {
+	case errors.Is(err, keyring.ErrNotFound):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("reading the system's credential store: %w", err)
+	}
+	return token, true, nil
+}
+
+// Delete forgets the token stored for the server at address; there being
+// none is not an error.
+func Delete(address string) error {
+	if err := keyring.Delete(service, key(address)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return fmt.Errorf("removing the token from the system's credential store: %w", err)
+	}
+	return nil
+}
+
+// key is the server's address as a token is stored under it: without a
+// trailing slash, its scheme and host in lower case.
+func key(address string) string {
+	address = strings.TrimRight(strings.TrimSpace(address), "/")
+	scheme, rest, found := strings.Cut(address, "://")
+	if !found {
+		return address
+	}
+	host, path, _ := strings.Cut(rest, "/")
+	if path != "" {
+		path = "/" + path
+	}
+	return strings.ToLower(scheme) + "://" + strings.ToLower(host) + path
+}
+
+// Where names the system's credential store, for a person to find a token in.
+func Where() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "the Windows Credential Manager, as " + service
+	case "darwin":
+		return "your login keychain, as " + service
+	default:
+		return "your desktop's Secret Service, such as GNOME Keyring or KWallet, as " + service
+	}
+}
