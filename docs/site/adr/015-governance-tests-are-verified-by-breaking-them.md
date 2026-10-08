@@ -34,6 +34,7 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestTheConfigurationPageNamesEveryVariableAndOnlyThose`: the configuration page documents exactly the variables mm-mcp reads.
 - `TestTheBundleSetsEveryVariableAPersonConfigures`: the .mcpb manifest sets every variable mm-mcp reads but the test-only network block, and server.json's are written from it (ADR-023).
 - `TestEveryTestPackageIsSealed`: every package under cmd/ and internal/ with tests seals its process.
+- `TestTheOldestSupportedReleaseIsTheESRStacks`: the release older than which mm-mcp warns at start is the one the ESR stack runs.
 
 Break a governance test before adding it, and before trusting one you did not write: record what breaks it, and that you saw it fail. Add it to the list above in the same change. A guard that scans the tree also fails when it finds too little to scan, so a scan that has stopped matching cannot report perfect compliance. Do not write a test that compares a value to something derived from it.
 

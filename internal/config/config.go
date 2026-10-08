@@ -19,12 +19,13 @@ const (
 	EnvDownloadDir          = "MM_MCP_DOWNLOAD_DIR"
 	EnvMarkAIGenerated      = "MM_MCP_MARK_AI_GENERATED"
 	EnvBlockExternalNetwork = "MM_MCP_BLOCK_EXTERNAL_NETWORK"
+	EnvCAFile               = "MM_MCP_CA_FILE"
 )
 
 // EnvironmentVariables is every variable mm-mcp reads. The unit-test seal
 // empties each of them, and a governance test fails when the source names one
 // that is not listed here (ADR-006).
-var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloadDir, EnvMarkAIGenerated, EnvBlockExternalNetwork}
+var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvDownloadDir, EnvMarkAIGenerated, EnvBlockExternalNetwork, EnvCAFile}
 
 // Config is a server's configuration.
 type Config struct {
@@ -37,6 +38,9 @@ type Config struct {
 	// DownloadDir is where save_file writes; empty means the person's
 	// Downloads directory.
 	DownloadDir string
+	// CAFile is a PEM file of certificate authorities to trust beside the
+	// system's, for a server whose certificate an organisation signed itself.
+	CAFile string
 	// Local says the server runs on the person's own machine, for the one client
 	// that started it over stdio. It comes from how the server is served, not
 	// from the environment, and only a local server offers the tools that read
@@ -46,7 +50,7 @@ type Config struct {
 
 // String leaves the token out, so a Config can be logged or printed in an error.
 func (c Config) String() string {
-	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, MarkAIGenerated: %t, DownloadDir: %q, Local: %t}", c.URL, c.AllowWrites, c.MarkAIGenerated, c.DownloadDir, c.Local)
+	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, MarkAIGenerated: %t, DownloadDir: %q, CAFile: %q, Local: %t}", c.URL, c.AllowWrites, c.MarkAIGenerated, c.DownloadDir, c.CAFile, c.Local)
 }
 
 // GoString is String, so %#v leaves the token out too.
@@ -82,6 +86,7 @@ func FromEnv(lookup func(string) string) (Config, error) {
 	return Config{
 		URL: address, Token: token, AllowWrites: allowWrites, MarkAIGenerated: markAI,
 		DownloadDir: strings.TrimSpace(lookup(EnvDownloadDir)),
+		CAFile:      strings.TrimSpace(lookup(EnvCAFile)),
 	}, nil
 }
 
@@ -109,5 +114,14 @@ func parseURL(raw string) (string, error) {
 	if parsed.RawQuery != "" || parsed.Fragment != "" || strings.Contains(raw, "#") || strings.Contains(raw, "?") {
 		return "", errorf("%s must not carry a query or a fragment: %q.", EnvURL, raw)
 	}
-	return strings.TrimRight(raw, "/"), nil
+	// The API's address is a common answer to "what is the server's address",
+	// and Mattermost's client adds /api/v4 itself.
+	address := strings.TrimRight(raw, "/")
+	if strings.HasSuffix(strings.ToLower(address), apiPath) {
+		address = strings.TrimRight(address[:len(address)-len(apiPath)], "/")
+	}
+	return address, nil
 }
+
+// apiPath is where Mattermost serves its REST API, below its address.
+const apiPath = "/api/v4"

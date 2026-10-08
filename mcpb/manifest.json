@@ -27,7 +27,8 @@
         "MM_TOKEN": "${user_config.mattermost_token}",
         "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
         "MM_MCP_MARK_AI_GENERATED": "${user_config.mark_ai_generated}",
-        "MM_MCP_DOWNLOAD_DIR": "${user_config.download_dir}"
+        "MM_MCP_DOWNLOAD_DIR": "${user_config.download_dir}",
+        "MM_MCP_CA_FILE": "${user_config.ca_file}"
       }
     }
   },
@@ -63,6 +64,13 @@
       "type": "directory",
       "title": "Download directory",
       "description": "Where save_file writes attachments. Leave it empty for your Downloads directory.",
+      "default": "",
+      "required": false
+    },
+    "ca_file": {
+      "type": "file",
+      "title": "Certificate authority",
+      "description": "A PEM file of certificate authorities to trust beside your system's, for a Mattermost whose certificate your organisation signed itself. Leave it empty otherwise.",
       "default": "",
       "required": false
     }

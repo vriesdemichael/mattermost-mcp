@@ -34,7 +34,7 @@ func (c *Client) CreatePost(ctx context.Context, post NewPost) (*model.Post, err
 // Upload uploads a file to a channel, to be attached to a post there, and
 // returns its id. UploadFile.
 func (c *Client) Upload(ctx context.Context, channelID, name string, data []byte) (string, error) {
-	uploaded, err := result(c.api.UploadFile(ctx, data, channelID, name))
+	uploaded, err := result(c.transfer.UploadFile(ctx, data, channelID, name))
 	if err != nil {
 		return "", err
 	}

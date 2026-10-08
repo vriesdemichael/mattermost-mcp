@@ -8,7 +8,11 @@ the server's env block. No setting is a command-line flag that carries a secret
 
 `MM_URL`
 :   Required. The address you open Mattermost at, such as
-    `https://chat.example.com`. An `http` or `https` address, without a query.
+    `https://chat.example.com`. An `http` or `https` address, without a query;
+    the API's own `/api/v4` at its end is dropped. A plain `http` address
+    beyond this machine is warned about at start, since the token would cross
+    the network unencrypted. A redirect to another address is refused and
+    named, so set the address Mattermost is served at.
 
 `MM_TOKEN`
 :   Required. The credential mm-mcp acts with: a personal access token, a bot
@@ -36,6 +40,12 @@ the server's env block. No setting is a command-line flag that carries a secret
     An existing file is never overwritten
     ([ADR-029](adr/029-files-reach-the-model-as-content-and-the-disk-only-locally.md)).
 
+`MM_MCP_CA_FILE`
+:   Optional. A PEM file of certificate authorities to trust beside your
+    system's own, for a Mattermost whose certificate your organisation signed
+    itself. A file that cannot be read, or holds no certificate, stops the
+    server at start and says so.
+
 `MM_MCP_BLOCK_EXTERNAL_NETWORK`
 :   For mm-mcp's own tests. While it is `1`, mm-mcp refuses to reach any address
     but the loopback ones
@@ -58,3 +68,10 @@ the server's env block. No setting is a command-line flag that carries a secret
     `-h` do the same.
 
 A configuration error exits with status 2 and says which setting is wrong.
+
+Before it serves, `mm-mcp serve` asks Mattermost who the token belongs to, and
+says so in the client's log. A token Mattermost refuses, or an address that
+does not answer as Mattermost, stops it with status 2 and what to fix. A server
+it cannot reach is only warned about, and the tools say so until it can be
+reached. A server older than the oldest supported release
+([Supported Mattermost releases](mattermost-releases.md)) is warned about too.

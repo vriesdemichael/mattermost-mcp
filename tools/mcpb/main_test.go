@@ -113,6 +113,7 @@ func TestEveryRegistryPackageDeclaresTheVariablesTheBundleAsksFor(t *testing.T) 
 		"MM_MCP_ALLOW_WRITES":      {"isRequired": false, "isSecret": false, "format": "boolean", "default": "false"},
 		"MM_MCP_MARK_AI_GENERATED": {"isRequired": false, "isSecret": false, "format": "boolean", "default": "true"},
 		"MM_MCP_DOWNLOAD_DIR":      {"isRequired": false, "isSecret": false, "format": "filepath"},
+		"MM_MCP_CA_FILE":           {"isRequired": false, "isSecret": false, "format": "filepath"},
 	}
 	for _, pkg := range document.Packages {
 		if len(pkg.EnvironmentVariables) != len(want) {

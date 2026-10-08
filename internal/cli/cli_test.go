@@ -3,6 +3,8 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -122,6 +124,48 @@ func TestServeOverHTTPAnswersMCPOnTheLoopbackAddress(t *testing.T) {
 	cancel()
 	if err := <-stopped; err != nil {
 		t.Fatalf("serving over HTTP did not stop cleanly when its context ended: %v", err)
+	}
+}
+
+func TestAServerThatCannotBeReachedAtStartIsWarnedAboutAndServed(t *testing.T) {
+	t.Parallel()
+	got := runCLI(t, env, "serve")
+	if got.code != cli.ExitOK || got.servers != 1 || !strings.Contains(got.stderr, "warning: could not reach Mattermost") {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestPlainHTTPBeyondTheMachineIsWarnedAbout(t *testing.T) {
+	t.Parallel()
+	got := runCLI(t, map[string]string{config.EnvURL: "http://chat.example.com", config.EnvToken: "token-value"}, "serve")
+	if got.code != cli.ExitOK || !strings.Contains(got.stderr, "unencrypted") {
+		t.Fatalf("got %+v", got)
+	}
+	got = runCLI(t, map[string]string{config.EnvURL: "http://127.0.0.1:1", config.EnvToken: "token-value"}, "serve")
+	if strings.Contains(got.stderr, "unencrypted") {
+		t.Fatalf("a loopback address was warned about: %+v", got)
+	}
+}
+
+func TestACertificateAuthorityFileThatCannotBeUsedStopsTheServer(t *testing.T) {
+	t.Parallel()
+	notPEM := filepath.Join(t.TempDir(), "company.pem")
+	if err := os.WriteFile(notPEM, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{notPEM, filepath.Join(t.TempDir(), "missing.pem")} {
+		got := runCLI(t, map[string]string{config.EnvURL: "https://chat.example.com", config.EnvToken: "token-value", config.EnvCAFile: path}, "serve")
+		if got.code != cli.ExitConfig || got.servers != 0 || !strings.Contains(got.stderr, config.EnvCAFile) {
+			t.Errorf("%s: got %+v", path, got)
+		}
+	}
+}
+
+func TestOverHTTPTheAddressIsPrinted(t *testing.T) {
+	t.Parallel()
+	got := runCLI(t, env, "serve", "--transport", "http", "--port", "9999")
+	if !strings.Contains(got.stderr, "http://127.0.0.1:9999/mcp") {
+		t.Fatalf("got %+v", got)
 	}
 }
 

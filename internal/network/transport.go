@@ -43,13 +43,14 @@ func Wrap(inner http.RoundTripper, blockExternal bool) http.RoundTripper {
 // NewSafeTransport is the transport every HTTP client in mm-mcp is built on.
 // While MM_MCP_BLOCK_EXTERNAL_NETWORK is 1 it refuses every host but the
 // loopback addresses, so a unit test that reaches beyond the machine fails at
-// once and names the host (ADR-006).
+// once and names the host (ADR-006). An answer of 429 Too Many Requests is
+// waited out and sent again, as Retrying says.
 func NewSafeTransport() http.RoundTripper {
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
-		return Wrap(http.DefaultTransport, os.Getenv(config.EnvBlockExternalNetwork) == "1")
+		return Wrap(Retrying(http.DefaultTransport), os.Getenv(config.EnvBlockExternalNetwork) == "1")
 	}
 	inner := base.Clone()
 	inner.ResponseHeaderTimeout = 60 * time.Second
-	return Wrap(inner, os.Getenv(config.EnvBlockExternalNetwork) == "1")
+	return Wrap(Retrying(inner), os.Getenv(config.EnvBlockExternalNetwork) == "1")
 }
