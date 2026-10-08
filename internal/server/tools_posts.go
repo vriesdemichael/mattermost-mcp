@@ -23,6 +23,8 @@ const (
 // ChannelPosts is a stretch of a channel's conversation.
 type ChannelPosts struct {
 	ChannelID string `json:"channel_id"`
+	Channel   string `json:"channel,omitempty" jsonschema:"the channel's display name, which every post here is in"`
+	Team      string `json:"team,omitempty" jsonschema:"the channel's team; empty for a direct or group message"`
 	Posts     []Post `json:"posts" jsonschema:"oldest first, as the conversation reads"`
 	pageInfo
 }
@@ -128,6 +130,7 @@ func readFromPost(ctx context.Context, client *mattermost.Client, channelID stri
 		return nil, ChannelPosts{}, err
 	}
 	out := ChannelPosts{ChannelID: channelID, Posts: posts}
+	out.Channel, out.Team, out.Posts = inOneChannel(out.Posts)
 	if more && len(read) > 0 {
 		next := at
 		if at.Back {
@@ -200,6 +203,7 @@ func readSince(ctx context.Context, client *mattermost.Client, input readChannel
 		return nil, ChannelPosts{}, err
 	}
 	out := ChannelPosts{ChannelID: input.ChannelID, Posts: posts}
+	out.Channel, out.Team, out.Posts = inOneChannel(out.Posts)
 	if more {
 		at.After = page[len(page)-1].Id
 		out.NextCursor = at.String()
@@ -407,6 +411,7 @@ func readPostSpec() Spec {
 					return nil, PostWithThread{}, err
 				}
 				out := PostWithThread{Thread: posts[:len(page)]}
+				_, _, out.Thread = inOneChannel(out.Thread)
 				for i := range posts {
 					if posts[i].ID == input.PostID {
 						out.Post = &posts[i]
@@ -433,6 +438,8 @@ func readPostSpec() Spec {
 // PinnedPosts is a channel's pinned posts.
 type PinnedPosts struct {
 	ChannelID string `json:"channel_id"`
+	Channel   string `json:"channel,omitempty" jsonschema:"the channel's display name, which every post here is in"`
+	Team      string `json:"team,omitempty" jsonschema:"the channel's team; empty for a direct or group message"`
 	Posts     []Post `json:"posts" jsonschema:"oldest first"`
 	pageInfo
 }
@@ -482,7 +489,9 @@ func listPinnedPostsSpec() Spec {
 				if err != nil {
 					return nil, PinnedPosts{}, err
 				}
-				return nil, PinnedPosts{ChannelID: input.ChannelID, Posts: posts, pageInfo: pageInfo{NextCursor: next}}, nil
+				out := PinnedPosts{ChannelID: input.ChannelID, pageInfo: pageInfo{NextCursor: next}}
+				out.Channel, out.Team, out.Posts = inOneChannel(posts)
+				return nil, out, nil
 			}
 		},
 	), pagingShapes)
@@ -565,6 +574,8 @@ const readBeforeUnread = 3
 // UnreadPosts is a channel from where the person stopped reading.
 type UnreadPosts struct {
 	ChannelID string `json:"channel_id"`
+	Channel   string `json:"channel,omitempty" jsonschema:"the channel's display name, which every post here is in"`
+	Team      string `json:"team,omitempty" jsonschema:"the channel's team; empty for a direct or group message"`
 	Posts     []Post `json:"posts" jsonschema:"oldest first: on the first page a few the person has read, then those they have not"`
 	// FirstUnreadID is the first post the person has not read.
 	FirstUnreadID string `json:"first_unread_id,omitempty" jsonschema:"the first post on this page the person has not read"`
@@ -648,6 +659,7 @@ func readUnreadSpec() Spec {
 					return nil, UnreadPosts{}, err
 				}
 				out := UnreadPosts{ChannelID: input.ChannelID, Posts: posts}
+				out.Channel, out.Team, out.Posts = inOneChannel(out.Posts)
 				for _, post := range page {
 					if post.UserId == self.Id || post.CreateAt <= membership.LastViewedAt {
 						continue

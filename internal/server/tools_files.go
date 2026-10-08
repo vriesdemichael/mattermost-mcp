@@ -26,14 +26,6 @@ import (
 // pdfType is a PDF's media type, which read_file returns whole when small.
 const pdfType = "application/pdf"
 
-// permalink is the address a person opens a post at, on any team.
-func permalink(base, postID string) string {
-	if postID == "" {
-		return ""
-	}
-	return strings.TrimRight(base, "/") + "/_redirect/pl/" + postID
-}
-
 // FileImage says how the image read_file returned compares with the one the
 // file holds: scaling can leave small text illegible.
 type FileImage struct {
@@ -110,7 +102,7 @@ func readFileSpec() Spec {
 				}
 				view := fileview.Request{
 					Name:      info.Name,
-					WebURL:    permalink(cfg.URL, info.PostId),
+					WebURL:    client.Permalink(info.PostId),
 					StartLine: input.StartLine,
 					LineCount: input.LineCount,
 				}
@@ -424,7 +416,7 @@ func saveFileSpec() Spec {
 				}
 				saved.remember(input.FileID, path)
 				answer := SavedFile{FileID: input.FileID, Path: path, Size: int64(len(data))}
-				if err := markDownloaded(path, permalink(cfg.URL, info.PostId), cfg.URL); err != nil {
+				if err := markDownloaded(path, client.Permalink(info.PostId), cfg.URL); err != nil {
 					answer.Note = "The file could not be marked as downloaded from the internet (" + err.Error() + "), so the system will not warn before it is opened."
 				}
 				return nil, answer, nil

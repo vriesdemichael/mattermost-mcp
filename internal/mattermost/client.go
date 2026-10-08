@@ -58,6 +58,17 @@ func client4(address, token string, transport http.RoundTripper, timeout time.Du
 	return api
 }
 
+// Address is the address the server is served at, as MM_URL gives it.
+func (c *Client) Address() string { return c.api.URL }
+
+// Permalink is the address a person opens a post at, on any team.
+func (c *Client) Permalink(postID string) string {
+	if postID == "" {
+		return ""
+	}
+	return strings.TrimRight(c.api.URL, "/") + "/_redirect/pl/" + postID
+}
+
 // Error is an answer Mattermost gave with an error status.
 type Error struct {
 	Status    int
