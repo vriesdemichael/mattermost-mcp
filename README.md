@@ -81,6 +81,11 @@ claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=y
 Claude Desktop users can open the `.mcpb` bundle for their machine from the
 latest release instead.
 
+When it does not work, `mm-mcp doctor --url https://chat.example.com` checks
+the configuration, the stored login, the way to the server and the credential,
+and says what to fix; from inside your MCP client, the `diagnose` tool does the
+same with the client's own configuration.
+
 The [documentation](https://vriesdemichael.github.io/mm-mcp/) has every
 setting, the tools, and the supported Mattermost releases.
 

@@ -45,6 +45,10 @@ func Delete(address string) error {
 	return nil
 }
 
+// Key is the name a token for the server at address is stored under, for a
+// person to find it in the store.
+func Key(address string) string { return key(address) }
+
 // key is the server's address as a token is stored under it: without a
 // trailing slash, its scheme and host in lower case.
 func key(address string) string {

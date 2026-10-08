@@ -1,6 +1,6 @@
 ---
 name: mattermost-login
-description: Log the person in to their Mattermost for the mm-mcp MCP server, or fix a login that failed. Use when the mm-mcp tools answer that the token was refused or expired, when mm-mcp serve says no login is stored, when the person asks to connect mm-mcp to Mattermost, or when they cannot make a personal access token. Never handle the token yourself.
+description: Log the person in to their Mattermost for the mm-mcp MCP server, or find out why mm-mcp does not work. Use when the mm-mcp tools answer that the token was refused or expired, when mm-mcp serve says no login is stored, when the person asks to connect mm-mcp to Mattermost, or when they cannot make a personal access token. Never handle the token yourself.
 ---
 
 # Logging in to Mattermost for mm-mcp
@@ -51,6 +51,24 @@ is to run the command and read what it says; the person logs in or approves.
    set to the same address and no `MM_TOKEN`. Restart the MCP server, or the
    client, so it starts again; `mm-mcp serve` then prints `connected to … as @…`
    in the client's log.
+
+## Checking the setup
+
+Run this first when the tools answer that the token was refused or expired,
+and after a login to confirm it took:
+
+```bash
+mm-mcp doctor --url https://chat.example.com
+```
+
+It checks the stored login, whether `MM_TOKEN` hides it, the way to the server,
+and whose credential it is, and prints what to fix for each check that failed.
+It never prints a token. `--json` gives you the checks to read. It reads this
+terminal's environment, not the MCP client's: if it passes and the tools still
+fail, call the mm-mcp server's `diagnose` tool, which checks the client's own
+configuration from inside the server. With `ask_test_question`, and only when
+the person agrees, it shows them a test question to find out whether their
+client shows mm-mcp's questions before a write at all.
 
 ## When the login fails
 

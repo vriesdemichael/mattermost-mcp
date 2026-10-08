@@ -278,9 +278,10 @@ func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 	}
 }
 
-// boundedByInput are the tools whose list is as long as their input asks for,
-// and so needs no paging.
-var boundedByInput = map[string]string{
+// bounded are the tools whose list is as long as their input asks for, or as
+// the tool itself fixes, and so needs no paging.
+var bounded = map[string]string{
+	"diagnose":   "one entry for each check it makes, a fixed set",
 	"get_users":  "one user for each reference given, at most 100",
 	"get_status": "one status for each username given, at most 100",
 }
@@ -307,7 +308,7 @@ func TestEveryListPagesByCursor(t *testing.T) {
 			continue
 		}
 		lists++
-		if reason, ok := boundedByInput[tool.Name]; ok {
+		if reason, ok := bounded[tool.Name]; ok {
 			if strings.TrimSpace(reason) == "" {
 				t.Errorf("%s is exempt from paging without a reason", tool.Name)
 			}

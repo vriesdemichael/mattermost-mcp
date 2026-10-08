@@ -12,14 +12,15 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
 	"github.com/vriesdemichael/mm-mcp/internal/credstore"
+	"github.com/vriesdemichael/mm-mcp/internal/doctor"
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
-	"github.com/vriesdemichael/mm-mcp/internal/network"
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
@@ -89,6 +90,7 @@ Usage:
   mm-mcp login [--url https://chat.example.com] [--with oauth|window|password|paste]
                [--browser path] [--client-id id] [--callback-port 8766]
   mm-mcp logout [--url https://chat.example.com]
+  mm-mcp doctor [--url https://chat.example.com] [--json]
   mm-mcp version
   mm-mcp help
 
@@ -100,6 +102,8 @@ your password in the terminal, or a token you paste. It keeps the session in
 the system's credential store. MM_MCP_ALLOW_WRITES=true offers
 the tools that change Mattermost. A change others see asks before it acts;
 following a thread, saving a post, a draft and the typing indicator do not.
+When something does not work, mm-mcp doctor checks the configuration, the
+stored login, the way to the server and the credential, and says what to fix.
 `
 
 // Run runs the command line and returns the process's exit code.
@@ -121,6 +125,8 @@ func Run(ctx context.Context, args []string, deps Deps) int {
 		return logIn(ctx, args[1:], deps)
 	case "logout":
 		return logOut(ctx, args[1:], deps)
+	case "doctor":
+		return runDoctor(ctx, args[1:], deps)
 	default:
 		fmt.Fprintf(deps.Stderr, "mm-mcp: unknown command %q\n\n%s", args[0], usage)
 		return ExitConfig
@@ -157,20 +163,14 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 	}
 	cfg, err := config.Load(deps.Getenv, stored)
 	if err != nil {
-		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
+		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\nmm-mcp: `mm-mcp doctor` checks the rest of the setup.\n", err)
 		return ExitConfig
 	}
 	cfg.Local = *transport == "stdio"
-	httpTransport := network.NewSafeTransport()
-	if cfg.CAFile != "" {
-		pem, err := os.ReadFile(cfg.CAFile)
-		if err == nil {
-			err = network.TrustCertificates(httpTransport, pem)
-		}
-		if err != nil {
-			fmt.Fprintf(deps.Stderr, "mm-mcp: %s %s cannot be used: %v\n", config.EnvCAFile, cfg.CAFile, err)
-			return ExitConfig
-		}
+	httpTransport, err := doctor.Transport(cfg)
+	if err != nil {
+		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
+		return ExitConfig
 	}
 	if unencrypted(cfg.URL) {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s is plain http, so the token in %s crosses the network unencrypted; use the https address if the server has one\n", cfg.URL, config.EnvToken)
@@ -199,39 +199,29 @@ const PreflightTimeout = 15 * time.Second
 // wrong address or a refused token stops the server at start with what to fix,
 // in the client's log, instead of failing every tool call later. A server that
 // cannot be reached is only warned about: a laptop starts its MCP client before
-// its VPN, and the tools work once Mattermost can be reached.
+// its VPN, and the tools work once Mattermost can be reached. The checks are
+// the ones `mm-mcp doctor` makes, so the two cannot disagree.
 func preflight(ctx context.Context, client *mattermost.Client, cfg config.Config, stderr io.Writer) (int, bool) {
 	checking, cancel := context.WithTimeout(ctx, PreflightTimeout)
 	defer cancel()
-	user, serverVersion, err := client.Check(checking)
-	var answered *mattermost.Error
-	var redirect *network.RedirectError
-	switch {
-	case err == nil:
-	case errors.As(err, &answered) && answered.Status == http.StatusUnauthorized && cfg.TokenStored:
-		fmt.Fprintf(stderr, "mm-mcp: %s refused the session `mm-mcp login` stored: it expired or was logged out. Run `mm-mcp login --url %s` again, and restart.\n", cfg.URL, cfg.URL)
-		return ExitConfig, false
-	case errors.As(err, &answered) && answered.Status == http.StatusUnauthorized:
-		fmt.Fprintf(stderr, "mm-mcp: %s refused the token in %s: it is wrong, was revoked, or is a session that expired. Get a new one, with `mm-mcp login` or as a personal access token, and restart.\n", cfg.URL, config.EnvToken)
-		return ExitConfig, false
-	case errors.Is(err, mattermost.ErrNotMattermost),
-		errors.As(err, &answered) && (answered.Status == http.StatusNotFound || answered.ID == "" && answered.Status < http.StatusInternalServerError):
-		fmt.Fprintf(stderr, "mm-mcp: %s does not answer as a Mattermost server (%v). Set %s to the address you open Mattermost at in a browser.\n", cfg.URL, err, config.EnvURL)
-		return ExitConfig, false
-	case errors.As(err, &redirect):
-		fmt.Fprintf(stderr, "mm-mcp: %v\n", err)
-		return ExitConfig, false
-	case errors.As(err, &answered):
-		fmt.Fprintf(stderr, "mm-mcp: warning: checking the token at %s failed: %v\n", cfg.URL, err)
-		return ExitOK, true
-	default:
-		fmt.Fprintf(stderr, "mm-mcp: warning: %v; serving anyway, and each tool says so until Mattermost can be reached\n", err)
-		return ExitOK, true
+	connection := doctor.Connect(checking, client, cfg)
+	stops := connection.Stops()
+	for _, check := range connection.Checks {
+		message := strings.TrimSpace(check.Detail + " " + check.Next)
+		switch {
+		case check.Status == doctor.Failed && check.Stops():
+			fmt.Fprintf(stderr, "mm-mcp: %s\n", message)
+		case check.Status == doctor.Failed, check.Status == doctor.Warning:
+			fmt.Fprintf(stderr, "mm-mcp: warning: %s\n", message)
+		}
 	}
-	if mattermost.OlderThanSupported(serverVersion) {
-		fmt.Fprintf(stderr, "mm-mcp: warning: %s runs Mattermost %s, older than %s, the oldest release mm-mcp supports; some tools may fail\n", cfg.URL, serverVersion, mattermost.OldestSupported)
+	if stops {
+		fmt.Fprintf(stderr, "mm-mcp: `mm-mcp doctor --url %s` checks the rest of the setup.\n", cfg.URL)
+		return ExitConfig, false
 	}
-	fmt.Fprintf(stderr, "mm-mcp: connected to %s as @%s\n", cfg.URL, user.Username)
+	if connection.User != nil {
+		fmt.Fprintf(stderr, "mm-mcp: connected to %s as @%s\n", cfg.URL, connection.User.Username)
+	}
 	return ExitOK, true
 }
 

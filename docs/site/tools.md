@@ -326,6 +326,22 @@ not to Mattermost
     program and Office opens a document in Protected View; on macOS,
     Gatekeeper checks it. Files up to 100 MiB.
 
+## When something does not work
+
+`diagnose`: Diagnose mm-mcp
+:   The checks `mm-mcp doctor` makes, from inside the running server, so with
+    the configuration your MCP client actually started it with: the address,
+    which credential it acts with, a login `mm-mcp login` stored and whether
+    `MM_TOKEN` hides it, the proxy, whether the server answers as a supported
+    Mattermost, whose credential it is and whether that user belongs to a team.
+    It adds what only the client shows: its name and protocol version, and
+    whether it can show the question mm-mcp asks before each write. With
+    `ask_test_question`, it shows you a test question and reports how it was
+    answered: an answer within a few seconds came from the client itself,
+    which then answers every question before a write without showing it. Each
+    check says what it found, and a failed one what to do. It never returns
+    the credential ([Configuration](configuration.md#command-line)).
+
 ## Not offered
 
 - **Scheduled posts.** Mattermost's scheduled posts need a licence, and Team

@@ -78,6 +78,19 @@ setting left empty, counts as unset.
 `mm-mcp logout [--url https://chat.example.com]`
 :   Ends the stored session at Mattermost, and forgets it.
 
+`mm-mcp doctor [--url https://chat.example.com] [--json]`
+:   Checks what mm-mcp needs, and says what to fix for each check that fails:
+    every variable above, the login `mm-mcp login` stored for the address and
+    whether `MM_TOKEN` hides it, the proxy, whether the server answers as a
+    supported Mattermost, whose credential it is and whether that user belongs
+    to a team, and how `mm-mcp login` would log you in there, with the browsers
+    a login window could use. It reads the terminal's environment, which is not
+    your MCP client's: `--url` names the server, and the `diagnose` tool
+    ([Tools](tools.md#when-something-does-not-work)) checks the client's own
+    configuration from inside it. It changes nothing, and never prints the
+    credential; it does print the address and your username. `--json` gives the
+    checks to an agent. It exits with status 1 when a check failed.
+
 `mm-mcp version`
 :   Prints the installed version.
 
@@ -93,3 +106,4 @@ does not answer as Mattermost, stops it with status 2 and what to fix. A server
 it cannot reach is only warned about, and the tools say so until it can be
 reached. A server older than the oldest supported release
 ([Supported Mattermost releases](mattermost-releases.md)) is warned about too.
+These are the checks `mm-mcp doctor` makes of the server, so the two agree.
