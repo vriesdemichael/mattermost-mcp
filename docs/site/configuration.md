@@ -2,7 +2,9 @@
 
 mm-mcp reads its configuration from its environment, which an MCP client sets in
 the server's env block. No setting is a command-line flag that carries a secret
-([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)). A value a client
+leaves as an unexpanded placeholder, such as `${user_config.mm_token}` for a
+setting left empty, counts as unset.
 
 ## Environment variables
 
@@ -63,12 +65,15 @@ the server's env block. No setting is a command-line flag that carries a secret
 `mm-mcp serve --transport http [--host 127.0.0.1] [--port 8765]`
 :   Runs it over Streamable HTTP, on a loopback address only.
 
-`mm-mcp login [--url https://chat.example.com] [--browser path]`
-:   Opens the server's login page in a browser window of its own, the first
-    Chrome, Edge or Chromium installed or the one `--browser` names, waits for
-    you to log in, and keeps the session in your system's credential store for
-    that server. `--url` is `MM_URL` when not given
-    ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+`mm-mcp login [--url https://chat.example.com] [--with oauth|window|password|paste] [--browser path] [--client-id id] [--callback-port 8766]`
+:   Logs you in the way the server allows, checks the session with Mattermost,
+    and keeps it in your system's credential store for that server:
+    OAuth in your own browser, a browser window of its own for single sign-on,
+    your password in the terminal, or a token you paste
+    ([Logging in](login.md)). `--with` picks one way, `--browser` the browser
+    for a window, and `--client-id` the OAuth app an administrator registered
+    for mm-mcp, whose callback is on `--callback-port`. `--url` is `MM_URL` when
+    not given ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
 
 `mm-mcp logout [--url https://chat.example.com]`
 :   Ends the stored session at Mattermost, and forgets it.

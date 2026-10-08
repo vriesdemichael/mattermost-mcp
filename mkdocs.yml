@@ -55,6 +55,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Configuration: configuration.md
+  - Logging In: login.md
   - Tools: tools.md
   - Supported Mattermost Releases: mattermost-releases.md
   - Decision Records: adr/index.md

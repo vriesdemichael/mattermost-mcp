@@ -65,7 +65,14 @@ Personal Access Tokens**, or, where those are switched off, log in once with
 }
 ```
 
-Or, for Claude Code:
+Or, for Claude Code, the plugin, which also logs you in, single sign-on included:
+
+```text
+/plugin marketplace add vriesdemichael/mm-mcp
+/plugin install mm-mcp@mm-mcp
+```
+
+or the server alone:
 
 ```bash
 claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=your-token -- mm-mcp serve
