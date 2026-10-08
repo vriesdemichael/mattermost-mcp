@@ -2,7 +2,10 @@
 
 Where your Mattermost lets you make a personal access token, that token is the
 simplest way in: put it in `MM_TOKEN` ([Installation](installation.md)). Many
-organisations switch those tokens off. Then log in once with your own account:
+organisations switch those tokens off, often to keep programs and agents out;
+[that no longer works](#why-letting-agents-in-is-the-safer-choice), and an
+administrator can open a proper way in instead. Until then, log in once with
+your own account:
 
 ```bash
 mm-mcp login --url https://chat.example.com
@@ -243,6 +246,40 @@ inside the client, ask the model to call the `diagnose` tool: it makes the same
 checks with the client's own configuration, and says whether the client can
 show the question mm-mcp asks before each write.
 
+## Why letting agents in is the safer choice
+
+This part is for administrators, and for whoever writes the policy they follow.
+
+An AI agent no longer needs mm-mcp, or any token, to reach Mattermost. Ask a
+coding agent today to do something in Mattermost, and without an integration it
+drives a browser: through computer use or a browser extension, it opens
+Mattermost where the person is already logged in, and reads and types as them.
+Switching personal access tokens off, forbidding remote debugging, or requiring
+a managed device stops none of that. As long as an agent can drive the
+browser a person is logged in to, Mattermost is open to it.
+
+What a policy does decide is the way the agent comes in:
+
+| | Through the person's browser | Through mm-mcp |
+|---|---|---|
+| What it reads | Whatever is on the screen, Mattermost or not | Mattermost, through its API, nothing else |
+| Posting | As the person, unmarked | Not offered until writes are allowed |
+| Before a post others see | Nobody is asked | A person is asked by default ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md), [ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)) |
+| Telling its posts apart | Impossible | Marked as written with AI, as Mattermost shows it, by default |
+| Telling its requests apart | Impossible | `User-Agent: mm-mcp/<version>` |
+| Ending it | Ending the session the person works in | Ending the one session mm-mcp keeps |
+
+So the safer choice is to make the agent visible and give it a proper way in,
+rather than to try to keep it out: one of the two changes below. mm-mcp then
+logs in through the person's own browser, in one click, and the browser window
+of its own, Playwright's Chromium and the pasted token are not needed.
+
+This will not satisfy every security policy, and it is not meant to. It is the
+honest trade: a policy that closes the proper ways in does not keep agents
+out. It moves them to the way nobody can see. Large organisations may take
+years to come to that; the sooner they do, the less of their Mattermost is used
+unseen.
+
 ## What to ask your administrator
 
 One change on the server lets everyone log in through their own browser, in
@@ -251,6 +288,9 @@ one click:
 - **Turn on dynamic client registration**: System Console > Integrations >
   Integration Management > Enable OAuth 2.0 Service Provider, and Enable Dynamic
   Client Registration. mm-mcp then registers itself once per person and server.
+  Any program that reaches the server can then register an OAuth app, as the
+  standard intends; an app gets nothing until a person logged in to Mattermost
+  approves it.
 - **Or register one OAuth app for mm-mcp**: a public client, without a secret,
   with the callback `http://127.0.0.1:8766/callback`, and share its client id.
   Everyone then runs `mm-mcp login --client-id <id>` once; mm-mcp remembers it
