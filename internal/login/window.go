@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -151,4 +152,37 @@ func removeProfile(profile string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// tail keeps the last of what a browser writes to its output, to say why it
+// exited as it started.
+type tail struct {
+	mu   sync.Mutex
+	kept []byte
+}
+
+const tailBytes = 4 << 10
+
+func (t *tail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.kept = append(t.kept, p...)
+	if len(t.kept) > tailBytes {
+		t.kept = t.kept[len(t.kept)-tailBytes:]
+	}
+	return len(p), nil
+}
+
+// said is the last lines the browser wrote, as a sentence's end, or nothing.
+func (t *tail) said() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	lines := strings.Split(strings.TrimSpace(string(t.kept)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return ""
+	}
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	return "; it said: " + strings.Join(lines, " | ")
 }
