@@ -155,29 +155,31 @@ func (w *firefoxWindow) call(ctx context.Context, method string, params, out any
 }
 
 func (w *firefoxWindow) WaitForToken(ctx context.Context, address string) (string, error) {
-	return waitForToken(ctx, w.closed, address, func(ctx context.Context) ([]Cookie, error) {
-		var got struct {
-			Cookies []struct {
-				Name  string `json:"name"`
-				Value struct {
-					Type  string `json:"type"`
-					Value string `json:"value"`
-				} `json:"value"`
-				Domain string `json:"domain"`
-				Path   string `json:"path"`
-			} `json:"cookies"`
+	return waitForToken(ctx, w.closed, address, w.Cookies)
+}
+
+func (w *firefoxWindow) Cookies(ctx context.Context) ([]Cookie, error) {
+	var got struct {
+		Cookies []struct {
+			Name  string `json:"name"`
+			Value struct {
+				Type  string `json:"type"`
+				Value string `json:"value"`
+			} `json:"value"`
+			Domain string `json:"domain"`
+			Path   string `json:"path"`
+		} `json:"cookies"`
+	}
+	if err := w.call(ctx, "storage.getCookies", map[string]any{}, &got); err != nil {
+		return nil, err
+	}
+	cookies := make([]Cookie, 0, len(got.Cookies))
+	for _, c := range got.Cookies {
+		if c.Value.Type == "string" {
+			cookies = append(cookies, Cookie{Name: c.Name, Value: c.Value.Value, Domain: c.Domain, Path: c.Path})
 		}
-		if err := w.call(ctx, "storage.getCookies", map[string]any{}, &got); err != nil {
-			return nil, err
-		}
-		cookies := make([]Cookie, 0, len(got.Cookies))
-		for _, c := range got.Cookies {
-			if c.Value.Type == "string" {
-				cookies = append(cookies, Cookie{Name: c.Name, Value: c.Value.Value, Domain: c.Domain, Path: c.Path})
-			}
-		}
-		return cookies, nil
-	})
+	}
+	return cookies, nil
 }
 
 func (w *firefoxWindow) Navigate(ctx context.Context, address string) error {

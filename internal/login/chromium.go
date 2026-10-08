@@ -27,6 +27,7 @@ type chromiumWindow struct {
 	process *exec.Cmd
 	profile string
 	conn    *websocket.Conn
+	session string // the session attached to its page, once there is one
 
 	mu      sync.Mutex
 	nextID  int
@@ -55,7 +56,9 @@ func startChromium(ctx context.Context, browser Browser, profile, address string
 	if options.Headless {
 		args = append(args, "--headless=new", "--disable-gpu")
 	}
-	args = append(args, address)
+	// A blank page first, and the address through DevTools once connected:
+	// Chromium 153 never requests an http page given on its command line.
+	args = append(args, "about:blank")
 	process := exec.CommandContext(ctx, browser.Path, args...) //nolint:gosec // the browser the person has, or names
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
@@ -77,6 +80,10 @@ func startChromium(ctx context.Context, browser Browser, profile, address string
 	}
 	w.conn = conn
 	go w.read()
+	if err := w.Navigate(ctx, address); err != nil {
+		w.Close()
+		return nil, fmt.Errorf("opening %s in %s: %w", address, browser.Name, err)
+	}
 	return w, nil
 }
 
@@ -188,50 +195,72 @@ func (w *chromiumWindow) call(ctx context.Context, sessionID, method string, par
 }
 
 func (w *chromiumWindow) WaitForToken(ctx context.Context, address string) (string, error) {
-	return waitForToken(ctx, w.closed, address, func(ctx context.Context) ([]Cookie, error) {
-		var got struct {
-			Cookies []struct {
-				Name   string `json:"name"`
-				Value  string `json:"value"`
-				Domain string `json:"domain"`
-				Path   string `json:"path"`
-			} `json:"cookies"`
-		}
-		if err := w.call(ctx, "", "Storage.getCookies", map[string]any{}, &got); err != nil {
-			return nil, err
-		}
-		cookies := make([]Cookie, 0, len(got.Cookies))
-		for _, c := range got.Cookies {
-			cookies = append(cookies, Cookie{Name: c.Name, Value: c.Value, Domain: c.Domain, Path: c.Path})
-		}
-		return cookies, nil
-	})
+	return waitForToken(ctx, w.closed, address, w.Cookies)
 }
 
-// page is a session attached to the browser's first page.
+func (w *chromiumWindow) Cookies(ctx context.Context) ([]Cookie, error) {
+	var got struct {
+		Cookies []struct {
+			Name   string `json:"name"`
+			Value  string `json:"value"`
+			Domain string `json:"domain"`
+			Path   string `json:"path"`
+		} `json:"cookies"`
+	}
+	if err := w.call(ctx, "", "Storage.getCookies", map[string]any{}, &got); err != nil {
+		return nil, err
+	}
+	cookies := make([]Cookie, 0, len(got.Cookies))
+	for _, c := range got.Cookies {
+		cookies = append(cookies, Cookie{Name: c.Name, Value: c.Value, Domain: c.Domain, Path: c.Path})
+	}
+	return cookies, nil
+}
+
+// page is a session attached to the browser's first page, which a browser
+// that has just started may not have opened yet.
 func (w *chromiumWindow) page(ctx context.Context) (string, error) {
-	var targets struct {
-		TargetInfos []struct {
-			TargetID string `json:"targetId"`
-			Type     string `json:"type"`
-		} `json:"targetInfos"`
+	w.mu.Lock()
+	session := w.session
+	w.mu.Unlock()
+	if session != "" {
+		return session, nil
 	}
-	if err := w.call(ctx, "", "Target.getTargets", map[string]any{}, &targets); err != nil {
-		return "", err
-	}
-	for _, target := range targets.TargetInfos {
-		if target.Type != "page" {
-			continue
+	deadline := time.Now().Add(startTimeout)
+	for {
+		var targets struct {
+			TargetInfos []struct {
+				TargetID string `json:"targetId"`
+				Type     string `json:"type"`
+			} `json:"targetInfos"`
 		}
-		var attached struct {
-			SessionID string `json:"sessionId"`
-		}
-		if err := w.call(ctx, "", "Target.attachToTarget", map[string]any{"targetId": target.TargetID, "flatten": true}, &attached); err != nil {
+		if err := w.call(ctx, "", "Target.getTargets", map[string]any{}, &targets); err != nil {
 			return "", err
 		}
-		return attached.SessionID, nil
+		for _, target := range targets.TargetInfos {
+			if target.Type != "page" {
+				continue
+			}
+			var attached struct {
+				SessionID string `json:"sessionId"`
+			}
+			if err := w.call(ctx, "", "Target.attachToTarget", map[string]any{"targetId": target.TargetID, "flatten": true}, &attached); err != nil {
+				return "", err
+			}
+			w.mu.Lock()
+			w.session = attached.SessionID
+			w.mu.Unlock()
+			return attached.SessionID, nil
+		}
+		if time.Now().After(deadline) {
+			return "", errors.New("the browser has no page open")
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	return "", errors.New("the browser has no page open")
 }
 
 func (w *chromiumWindow) Navigate(ctx context.Context, address string) error {
