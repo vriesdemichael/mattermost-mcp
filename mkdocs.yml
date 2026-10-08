@@ -5,32 +5,55 @@ repo_url: https://github.com/vriesdemichael/mm-mcp
 repo_name: vriesdemichael/mm-mcp
 docs_dir: docs/site
 site_dir: site
+copyright: >-
+  mm-mcp is an independent project, not affiliated with, endorsed by or
+  supported by Mattermost, Inc. Mattermost is a trademark of Mattermost, Inc.
 
 theme:
   name: material
-  icon:
-    logo: material/forum
+  # The site's look is its own: colours a chat client's reader feels at home
+  # in, without Mattermost's logo, typefaces or palette (docs/site/stylesheets).
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
   font:
     text: IBM Plex Sans
     code: IBM Plex Mono
+  icon:
+    repo: fontawesome/brands/github
   features:
+    - navigation.tabs
     - navigation.top
     - navigation.tracking
     - navigation.sections
     - navigation.indexes
+    - navigation.footer
     - toc.follow
     - content.code.copy
+    - content.tabs.link
     - search.suggest
     - search.highlight
   palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: deep orange
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: deep orange
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to the system's mode
+
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search
@@ -38,14 +61,32 @@ plugins:
 extra:
   version:
     provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vriesdemichael/mm-mcp
+      name: mm-mcp on GitHub
+  generator: false
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - tables
   - def_list
   - toc:
       permalink: true
-  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      # The diagrams are Mermaid, which Material draws in the page's own
+      # colours and GitHub draws too.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.inlinehilite
   - pymdownx.details
   - pymdownx.tabbed:
@@ -53,15 +94,18 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Configuration: configuration.md
-  - Logging In: login.md
-  - Tools: tools.md
-  - Supported Mattermost Releases: mattermost-releases.md
-  - Decision Records: adr/index.md
-  # Linked rather than copied into docs_dir, so there is one copy to keep current.
-  - Contributing: https://github.com/vriesdemichael/mm-mcp/blob/main/CONTRIBUTING.md
-  - Changelog: https://github.com/vriesdemichael/mm-mcp/releases
+  - Get started:
+      - Installation: installation.md
+      - Logging in: login.md
+      - Configuration: configuration.md
+  - Reference:
+      - Tools: tools.md
+      - Supported Mattermost releases: mattermost-releases.md
+  - Project:
+      - Decision records: adr/index.md
+      # Linked rather than copied into docs_dir, so there is one copy to keep current.
+      - Contributing: https://github.com/vriesdemichael/mm-mcp/blob/main/CONTRIBUTING.md
+      - Changelog: https://github.com/vriesdemichael/mm-mcp/releases
 
 validation:
   nav:
