@@ -26,9 +26,11 @@ type chromiumWindow struct {
 	browser Browser
 	process *exec.Cmd
 	output  *tail
-	profile string
-	conn    *websocket.Conn
-	session string // the session attached to its page, once there is one
+	// patience is how long it may take to open its remote port.
+	patience time.Duration
+	profile  string
+	conn     *websocket.Conn
+	session  string // the session attached to its page, once there is one
 	// unsandboxed says the system refused the browser its sandbox, and it
 	// runs without one.
 	unsandboxed bool
@@ -104,7 +106,7 @@ func launchChromium(ctx context.Context, browser Browser, profile, address strin
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
 	}
-	w := &chromiumWindow{browser: browser, process: process, output: output, profile: profile, waiting: map[int]chan cdpReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
+	w := &chromiumWindow{browser: browser, process: process, output: output, profile: profile, patience: options.patience(), waiting: map[int]chan cdpReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		_ = process.Wait()
 		close(w.exited)
@@ -131,7 +133,7 @@ func launchChromium(ctx context.Context, browser Browser, profile, address strin
 // devToolsEndpoint waits for the browser to write the port it listens on, as
 // --remote-debugging-port=0 has it do, into the profile.
 func (w *chromiumWindow) devToolsEndpoint(ctx context.Context) (string, error) {
-	deadline := time.Now().Add(startTimeout)
+	deadline := time.Now().Add(w.patience)
 	file := filepath.Join(w.profile, "DevToolsActivePort")
 	for {
 		if raw, err := os.ReadFile(file); err == nil { //nolint:gosec // a file in the profile mm-mcp made
@@ -148,7 +150,7 @@ func (w *chromiumWindow) devToolsEndpoint(ctx context.Context) (string, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 		if time.Now().After(deadline) {
-			reason := fmt.Sprintf("opened no DevTools port within %s; a company policy that forbids remote debugging does that", startTimeout)
+			reason := fmt.Sprintf("opened no DevTools port within %s; a company policy that forbids remote debugging does that", w.patience)
 			select {
 			case <-w.exited:
 				reason = "exited as it started, without opening its DevTools port" + w.output.said()
@@ -268,7 +270,7 @@ func (w *chromiumWindow) page(ctx context.Context) (string, error) {
 	if session != "" {
 		return session, nil
 	}
-	deadline := time.Now().Add(startTimeout)
+	deadline := time.Now().Add(w.patience)
 	for {
 		var targets struct {
 			TargetInfos []struct {
