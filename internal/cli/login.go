@@ -317,14 +317,25 @@ func advice(signIn login.SignIn, address string) string {
 
 // windowLogin tries each browser in turn until one lets itself be watched, and
 // waits there for the person to log in.
-func windowLogin(ctx context.Context, browser, address, server string, progress io.Writer) (string, error) {
+var windowLogin = WindowLogin(login.Options{}, nil)
+
+// WindowLogin is the Login.Window that starts browsers with options, and, when
+// ready is given, hands it each window before waiting, as a test that logs in
+// from the page does.
+func WindowLogin(options login.Options, ready func(context.Context, login.Window) error) func(context.Context, string, string, string, io.Writer) (string, error) {
+	return func(ctx context.Context, browser, address, server string, progress io.Writer) (string, error) {
+		return tryBrowsers(ctx, browser, address, server, progress, options, ready)
+	}
+}
+
+func tryBrowsers(ctx context.Context, browser, address, server string, progress io.Writer, options login.Options, ready func(context.Context, login.Window) error) (string, error) {
 	browsers, err := login.FindBrowsers(login.ThisSystem(), browser)
 	if err != nil {
 		return "", err
 	}
 	var blocked []string
 	for _, candidate := range browsers {
-		window, err := login.Start(ctx, candidate, address, login.Options{})
+		window, err := login.Start(ctx, candidate, address, options)
 		var stopped *login.BlockedError
 		if errors.As(err, &stopped) {
 			fmt.Fprintf(progress, "mm-mcp: %v; close its window if one opened. Trying the next browser.\n", err)
@@ -336,6 +347,12 @@ func windowLogin(ctx context.Context, browser, address, server string, progress 
 		}
 		if window.Unsandboxed() {
 			fmt.Fprintf(progress, "mm-mcp: %s runs without its sandbox, which this system refuses it; the window shows only your login page and closes once you have logged in.\n", candidate.Name)
+		}
+		if ready != nil {
+			if err := ready(ctx, window); err != nil {
+				window.Close()
+				return "", err
+			}
 		}
 		token, err := window.WaitForToken(ctx, server)
 		window.Close()

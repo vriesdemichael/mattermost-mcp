@@ -61,8 +61,10 @@ func key(address string) string {
 }
 
 // Where names the system's credential store, for a person to find a token in.
-func Where() string {
-	switch runtime.GOOS {
+func Where() string { return where(runtime.GOOS) }
+
+func where(goos string) string {
+	switch goos {
 	case "windows":
 		return "the Windows Credential Manager, as " + service
 	case "darwin":

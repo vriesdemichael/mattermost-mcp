@@ -1,6 +1,7 @@
 package credstore
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -42,5 +43,17 @@ func TestTheKeyKeepsAPathAsItIs(t *testing.T) {
 	t.Parallel()
 	if got := key("HTTPS://Chat.Example.com/Mattermost/"); got != "https://chat.example.com/Mattermost" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestTheStoreIsNamedAsEachSystemCallsIt(t *testing.T) {
+	t.Parallel()
+	for goos, want := range map[string]string{"windows": "Credential Manager", "darwin": "keychain", "linux": "Secret Service"} {
+		if got := where(goos); !strings.Contains(got, want) {
+			t.Errorf("%s: %q", goos, got)
+		}
+	}
+	if Where() == "" {
+		t.Error("this system's store has no name")
 	}
 }

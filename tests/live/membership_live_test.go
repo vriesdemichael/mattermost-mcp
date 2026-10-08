@@ -164,3 +164,48 @@ func TestSetStatusSetsPresenceAndAMessageEveryoneSees(t *testing.T) {
 		t.Error("a status Mattermost has no name for was taken")
 	}
 }
+
+// refused calls a tool expecting it to be refused with what says.
+func refused(t *testing.T, session *mcp.ClientSession, name string, arguments map[string]any, says string) {
+	t.Helper()
+	result := callTool(t, session, &mcp.CallToolParams{Name: name, Arguments: arguments})
+	if !result.IsError || !strings.Contains(errorText(result), says) {
+		t.Errorf("%s %v: got %q; want it refused saying %q", name, arguments, errorText(result), says)
+	}
+}
+
+func TestTheChannelAndStatusToolsRefuseWhatTheyCannotDoBeforeAsking(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user, other := seedUser(t, admin), seedUser(t, admin)
+	team := seedTeam(t, admin, user, other)
+	channel := seedChannel(t, admin, team, other)
+	archived := seedChannel(t, admin, team, user, other)
+	_, err := admin.DeleteChannel(t.Context(), archived.Id)
+	check(t, err)
+	direct, _, err := clientAs(t, other).CreateDirectChannel(t.Context(), other.Id, user.Id)
+	check(t, err)
+	session, questions := writingSession(t, admin, user, accept)
+	soon := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	many := make([]string, 21)
+	for i := range many {
+		many[i] = other.Username
+	}
+
+	refused(t, session, "join_channel", map[string]any{"channel_id": direct.Id}, "belongs to no team")
+	refused(t, session, "join_channel", map[string]any{"channel_id": archived.Id}, "archived")
+	refused(t, session, "leave_channel", map[string]any{"channel_id": channel.Id}, "does not belong")
+	refused(t, session, "add_channel_members", map[string]any{"channel_id": channel.Id, "usernames": []string{}}, "give the usernames")
+	refused(t, session, "add_channel_members", map[string]any{"channel_id": channel.Id, "usernames": many}, "at most 20")
+	refused(t, session, "create_channel", map[string]any{"team_id": team.Id, "display_name": " "}, "give the channel a name")
+	refused(t, session, "set_status", map[string]any{}, "give a status")
+	refused(t, session, "set_status", map[string]any{"status": "online", "dnd_until": soon}, "goes with status dnd")
+	refused(t, session, "set_status", map[string]any{"clear_text": true, "text": "x"}, "without text")
+	refused(t, session, "set_status", map[string]any{"text_until": soon}, "give text or emoji")
+	refused(t, session, "set_status", map[string]any{"status": "dnd", "dnd_until": "next week"}, "must be a time")
+	refused(t, session, "set_status", map[string]any{"status": "dnd", "dnd_until": "2020-01-01T09:00"}, "not in the future")
+	refused(t, session, "set_status", map[string]any{"text": "lunch", "emoji": "\U0001F9FF\U0001F9FF"}, "not an emoji")
+	if n := questions.count(); n != 0 {
+		t.Errorf("asked %d questions about calls refused before asking", n)
+	}
+}

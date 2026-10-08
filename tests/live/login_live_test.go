@@ -71,20 +71,12 @@ func loginScript(username string) string {
 	})()`, liveURL, username, fixturePassword)
 }
 
-// windowLogsIn is a Login.Window that logs in as username in a headless
-// browser: the one named, or else browser.
-func windowLogsIn(username string, browser login.Browser) func(context.Context, string, string, string, io.Writer) (string, error) {
-	return func(ctx context.Context, _, address, server string, _ io.Writer) (string, error) {
-		window, err := login.Start(ctx, browser, address, login.Options{Headless: true})
-		if err != nil {
-			return "", err
-		}
-		defer window.Close()
-		if err := retry(ctx, window, loginScript(username)); err != nil {
-			return "", err
-		}
-		return window.WaitForToken(ctx, server)
-	}
+// windowLogsIn is mm-mcp's own Login.Window, its browsers headless, logging
+// in as username from the login page, as the person would in the window.
+func windowLogsIn(username string) func(context.Context, string, string, string, io.Writer) (string, error) {
+	return cli.WindowLogin(login.Options{Headless: true}, func(ctx context.Context, window login.Window) error {
+		return retry(ctx, window, loginScript(username))
+	})
 }
 
 // approver is the person's own browser, logged in, which approves mm-mcp when
@@ -244,8 +236,8 @@ func TestLoginThroughAWindowWithEveryBrowserOnThisMachine(t *testing.T) {
 	t.Parallel()
 	user := seedUser(t, admin(t))
 	for _, browser := range browsers(t) {
-		r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username, browser), Line: noTerminal, Secret: noTerminal})
-		code, stdout, stderr := r.run("login", "--with", "window")
+		r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username), Line: noTerminal, Secret: noTerminal})
+		code, stdout, stderr := r.run("login", "--with", "window", "--browser", browser.Path)
 		if code != cli.ExitOK || whoIs(t, r.stored[liveURL]) != user.Username {
 			t.Errorf("%s: exit %d\n%s%s", browser, code, stdout, stderr)
 		}
@@ -283,7 +275,7 @@ func TestLoginWithAPasswordOrAPastedToken(t *testing.T) {
 func TestServeUsesTheStoredLoginAndLogoutEndsIt(t *testing.T) {
 	t.Parallel()
 	user := seedUser(t, admin(t))
-	r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username, browsers(t)[0]), Line: noTerminal, Secret: noTerminal})
+	r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username), Line: noTerminal, Secret: noTerminal})
 	if code, stdout, stderr := r.run("login", "--with", "window"); code != cli.ExitOK {
 		t.Fatalf("login: exit %d\n%s%s", code, stdout, stderr)
 	}

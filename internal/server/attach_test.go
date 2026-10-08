@@ -194,6 +194,10 @@ func TestTheSecretScanFindsWhatTwoReadsSplit(t *testing.T) {
 	if scan.found != "the token this server acts with" {
 		t.Fatalf("found %q", scan.found)
 	}
+	// Once found, the rest of the file is read past, not looked through.
+	if n, err := scan.Write([]byte("-----BEGIN RSA PRIVATE KEY-----")); n != 31 || err != nil || scan.found != "the token this server acts with" {
+		t.Errorf("after the find: %d, %v, found %q", n, err, scan.found)
+	}
 	if short := newSecretScan("abc"); len(short.needles) != 1 {
 		t.Fatalf("a three-letter token is looked for: %v", short.needles)
 	}

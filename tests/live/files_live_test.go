@@ -198,6 +198,14 @@ func TestSaveFileWritesIntoTheDownloadDirectoryAndNeverOverwrites(t *testing.T) 
 	if again.Path != first.Path || !again.AlreadySaved {
 		t.Errorf("saving it again gave %+v; want the copy saved before", again)
 	}
+	defer func() {
+		// The copy saved after the person deleted the first is a file anew.
+		check(t, os.Remove(first.Path))
+		anew := save()
+		if anew.AlreadySaved || anew.Path != first.Path {
+			t.Errorf("after the first copy was deleted: %+v", anew)
+		}
+	}()
 	written, err := os.ReadFile(first.Path)
 	check(t, err)
 	if !bytes.Equal(written, content) {

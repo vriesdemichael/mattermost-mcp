@@ -122,3 +122,29 @@ func TestASearchsDaysAreThePersonsOwn(t *testing.T) {
 		t.Errorf("get_me names the timezone %q", me.Timezone)
 	}
 }
+
+func TestSearchesAndReadsRefuseWhatTheyCannotReadAndSayWhy(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	team := seedTeam(t, admin, user)
+	channel := seedChannel(t, admin, team, user)
+	session := sessionFor(t, admin, user)
+
+	for _, c := range []struct {
+		call *mcp.CallToolParams
+		says string
+	}{
+		{&mcp.CallToolParams{Name: "list_mentions", Arguments: map[string]any{"limit": 1000}}, "limit"},
+		{&mcp.CallToolParams{Name: "list_mentions", Arguments: map[string]any{"cursor": "not-a-cursor"}}, "cursor"},
+		{&mcp.CallToolParams{Name: "list_mentions", Arguments: map[string]any{"on": "yesterday"}}, "YYYY-MM-DD"},
+		{&mcp.CallToolParams{Name: "search_posts", Arguments: map[string]any{"terms": "x", "from": "someone@example.com"}}, "takes a username"},
+		{&mcp.CallToolParams{Name: "read_channel", Arguments: map[string]any{"channel_id": channel.Id, "since": "last tuesday"}}, "since must be"},
+		{&mcp.CallToolParams{Name: "list_team_channels", Arguments: map[string]any{"team_id": "no team is called this"}}, "no team is called"},
+	} {
+		result := callTool(t, session, c.call)
+		if !result.IsError || !strings.Contains(errorText(result), c.says) {
+			t.Errorf("%s %v: got %q; want it refused saying %q", c.call.Name, c.call.Arguments, errorText(result), c.says)
+		}
+	}
+}
