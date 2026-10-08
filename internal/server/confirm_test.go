@@ -325,7 +325,7 @@ func TestAnAnswerAfterTheQuestionExpiredRunsNothingAndARefusalStillStands(t *tes
 		t.Fatalf("a late acceptance: %v, %+v", err, result)
 	}
 	result, err = retry(t, session, "late no", declined, &mcp.ElicitResult{Action: "decline"})
-	if err != nil || !result.IsError || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "declined") {
+	if err != nil || !result.IsError || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "the person declined") {
 		t.Fatalf("a late refusal: %v, %+v", err, result)
 	}
 	if ran.Load() != 0 {

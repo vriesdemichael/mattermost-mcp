@@ -68,7 +68,10 @@ terminal's environment, not the MCP client's: if it passes and the tools still
 fail, call the mm-mcp server's `diagnose` tool, which checks the client's own
 configuration from inside the server. With `ask_test_question`, and only when
 the person agrees, it shows them a test question to find out whether their
-client shows mm-mcp's questions before a write at all.
+client shows mm-mcp's questions before a write at all. If it does not, as
+in the Claude desktop app, turn the plugin's Ask before posting setting off
+(`MM_MCP_ASK_BEFORE_WRITES=false`): Claude Code's own permission prompt then
+asks before each write instead.
 
 ## When the login fails
 

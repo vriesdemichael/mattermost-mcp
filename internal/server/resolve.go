@@ -52,13 +52,18 @@ func bareName(given string) string {
 // answers a list the handler left empty as [] rather than null.
 //
 // A tool that asks the person refuses a client that cannot be asked before
-// it reads a name, which reaches Mattermost (ADR-021).
-func resolving[In, Out any](tool string, handler mcp.ToolHandlerFor[In, Out], clientFor ClientFor, asks bool) mcp.ToolHandlerFor[In, Out] {
+// it reads a name, which reaches Mattermost (ADR-021). On a server configured
+// not to ask, skip tells the tool's confirmation to let the call through
+// (ADR-033).
+func resolving[In, Out any](tool string, handler mcp.ToolHandlerFor[In, Out], clientFor ClientFor, asks, skip bool) mcp.ToolHandlerFor[In, Out] {
 	fields := idFields(reflect.TypeFor[In]())
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
 		if asks && !canConfirm(request) {
 			return nil, none, missingElicitation(tool)
+		}
+		if skip {
+			ctx = context.WithValue(ctx, skippingKey{}, true)
 		}
 		value := reflect.ValueOf(&input).Elem()
 		for arg, index := range fields {

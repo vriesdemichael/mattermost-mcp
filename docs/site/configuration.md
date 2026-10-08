@@ -26,11 +26,72 @@ setting left empty, counts as unset.
     things in Mattermost. A change others see, such as a post, a reply, an
     edit, a deletion, a reaction or a pin, asks you before it acts, through a
     question your MCP client must be able to show
-    ([Tools](tools.md#what-others-see-asked-every-time)). A change
+    ([Tools](tools.md#what-others-see-asked-every-time)), unless
+    `MM_MCP_ASK_BEFORE_WRITES` leaves the asking to your client. A change
     that is yours alone or gone in seconds does not: following a thread, saving
     a post, setting a reminder, saving a draft, and showing that you are typing
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
     `true`, `false`, `1`, `0`, `yes`, `no`, `on` and `off`.
+
+`MM_MCP_ASK_BEFORE_WRITES`
+:   Optional, `true` by default. Whether mm-mcp asks you before each change
+    others see, once `MM_MCP_ALLOW_WRITES` is true
+    ([ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)). Changes that
+    are yours alone or gone in seconds never ask, whatever it is set to.
+
+    `false` leaves the asking to your MCP client: mm-mcp asks nothing, and the
+    client's own approval of each tool call, as its permission rules decide, is
+    the only check. Use it where your client does not show mm-mcp's question,
+    such as the Claude desktop app, which declines it unseen, or for an agent
+    you allow to post on its own. The model is told that mm-mcp does not ask,
+    and mm-mcp says so in its log at start.
+
+    !!! warning "With `false`, a client that approves on its own posts as you"
+        Nothing in mm-mcp stops a post. A client that approves tools by itself,
+        such as Claude Code in auto mode, after "don't ask again", or under a
+        rule that allows the tool, posts under your name with nobody seeing it
+        first. In Claude Code, an `ask` rule or
+        `MM_MCP_FORCE_HUMAN_IN_THE_LOOP` keeps a person on every post.
+
+    Claude Code's prompt shows a tool's input, so a channel or post named by its
+    id shows as that id, and a direct message to yourself names nobody.
+
+`MM_MCP_FORCE_HUMAN_IN_THE_LOOP`
+:   Optional, `false` by default, and only with `MM_MCP_ASK_BEFORE_WRITES=false`;
+    with mm-mcp asking too, you would be asked twice for one write, so mm-mcp
+    does not start. `true` marks each tool that would ask so that Claude Code
+    asks a person on every call, in every permission mode, auto mode included,
+    and no allow rule or "don't ask again" skips it
+    ([Claude Code](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool)).
+    Use it to keep a person on every post, for example with a model you trust
+    less. An agent that should post on its own cannot while it is on. It needs
+    Claude Code 2.1.214 or later. An application built on Claude Code's SDK,
+    such as the Claude desktop app, is handed each such call to approve and is
+    expected to show it to a person; check that yours does before you rely on
+    it. A client that does not read the mark asks as its own rules say.
+
+    Without it, Claude Code's own rules can keep a person on these tools, in
+    `.claude/settings.json`. An `ask` rule prompts in every permission mode,
+    auto mode included, and comes before any `allow` rule, a "don't ask again"
+    one included; an `allow` rule lets an agent post on its own
+    ([Claude Code permissions](https://code.claude.com/docs/en/permissions)).
+    With the server registered as `mattermost`:
+
+    ```json
+    {
+      "permissions": {
+        "ask": [
+          "mcp__mattermost__create_post", "mcp__mattermost__dm",
+          "mcp__mattermost__group_message", "mcp__mattermost__update_post",
+          "mcp__mattermost__delete_post", "mcp__mattermost__add_reaction",
+          "mcp__mattermost__remove_reaction", "mcp__mattermost__pin_post",
+          "mcp__mattermost__join_channel", "mcp__mattermost__leave_channel",
+          "mcp__mattermost__add_channel_members", "mcp__mattermost__create_channel",
+          "mcp__mattermost__set_status", "mcp__mattermost__delete_draft"
+        ]
+      }
+    }
+    ```
 
 `MM_MCP_MARK_AI_GENERATED`
 :   Optional, `true` by default. Every post and edit the model writes carries

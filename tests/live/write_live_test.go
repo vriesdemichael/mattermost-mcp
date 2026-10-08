@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/vriesdemichael/mm-mcp/internal/config"
 	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
@@ -236,6 +237,58 @@ func TestAWriteThePersonDidNotAcceptChangesNothing(t *testing.T) {
 			check(t, err)
 			if len(reactions) != 0 {
 				t.Errorf("the post has %d reactions; want none", len(reactions))
+			}
+		})
+	}
+}
+
+// A server configured with MM_MCP_ASK_BEFORE_WRITES=false asks nothing, so a
+// client that cannot be asked, or would say no, writes all the same: the
+// client's own approval is the check (ADR-033).
+func TestAServerThatDoesNotAskWritesWithoutAQuestion(t *testing.T) {
+	t.Parallel()
+	for name, answer := range map[string]*mcp.ElicitResult{"cannot be asked": nil, "would decline": decline} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			admin := admin(t)
+			user := seedUser(t, admin)
+			team := seedTeam(t, admin, user)
+			channel := seedChannel(t, admin, team, user)
+			target := postAs(t, clientAs(t, user), channel.Id, "", "react to me")
+			questions := &asked{}
+			var options *mcp.ClientOptions
+			if answer != nil {
+				options = &mcp.ClientOptions{ElicitationHandler: func(_ context.Context, request *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+					return questions.answer(answer)(request.Params), nil
+				}}
+			}
+			session := mcpWith(t, config.Config{
+				URL: liveURL, Token: personalAccessToken(t, admin, user.Id).Token, AllowWrites: true, SkipAsking: true,
+			}, options)
+
+			var posted server.Post
+			structured(t, callTool(t, session, &mcp.CallToolParams{Name: "create_post", Arguments: map[string]any{
+				"channel_id": channel.Id, "message": "first draft",
+			}}), &posted)
+			callTool(t, session, &mcp.CallToolParams{Name: "update_post", Arguments: map[string]any{
+				"post_id": posted.ID, "message": "posted unasked",
+			}})
+			callTool(t, session, &mcp.CallToolParams{Name: "add_reaction", Arguments: map[string]any{
+				"post_id": target.Id, "emoji": "thumbsup",
+			}})
+
+			if questions.count() != 0 {
+				t.Fatalf("asked %d questions; want none", questions.count())
+			}
+			stored, _, err := admin.GetPost(context.Background(), posted.ID, "")
+			check(t, err)
+			if stored.Message != "posted unasked" || stored.UserId != user.Id {
+				t.Errorf("the post reads %q by %s", stored.Message, stored.UserId)
+			}
+			reactions, _, err := admin.GetReactions(context.Background(), target.Id)
+			check(t, err)
+			if len(reactions) != 1 || reactions[0].UserId != user.Id {
+				t.Errorf("the post has reactions %+v; want the user's one", reactions)
 			}
 		})
 	}

@@ -36,6 +36,9 @@ it is posted
   others see asks you first; following a thread, saving a post, a reminder, a
   draft only you see and the typing indicator do not
   ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+  `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to your MCP client's own
+  approval, for a client that does not show mm-mcp's question
+  ([ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)).
 - **One server, one identity.** It acts as whoever owns the token it is given: a
   personal access token, a bot's token, or the session of your own login in your
   browser through `mm-mcp login`, single sign-on included, for servers where

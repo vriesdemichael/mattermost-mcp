@@ -23,9 +23,26 @@ func Terminal() Check {
 // whether anything can be written at all.
 func Settings(lookup func(string) string, urlGiven bool) []Check {
 	checks := []Check{address(lookup(config.EnvURL), urlGiven), token(lookup(config.EnvToken))}
+	askRaw, forceRaw := given(lookup(config.EnvAskBeforeWrites)), given(lookup(config.EnvForceHumanInTheLoop))
+	ask, askErr := true, error(nil)
+	if askRaw != "" {
+		ask, askErr = config.ParseBool(config.EnvAskBeforeWrites, askRaw)
+	}
+	writes := "writes are allowed: the tools that post and change Mattermost are offered, and each change others see asks first"
+	if askErr == nil && !ask {
+		writes = "writes are allowed: the tools that post and change Mattermost are offered, and the MCP client's own approval is the check before each change others see"
+	}
 	checks = append(checks, boolean(config.EnvAllowWrites, lookup(config.EnvAllowWrites), true,
-		"writes are allowed: the tools that post and change Mattermost are offered, and each change others see asks first",
-		"writes are not allowed: only the tools that read are offered"))
+		writes, "writes are not allowed: only the tools that read are offered"))
+	if askRaw != "" {
+		checks = append(checks, boolean(config.EnvAskBeforeWrites, askRaw, false,
+			"mm-mcp asks you before each change others see",
+			"mm-mcp asks nothing before a change others see: the MCP client's own approval of each tool call is the only check, "+
+				"and a client that approves tools by itself posts as you with nobody seeing it first"))
+	}
+	if forceRaw != "" {
+		checks = append(checks, forced(forceRaw, ask))
+	}
 	if raw := lookup(config.EnvMarkAIGenerated); strings.TrimSpace(raw) != "" {
 		checks = append(checks, boolean(config.EnvMarkAIGenerated, raw, false,
 			"posts and edits the model writes are marked as written with AI",
@@ -45,6 +62,31 @@ func Settings(lookup func(string) string, urlGiven bool) []Check {
 		})
 	}
 	return checks
+}
+
+// given is a variable's value, or "" when it is unset or a placeholder the
+// MCP client left unexpanded.
+func given(raw string) string {
+	if config.Placeholder(raw) {
+		return ""
+	}
+	return strings.TrimSpace(raw)
+}
+
+// forced checks MM_MCP_FORCE_HUMAN_IN_THE_LOOP, which mm-mcp refuses while
+// it asks before writes itself (ADR-033).
+func forced(raw string, ask bool) Check {
+	check := boolean(config.EnvForceHumanInTheLoop, raw, false,
+		"each tool that would ask is marked for the MCP client to ask a person on every call, whatever its permission rules allow",
+		"the MCP client's own permission rules decide whether it asks before a change others see")
+	if value, err := config.ParseBool(config.EnvForceHumanInTheLoop, raw); err == nil && value && ask {
+		return Check{
+			Name: config.EnvForceHumanInTheLoop, Status: Failed,
+			Detail: fmt.Sprintf("is true while %s is not false, so mm-mcp does not start: you would be asked twice for one write", config.EnvAskBeforeWrites),
+			Next:   fmt.Sprintf("Set %s=false, so that the MCP client asks instead of mm-mcp, or unset %s.", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop),
+		}
+	}
+	return check
 }
 
 func address(raw string, urlGiven bool) Check {
@@ -136,9 +178,19 @@ func Loaded(cfg config.Config, where string) []Check {
 		ok(config.EnvURL, "%s", cfg.URL),
 		ok("credential source", "%s", credential),
 	}
-	if cfg.AllowWrites {
+	switch {
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+		checks = append(checks,
+			ok(config.EnvAllowWrites, "writes are allowed: the tools that post and change Mattermost are offered"),
+			ok(config.EnvAskBeforeWrites, "is false: mm-mcp asks nothing before a change others see"),
+			ok(config.EnvForceHumanInTheLoop, "is true: each tool that would ask is marked for the MCP client to ask a person on every call, whatever its permission rules allow"))
+	case cfg.AllowWrites && cfg.SkipAsking:
+		checks = append(checks,
+			ok(config.EnvAllowWrites, "writes are allowed: the tools that post and change Mattermost are offered"),
+			ok(config.EnvAskBeforeWrites, "is false: mm-mcp asks nothing before a change others see, and the MCP client's own approval of each tool call is the only check"))
+	case cfg.AllowWrites:
 		checks = append(checks, ok(config.EnvAllowWrites, "writes are allowed: the tools that post and change Mattermost are offered, and each change others see asks first"))
-	} else {
+	default:
 		checks = append(checks, ok(config.EnvAllowWrites, "writes are not allowed: only the tools that read are offered"))
 	}
 	if !cfg.MarkAIGenerated {

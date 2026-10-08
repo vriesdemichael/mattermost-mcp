@@ -244,13 +244,72 @@ func TestTheToolsPageDocumentsEveryToolAndOnlyThose(t *testing.T) {
 // which the unit tests block, and fails some other way (ADR-021).
 func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 	t.Parallel()
-	session := connect(t, writingConfig)
+	callEveryAskingTool(t, writingConfig, func(tool *mcp.Tool, err error) {
+		var refused *jsonrpc.Error
+		if !errors.As(err, &refused) || refused.Code != mcp.CodeMissingRequiredClientCapabilities {
+			t.Errorf("%s, called by a client that cannot be asked, answered %v; want the missing capability error", tool.Name, err)
+		}
+	})
+}
+
+// TestAServerThatDoesNotAskLeavesTheCallToTheClient holds what a server that
+// leaves asking to the client does with each tool that would ask (ADR-033): it
+// lets a client that cannot be asked through to Mattermost, which the unit
+// tests block, and tells the model that nobody is asked. Only
+// MM_MCP_FORCE_HUMAN_IN_THE_LOOP marks those tools for Claude Code to ask on
+// every call, whatever its rules allow. Without it, the client's rules decide,
+// so an agent may be allowed to write with nobody watching; with mm-mcp asking,
+// nothing is marked, or the person would be asked twice.
+func TestAServerThatDoesNotAskLeavesTheCallToTheClient(t *testing.T) {
+	t.Parallel()
+	asking := map[string]bool{}
+	for _, spec := range server.AllSpecs() {
+		asking[spec.Tool.Name] = spec.Asks()
+	}
+	for _, mode := range []struct {
+		name        string
+		skip, force bool
+	}{{"mm-mcp asking", false, false}, {"not asking", true, false}, {"forcing a human in the loop", true, true}} {
+		cfg := writingConfig
+		cfg.SkipAsking, cfg.ForceHumanInTheLoop = mode.skip, mode.force
+		if mode.skip {
+			callEveryAskingTool(t, cfg, func(tool *mcp.Tool, err error) {
+				var refused *jsonrpc.Error
+				if err == nil || errors.As(err, &refused) && refused.Code == mcp.CodeMissingRequiredClientCapabilities {
+					t.Errorf("%s, %s, answered %v; want it to reach for Mattermost", tool.Name, mode.name, err)
+				}
+				if !strings.Contains(tool.Description, "configured not to ask") {
+					t.Errorf("%s, %s, does not tell the model that mm-mcp asks nothing: %s", tool.Name, mode.name, tool.Description)
+				}
+				if denied := strings.Contains(tool.Description, "if they deny it"); denied != mode.force {
+					t.Errorf("%s, %s, tells the model what to do when the person denies the call: %v", tool.Name, mode.name, denied)
+				}
+			})
+		}
+		for _, tool := range listTools(t, cfg) {
+			if !asking[tool.Name] && strings.Contains(tool.Description, "configured not to ask") {
+				t.Errorf("%s never asks, and says it would", tool.Name)
+			}
+			marked := tool.Meta[server.RequiresUserInteraction] == true
+			if want := asking[tool.Name] && mode.force; marked != want {
+				t.Errorf("%s, %s, has its client ask on every call: %v; want %v", tool.Name, mode.name, marked, want)
+			}
+		}
+	}
+}
+
+// callEveryAskingTool calls each tool that asks on the server cfg describes,
+// from a client that cannot be asked, with "x" for each argument it requires,
+// and gives check the tool as listed and what the call answered.
+func callEveryAskingTool(t *testing.T, cfg config.Config, check func(tool *mcp.Tool, err error)) {
+	t.Helper()
+	session := connect(t, cfg)
 	unasked := map[string]bool{}
 	for _, spec := range server.AllSpecs() {
 		unasked[spec.Tool.Name] = spec.Unasked != "" || spec.Local
 	}
 	written := 0
-	for _, tool := range listTools(t, writingConfig) {
+	for _, tool := range listTools(t, cfg) {
 		if tool.Annotations.ReadOnlyHint || unasked[tool.Name] {
 			continue
 		}
@@ -267,11 +326,11 @@ func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 				arguments[name.(string)] = "x"
 			}
 		}
-		_, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.Name, Arguments: arguments})
-		var refused *jsonrpc.Error
-		if !errors.As(err, &refused) || refused.Code != mcp.CodeMissingRequiredClientCapabilities {
-			t.Errorf("%s, called by a client that cannot be asked, answered %v; want the missing capability error", tool.Name, err)
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tool.Name, Arguments: arguments})
+		if err == nil && result.IsError {
+			err = errors.New(result.Content[0].(*mcp.TextContent).Text)
 		}
+		check(tool, err)
 	}
 	if written == 0 {
 		t.Fatal("the writing server offers no tool that writes; the check has nothing to hold")

@@ -26,6 +26,8 @@
         "MM_URL": "${user_config.mattermost_url}",
         "MM_TOKEN": "${user_config.mattermost_token}",
         "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
+        "MM_MCP_ASK_BEFORE_WRITES": "${user_config.ask_before_writes}",
+        "MM_MCP_FORCE_HUMAN_IN_THE_LOOP": "${user_config.force_human_in_the_loop}",
         "MM_MCP_MARK_AI_GENERATED": "${user_config.mark_ai_generated}",
         "MM_MCP_DOWNLOAD_DIR": "${user_config.download_dir}",
         "MM_MCP_CA_FILE": "${user_config.ca_file}"
@@ -50,6 +52,20 @@
       "type": "boolean",
       "title": "Allow posting",
       "description": "Offer the tools that post and change things. Each change others see asks you before it acts, which needs a client that shows MCP elicitation questions; following a thread, saving a post or a draft, reminders and typing do not ask.",
+      "default": false,
+      "required": false
+    },
+    "ask_before_writes": {
+      "type": "boolean",
+      "title": "Ask before posting",
+      "description": "mm-mcp asks you before each change others see. Turn it off only where your client does not show mm-mcp's question, and its own approval of each tool call is to be the check instead: a client that approves tools by itself then posts as you with nobody seeing it first.",
+      "default": true,
+      "required": false
+    },
+    "force_human_in_the_loop": {
+      "type": "boolean",
+      "title": "Force a human in the loop",
+      "description": "Only with Ask before posting off: marks each tool that changes what others see so that Claude Code asks a person on every call, whatever its permission mode or rules allow. An agent cannot post on its own while it is on.",
       "default": false,
       "required": false
     },
