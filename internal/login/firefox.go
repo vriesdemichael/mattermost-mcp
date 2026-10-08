@@ -34,6 +34,7 @@ user_pref("trailhead.firstrun.didSeeAboutWelcome", true);
 type firefoxWindow struct {
 	browser Browser
 	process *exec.Cmd
+	output  *tail
 	profile string
 	conn    *websocket.Conn
 	context string // the browsing context of the window's tab
@@ -70,10 +71,15 @@ func startFirefox(ctx context.Context, browser Browser, profile, address string,
 	// process, which leaves its others running with the profile; Close ends
 	// it whole, through the browser's own protocol.
 	process := exec.Command(browser.Path, args...) //nolint:gosec,noctx // the browser the person has, or names
+	output := &tail{}
+	process.Stdout, process.Stderr = output, output
+	// A browser that hands its window to a process of its own keeps the
+	// output open after the first exits; Wait does not wait for it.
+	process.WaitDelay = time.Second
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
 	}
-	w := &firefoxWindow{browser: browser, process: process, profile: profile, waiting: map[int]chan bidiReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
+	w := &firefoxWindow{browser: browser, process: process, output: output, profile: profile, waiting: map[int]chan bidiReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		_ = process.Wait()
 		close(w.exited)
@@ -249,7 +255,7 @@ func (w *firefoxWindow) agentEndpoint(ctx context.Context) (string, error) {
 			reason := fmt.Sprintf("started no remote agent within %s; a company policy that forbids remote control does that", startTimeout)
 			select {
 			case <-w.exited:
-				reason = "exited as it started, without starting its remote agent"
+				reason = "exited as it started, without starting its remote agent" + w.output.said()
 			default:
 			}
 			return "", &BlockedError{Browser: w.browser, Reason: reason}

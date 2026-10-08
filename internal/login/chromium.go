@@ -25,6 +25,7 @@ import (
 type chromiumWindow struct {
 	browser Browser
 	process *exec.Cmd
+	output  *tail
 	profile string
 	conn    *websocket.Conn
 	session string // the session attached to its page, once there is one
@@ -63,10 +64,15 @@ func startChromium(ctx context.Context, browser Browser, profile, address string
 	// process, which leaves its others running with the profile; Close ends
 	// it whole, through the browser's own protocol.
 	process := exec.Command(browser.Path, args...) //nolint:gosec,noctx // the browser the person has, or names
+	output := &tail{}
+	process.Stdout, process.Stderr = output, output
+	// A browser that hands its window to a process of its own keeps the
+	// output open after the first exits; Wait does not wait for it.
+	process.WaitDelay = time.Second
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
 	}
-	w := &chromiumWindow{browser: browser, process: process, profile: profile, waiting: map[int]chan cdpReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
+	w := &chromiumWindow{browser: browser, process: process, output: output, profile: profile, waiting: map[int]chan cdpReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		_ = process.Wait()
 		close(w.exited)
@@ -113,7 +119,7 @@ func (w *chromiumWindow) devToolsEndpoint(ctx context.Context) (string, error) {
 			reason := fmt.Sprintf("opened no DevTools port within %s; a company policy that forbids remote debugging does that", startTimeout)
 			select {
 			case <-w.exited:
-				reason = "exited as it started, without opening its DevTools port"
+				reason = "exited as it started, without opening its DevTools port" + w.output.said()
 			default:
 			}
 			return "", &BlockedError{Browser: w.browser, Reason: reason}
