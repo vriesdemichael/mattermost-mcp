@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,5 +117,16 @@ func TestAllowWritesRefusesAValueItCannotRead(t *testing.T) {
 	_, err := config.FromEnv(testsupport.Env(with(config.EnvAllowWrites, "maybe")))
 	if err == nil || !strings.Contains(err.Error(), config.EnvAllowWrites) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestARelativeDownloadDirectoryIsRefused(t *testing.T) {
+	t.Parallel()
+	if _, err := config.FromEnv(testsupport.Env(with(config.EnvDownloadDir, "downloads"))); err == nil || !strings.Contains(err.Error(), "full path") {
+		t.Fatalf("got %v", err)
+	}
+	absolute, _ := filepath.Abs("downloads")
+	if cfg, err := config.FromEnv(testsupport.Env(with(config.EnvDownloadDir, absolute))); err != nil || cfg.DownloadDir != absolute {
+		t.Fatalf("got %q, %v", cfg.DownloadDir, err)
 	}
 }

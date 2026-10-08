@@ -181,7 +181,9 @@ func canConfirm(request *mcp.CallToolRequest) bool {
 func missingElicitation(tool string) error {
 	return &jsonrpc.Error{
 		Code:    mcp.CodeMissingRequiredClientCapabilities,
-		Message: fmt.Sprintf("%s asks the person to confirm it, and this client cannot show the question", tool),
+		Message: fmt.Sprintf("%s did not run, and nothing was written: it asks the person to confirm it, and this MCP client cannot show the question "+
+			"(it does not support form elicitation). Tell the person so. They can post from Mattermost themselves, use an MCP client that "+
+			"supports elicitation, or have save_draft put the message in their Mattermost message box for them to send", tool),
 		Data:    json.RawMessage(`{"requiredCapabilities":{"elicitation":{"form":{}}}}`),
 	}
 }

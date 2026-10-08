@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -333,6 +334,42 @@ type SavedFile struct {
 	FileID string `json:"file_id"`
 	Path   string `json:"path" jsonschema:"where the file was written, on the person's machine"`
 	Size   int64  `json:"size" jsonschema:"in bytes"`
+	// AlreadySaved says this server saved the file there before, unchanged, so
+	// it wrote no second copy.
+	AlreadySaved bool   `json:"already_saved,omitempty" jsonschema:"true when the file was saved there before and no second copy was written"`
+	Note         string `json:"note,omitempty"`
+}
+
+// savedFiles remembers where this process saved each file, so asking again
+// for one already saved answers with it rather than filling the disk with
+// copies.
+type savedFiles struct {
+	mu    sync.Mutex
+	paths map[string]string
+}
+
+var saved = &savedFiles{paths: map[string]string{}}
+
+// lookup is where a file was saved before, in dir, when it is still there at
+// its size.
+func (s *savedFiles) lookup(fileID, dir string, size int64) (string, bool) {
+	s.mu.Lock()
+	path, ok := s.paths[fileID]
+	s.mu.Unlock()
+	if !ok || filepath.Dir(path) != dir {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() != size {
+		return "", false
+	}
+	return path, true
+}
+
+func (s *savedFiles) remember(fileID, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.paths[fileID] = path
 }
 
 type saveFileInput struct {
@@ -344,7 +381,8 @@ func saveFileSpec() Spec {
 		&mcp.Tool{
 			Name: "save_file",
 			Description: "Save a file attached to a post into the person's download directory on this machine, under its own name, " +
-				"and answer with the path. An existing file is never overwritten: a number is added to the name instead. " +
+				"and answer with the path. An existing file is never overwritten: a number is added to the name instead, " +
+				"and saving the same file again answers with the copy already saved. " +
 				"Use read_file to read a file; save_file is for when the person wants the file itself.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Save file",
@@ -373,6 +411,9 @@ func saveFileSpec() Spec {
 					return nil, SavedFile{}, fmt.Errorf("%s is %d MiB, more than the %d MiB save_file writes; the person can download it from the post",
 						info.Name, info.Size>>20, maxSavedFileBytes>>20)
 				}
+				if path, ok := saved.lookup(input.FileID, dir, info.Size); ok {
+					return nil, SavedFile{FileID: input.FileID, Path: path, Size: info.Size, AlreadySaved: true}, nil
+				}
 				data, err := client.File(ctx, input.FileID)
 				if err != nil {
 					return nil, SavedFile{}, err
@@ -381,7 +422,12 @@ func saveFileSpec() Spec {
 				if err != nil {
 					return nil, SavedFile{}, err
 				}
-				return nil, SavedFile{FileID: input.FileID, Path: path, Size: int64(len(data))}, nil
+				saved.remember(input.FileID, path)
+				answer := SavedFile{FileID: input.FileID, Path: path, Size: int64(len(data))}
+				if err := markDownloaded(path, permalink(cfg.URL, info.PostId), cfg.URL); err != nil {
+					answer.Note = "The file could not be marked as downloaded from the internet (" + err.Error() + "), so the system will not warn before it is opened."
+				}
+				return nil, answer, nil
 			}
 		},
 	))

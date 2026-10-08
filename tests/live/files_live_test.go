@@ -177,24 +177,40 @@ func TestSaveFileWritesIntoTheDownloadDirectoryAndNeverOverwrites(t *testing.T) 
 	team := seedTeam(t, admin, user, other)
 	channel := seedChannel(t, admin, team, user, other)
 	content := []byte("quarterly numbers\n")
-	_, id := attachAs(t, clientAs(t, other), channel.Id, "report.txt", content)
+	post, id := attachAs(t, clientAs(t, other), channel.Id, "report.txt", content)
 	session, downloads := localSession(t, admin, user, (&asked{}).answer(accept))
+	theirs := filepath.Join(downloads, "report.txt")
+	check(t, os.WriteFile(theirs, []byte("the person's own report"), 0o600))
 	save := func() server.SavedFile {
 		var saved server.SavedFile
 		structured(t, callTool(t, session, &mcp.CallToolParams{Name: "save_file", Arguments: map[string]any{"file_id": id}}), &saved)
 		return saved
 	}
 
-	first, second := save(), save()
-	if first.Path != filepath.Join(downloads, "report.txt") || second.Path != filepath.Join(downloads, "report (2).txt") {
-		t.Fatalf("saved to %s and %s", first.Path, second.Path)
+	first, again := save(), save()
+
+	if first.Path != filepath.Join(downloads, "report (2).txt") || first.AlreadySaved {
+		t.Fatalf("saved to %s: %+v", first.Path, first)
 	}
-	for _, path := range []string{first.Path, second.Path} {
-		written, err := os.ReadFile(path)
-		check(t, err)
-		if !bytes.Equal(written, content) {
-			t.Errorf("%s holds %q", path, written)
-		}
+	if kept, _ := os.ReadFile(theirs); string(kept) != "the person's own report" {
+		t.Errorf("the person's own file now holds %q", kept)
+	}
+	if again.Path != first.Path || !again.AlreadySaved {
+		t.Errorf("saving it again gave %+v; want the copy saved before", again)
+	}
+	written, err := os.ReadFile(first.Path)
+	check(t, err)
+	if !bytes.Equal(written, content) {
+		t.Errorf("%s holds %q", first.Path, written)
+	}
+	// Marked as from the internet, as a browser marks a download, so the system
+	// warns before a saved program or macro runs.
+	mark, err := downloadMark(first.Path)
+	if err != nil && first.Note == "" {
+		t.Fatalf("no mark (%v) and no note saying so: %+v", err, first)
+	}
+	if err == nil && !strings.Contains(mark, post.Id) && !strings.Contains(mark, "mm-mcp") {
+		t.Errorf("the mark is %q", mark)
 	}
 }
 

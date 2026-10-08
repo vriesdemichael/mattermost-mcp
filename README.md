@@ -23,7 +23,8 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
   see asks you first: an agent acting with your token speaks as you to your
   colleagues. Following a thread, saving a post, a reminder, a draft only you
   see and the typing indicator are yours alone or gone in seconds, and do not
-  ask.
+  ask. The question is an MCP elicitation, so posting needs a client that shows
+  one, such as Claude Code.
 - **Your token, a bot's, or your own login.** A personal access token, a bot
   token, or the session token from logging in yourself, for servers where
   personal access tokens are switched off.

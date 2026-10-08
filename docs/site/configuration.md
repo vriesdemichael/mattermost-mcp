@@ -21,7 +21,9 @@ the server's env block. No setting is a command-line flag that carries a secret
 `MM_MCP_ALLOW_WRITES`
 :   Optional, `false` by default. `true` offers the tools that post and change
     things in Mattermost. A change others see, such as a post, a reply, an
-    edit, a deletion, a reaction or a pin, asks you before it acts. A change
+    edit, a deletion, a reaction or a pin, asks you before it acts, through a
+    question your MCP client must be able to show
+    ([Tools](tools.md#what-others-see-asked-every-time)). A change
     that is yours alone or gone in seconds does not: following a thread, saving
     a post, setting a reminder, saving a draft, and showing that you are typing
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
