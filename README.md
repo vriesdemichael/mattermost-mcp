@@ -27,7 +27,7 @@ for clients that render MCP Apps are planned; the
   elicitation), so posting needs a client that shows one, such as Claude Code in
   a terminal. `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to your
   client's own approval instead, for a client that does not show the question,
-  such as the Claude desktop app.
+  such as Claude Code in the Claude desktop app's Code tab.
 - **Your token, a bot's, or your own login.** A personal access token, a bot
   token, or your own login through `mm-mcp login`, single sign-on included,
   kept in your system's credential store, for servers where

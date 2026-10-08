@@ -432,6 +432,19 @@ Each of these asks you first, showing exactly what will happen
   Mattermost, with its offset, such as `2026-10-09T09:30:00+02:00`, and a time
   you give without an offset is read in it too. With no timezone set, UTC.
 
+### Page sizes
+
+What a page holds when `limit` is not given, and the most it can hold.
+
+| Tool | Default | At most |
+|---|---|---|
+| [`read_channel`](#read_channel), [`read_unread`](#read_unread) | 30 | 200 |
+| [`read_post`](#read_post) | 100 | 200 |
+| [`list_pinned_posts`](#list_pinned_posts) | 30 | 100 |
+| [`search_posts`](#search_posts), [`list_mentions`](#list_mentions), [`search_files`](#search_files) | 20 | 100 |
+| [`list_saved`](#list_saved), [`list_threads`](#list_threads), [`list_drafts`](#list_drafts), [`search_users`](#search_users) | 20 | 100 |
+| [`get_user_teams`](#get_user_teams), [`get_user_channels`](#get_user_channels), [`search_channels`](#search_channels), [`list_team_channels`](#list_team_channels), [`list_archived_channels`](#list_archived_channels) | 50 | 200 |
+
 ### How a write is asked
 
 Each tool that changes what others see asks you through your MCP client: it
@@ -442,9 +455,9 @@ is an MCP elicitation, a form the client shows, so these tools need a client
 that shows one, such as Claude Code. A client that declares it cannot gets an
 error that says so, and nothing is written; `save_draft`, which does not ask,
 still puts a message in your message box for you to send. Some clients declare
-that they can and never show the form: the call waits until the client gives up
-on it, as Claude Desktop has been reported to, or is declined at once, as in the
-Claude desktop app's Code tab.
+that they can and never show the form, and decline it at once, as Claude Code
+does in the Claude desktop app's Code tab; the rest of the Claude desktop app is
+untested. `diagnose` with `ask_test_question` tells you whether yours shows it.
 
 `MM_MCP_ASK_BEFORE_WRITES` decides who asks
 ([Configuration](configuration.md),

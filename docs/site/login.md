@@ -3,10 +3,10 @@
 Where your Mattermost lets you make a personal access token, that token is the
 simplest way in: `mm-mcp login --with paste` keeps it in your system's
 credential store ([Installation](installation.md#get-a-token)). Many
-organisations switch those tokens off, often to keep programs and agents out;
-[that no longer works](administrators.md#why-letting-agents-in-is-the-safer-choice),
-and an administrator can open a proper way in instead. Until then, log in once
-with your own account.
+organisations switch those tokens off. An administrator can open Mattermost's
+OAuth instead, the way in mm-mcp prefers
+([For administrators](administrators.md)); until then, log in once with your
+own account.
 
 ## Step by step
 
@@ -76,7 +76,7 @@ mm-mcp found no way to log in to https://chat.example.com that worked:
   - pasted token: no token was given
 
 What works from here:
-  - A browser window: install Playwright's Chromium, which no company policy for Chrome or Edge reaches, with
+  - A browser window: install Playwright's Chromium, a browser of its own in your user folder, with
       npx playwright install chromium
     and run mm-mcp login again.
   …
@@ -199,8 +199,9 @@ refused its own sandbox; mm-mcp then starts it without one, as Playwright does,
 and says so. The window shows only your login page and closes once you have
 logged in.
 
-Playwright's Chromium is a browser of your own, in your user folder, which those
-policies do not reach. Install it once, with [Node.js](https://nodejs.org/):
+Playwright's Chromium is a separate browser installed in your user folder, not
+the Chrome or Edge your organisation manages. Check with your organisation
+before you use it there. Install it once, with [Node.js](https://nodejs.org/):
 
 ```bash
 npx playwright install chromium
@@ -230,6 +231,7 @@ mm-mcp names what failed, before it tries the next way:
 | `mm-mcp was not authorized` | You, or the server, refused mm-mcp on the authorization page | Approve it, or try `--with window` |
 | `the account signs in through single sign-on and has no password` | Your account has no password in Mattermost | `mm-mcp login --with window` |
 | `nothing could be read here` | The password or token prompt runs where nobody types, as in an AI agent's shell | Run `mm-mcp login` in a terminal of your own |
+| `x509: certificate signed by unknown authority` | Your organisation signed the server's certificate itself | Set `MM_MCP_CA_FILE` to its authority's certificate, in this terminal too ([Configuration](configuration.md)) |
 | `the token does not work` | Mattermost refused what the way obtained | The next way is tried; a pasted token may be mistyped or revoked |
 | `… Set the token as MM_TOKEN in the MCP client's env block instead` | Your system has no credential store mm-mcp can use, as on a Linux without a desktop | Put the token in `MM_TOKEN`, from `--with paste` or a personal access token |
 
@@ -249,7 +251,12 @@ say: an administrator sets it under System Console > Environment > Session
 Lengths, often to days or weeks. A personal access token or a bot's token you
 pasted lasts until it is revoked. Once it ends, `mm-mcp serve` stops at start with
 `refused the session mm-mcp login stored`; run `mm-mcp login` again, and restart
-the MCP server. `mm-mcp logout` ends the session at Mattermost and forgets it.
+the MCP server.
+
+`mm-mcp logout` forgets the stored login, and ends at Mattermost a session
+mm-mcp made itself. A token you pasted it only forgets: a personal access token
+lasts until you revoke it, and a pasted `MMAUTHTOKEN` is your browser's own
+session, which ending it would log your browser out of.
 
 ## When the tools still do not work
 
@@ -305,8 +312,9 @@ tried and what to do next, which an agent can read to you.
 For the agent:
 
 - **Give the login time.** It waits up to ten minutes for the person, longer
-  than a shell's usual timeout. Run it with a timeout of ten minutes or in the
-  background, and tell the person first what will open.
+  than a shell's usual timeout. Run it in the background, and tell the person
+  first what will open; a timeout of exactly ten minutes can end it as it
+  finishes.
 - **Check that it took** with `mm-mcp doctor --url https://chat.example.com --json`,
   which exits with status 1 when a check failed.
 - **Restart the MCP client**, or reconnect its server, after adding mm-mcp or

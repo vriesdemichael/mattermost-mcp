@@ -15,9 +15,13 @@ The live suite runs against both ends on every change, and against the newest
 patch of every minor release between them once a week. An older release may
 work, but nothing checks it.
 
-Features only the licensed editions have, such as guest accounts and LDAP
-groups, are not supported, because the tests run on the free Team Edition
-([ADR-007](adr/007-the-live-instance-is-team-edition-in-docker.md)).
+The tests run on the free Team Edition
+([ADR-007](adr/007-the-live-instance-is-team-edition-in-docker.md)). mm-mcp works
+with the licensed editions too, which serve the same API, but offers no tools
+for features only they have, such as scheduled posts, guest accounts and LDAP
+groups. The login is the exception: it logs in through single sign-on, SAML,
+Entra ID or OpenID Connect, which are licensed features; that is tested by hand
+([For administrators](administrators.md#what-is-tested)).
 
 ## Differences between releases
 
