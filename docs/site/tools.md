@@ -28,7 +28,8 @@ candidate, and an unknown one with the closest names
 
 `get_me`: Who am I
 :   The Mattermost user the server acts as: id, username, name, nickname,
-    position, roles, and whether it is a bot. Call it to check the connection
+    position, roles, the timezone set in Mattermost, and whether it is a bot.
+    Call it to check the connection
     and whose access the other tools use.
 
 `get_users`: Get users
@@ -124,7 +125,20 @@ its time alone, and a page split inside a millisecond would lose posts.
     most recent matches at most, and the answer says `capped` when it reached
     them: `before` reaches older ones. `in` takes a channel you belong to, the
     only ones Mattermost searches, and `from` a username, refused with the
-    closest when nobody has it.
+    closest when nobody has it. The days `before`, `after` and `on` name are
+    your own, in the timezone you set in Mattermost, as in its search box.
+
+`list_mentions`: List mentions
+:   The posts that mention you, most recent first, as Mattermost's Recent
+    Mentions finds them: by `@username`, and by your first name, the other
+    words and `@channel`, `@all` and `@here` when your notification settings
+    say those mention you. Only a post that mentions you as Mattermost would
+    notify you is kept, and none of your own. The answer names the words it
+    looked for. `from`, `in`, `before`, `after` and `on` narrow it, and like
+    `search_posts` it reaches the 100 most recent matches at most. The
+    database search Team Edition uses skips "all" and "here" as too common to
+    index, so `@all` and `@here` are found only on a server that searches with
+    Elasticsearch, as they are in Mattermost's own Recent Mentions.
 
 ## Files
 

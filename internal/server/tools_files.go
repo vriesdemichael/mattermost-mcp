@@ -243,7 +243,7 @@ func searchFilesSpec() Spec {
 					"body.is_or_search":             SetBy("match_any"),
 					"body.page":                     Fixed("0", "Team Edition's database search answers the first page with every match, and later pages with nothing"),
 					"body.per_page":                 Fixed(fmt.Sprint(searchReach), "the database search answers with its 100 most recent matches whatever it is asked; the tool pages through them itself"),
-					"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
+					"body.time_zone_offset":         Fixed("the offset of the person's timezone on the day given", "on:, before: and after: days are the person's own, as in Mattermost's search box; 0 when no day is given"),
 					"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 				},
 			},
@@ -262,12 +262,12 @@ func searchFilesSpec() Spec {
 				if err != nil {
 					return nil, FileResults{}, err
 				}
-				terms, teamID, err := searchTerms(ctx, client, input.Terms, input.TeamID, input.searchFilters)
+				terms, teamID, offset, err := searchTerms(ctx, client, input.Terms, input.TeamID, input.searchFilters)
 				if err != nil {
 					return nil, FileResults{}, err
 				}
 				found, err := client.SearchFiles(ctx, mattermost.FileSearch{
-					TeamID: teamID, Terms: terms, MatchAny: input.MatchAny, PerPage: maxPostsPerSearch,
+					TeamID: teamID, Terms: terms, MatchAny: input.MatchAny, PerPage: maxPostsPerSearch, TimeOffset: offset,
 				})
 				if err != nil {
 					return nil, FileResults{}, err

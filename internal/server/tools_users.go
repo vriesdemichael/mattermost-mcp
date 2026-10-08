@@ -25,6 +25,7 @@ type UserSummary struct {
 	Email     string `json:"email" jsonschema:"empty when the server hides email addresses from this identity"`
 	Roles     string `json:"roles" jsonschema:"space-separated, such as system_user or system_admin"`
 	Locale    string `json:"locale"`
+	Timezone  string `json:"timezone,omitempty" jsonschema:"the timezone they set in Mattermost, such as Europe/Amsterdam; the times the tools return are in UTC"`
 	IsBot     bool   `json:"is_bot"`
 	// Deactivated users can be read but not reached.
 	Deactivated bool `json:"deactivated,omitempty" jsonschema:"a deactivated user can no longer sign in or be notified"`
@@ -41,6 +42,7 @@ func summarise(user *model.User) UserSummary {
 		Email:       user.Email,
 		Roles:       user.Roles,
 		Locale:      user.Locale,
+		Timezone:    user.GetPreferredTimezone(),
 		IsBot:       user.IsBot,
 		Deactivated: user.DeleteAt > 0,
 	}

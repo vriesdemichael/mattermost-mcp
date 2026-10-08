@@ -59,7 +59,7 @@ var searchFilterShapes = map[string]string{
 func fromUses() []Use {
 	return []Use{
 		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
-		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("the start of an unknown username", "enough to find the usernames closest to one that is unknown"))},
+		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("starts of an unknown username, longest first", "finds the usernames closest to one that is unknown, among however many share its first letters"))},
 	}
 }
 
@@ -70,48 +70,65 @@ var mattermostID = regexp.MustCompile(`^[a-z0-9]{26}$`)
 // and the team to search. A channel's name means a channel only within its
 // team, and Mattermost's search across every team ignores in:, so a search in
 // a channel finds the channel, by id or by name, and searches its team.
-func searchTerms(ctx context.Context, client *mattermost.Client, terms, teamID string, filters searchFilters) (string, string, error) {
+func searchTerms(ctx context.Context, client *mattermost.Client, terms, teamID string, filters searchFilters) (string, string, int, error) {
 	parts := []string{strings.TrimSpace(terms)}
 	if from := strings.TrimPrefix(strings.TrimSpace(filters.From), "@"); from != "" {
 		if strings.Contains(from, "@") {
-			return "", "", fmt.Errorf("from takes a username, not %q; get_users finds the username of an email address", from)
+			return "", "", 0, fmt.Errorf("from takes a username, not %q; get_users finds the username of an email address", from)
 		}
 		// Mattermost searches for a username nobody has and finds nothing; the
 		// tool refuses it with the closest usernames instead.
 		people, err := lookUpUsers(ctx, client, []string{from})
 		if err != nil {
-			return "", "", err
+			return "", "", 0, err
 		}
 		parts = append(parts, "from:"+people[0].Username)
 	}
 	if strings.TrimSpace(filters.In) != "" {
 		channel, err := findChannel(ctx, client, filters.In, teamID)
 		if err != nil {
-			return "", "", err
+			return "", "", 0, err
 		}
 		// Mattermost searches only the channels the person belongs to.
 		if channel.Member != nil && !*channel.Member {
-			return "", "", fmt.Errorf("%s is a channel the person does not belong to, and Mattermost searches only their own; read it with read_channel instead", oneLine(channel.DisplayName))
+			return "", "", 0, fmt.Errorf("%s is a channel the person does not belong to, and Mattermost searches only their own; read it with read_channel instead", oneLine(channel.DisplayName))
 		}
 		parts = append(parts, "in:"+channel.Name)
 		if channel.TeamID != "" {
 			teamID = channel.TeamID
 		}
 	}
-	for _, day := range []struct{ name, value string }{{"before", filters.Before}, {"after", filters.After}, {"on", filters.On}} {
-		if day.value == "" {
+	var day time.Time
+	for _, filter := range []struct{ name, value string }{{"before", filters.Before}, {"after", filters.After}, {"on", filters.On}} {
+		if filter.value == "" {
 			continue
 		}
-		if _, err := time.Parse(time.DateOnly, day.value); err != nil {
-			return "", "", fmt.Errorf("%s must be a day as YYYY-MM-DD, not %q", day.name, day.value)
+		parsed, err := time.Parse(time.DateOnly, filter.value)
+		if err != nil {
+			return "", "", 0, fmt.Errorf("%s must be a day as YYYY-MM-DD, not %q", filter.name, filter.value)
 		}
-		parts = append(parts, day.name+":"+day.value)
+		day = parsed
+		parts = append(parts, filter.name+":"+filter.value)
 	}
 	joined := strings.TrimSpace(strings.Join(parts, " "))
 	if joined == "" {
-		return "", "", fmt.Errorf("give terms to search for, or a filter such as from or in")
+		return "", "", 0, fmt.Errorf("give terms to search for, or a filter such as from or in")
 	}
-	return joined, teamID, nil
+	offset := 0
+	if !day.IsZero() {
+		// A day is the person's own day, as it is in Mattermost's search box,
+		// not UTC's: "yesterday" ends at their midnight.
+		self, err := client.Me(ctx)
+		if err != nil {
+			return "", "", 0, err
+		}
+		zone, err := userZone(self)
+		if err != nil {
+			return "", "", 0, err
+		}
+		_, offset = time.Date(day.Year(), day.Month(), day.Day(), 12, 0, 0, 0, zone).Zone()
+	}
+	return joined, teamID, offset, nil
 }
 
 type searchPostsInput struct {
@@ -131,7 +148,7 @@ func searchPostsSpec() Spec {
 			"body.page": Fixed("0", "Mattermost's database search, which Team Edition uses, answers the first page with every match "+
 				"and later pages with nothing; only Elasticsearch, a licensed feature, pages (the live suite shows both)"),
 			"body.per_page":                 Fixed("100", "the database search ignores it and answers with its 100 most recent matches; the tool pages through them itself"),
-			"body.time_zone_offset":         Fixed("0", "on:, before: and after: dates are read in UTC, the zone every time the tools return is in"),
+			"body.time_zone_offset":         Fixed("the offset of the person's timezone on the day given", "on:, before: and after: days are the person's own, as in Mattermost's search box; 0 when no day is given"),
 			"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 		}
 		if teamID.How != "" {
@@ -170,12 +187,12 @@ func searchPostsSpec() Spec {
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				terms, teamID, err := searchTerms(ctx, client, input.Terms, input.TeamID, input.searchFilters)
+				terms, teamID, offset, err := searchTerms(ctx, client, input.Terms, input.TeamID, input.searchFilters)
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
 				list, err := client.SearchPosts(ctx, mattermost.Search{
-					TeamID: teamID, Terms: terms, MatchAny: input.MatchAny, Page: 0, PerPage: maxPostsPerSearch,
+					TeamID: teamID, Terms: terms, MatchAny: input.MatchAny, Page: 0, PerPage: maxPostsPerSearch, TimeOffset: offset,
 				})
 				if err != nil {
 					return nil, SearchResults{}, err

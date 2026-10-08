@@ -158,6 +158,7 @@ func AllSpecs() []Spec {
 		listPinnedPostsSpec(),
 		listSavedSpec(),
 		searchPostsSpec(),
+		listMentionsSpec(),
 		readFileSpec(),
 		searchFilesSpec(),
 		saveFileSpec(),

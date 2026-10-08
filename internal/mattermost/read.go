@@ -204,15 +204,18 @@ type FileSearch struct {
 	Terms    string
 	MatchAny bool
 	PerPage  int
+	// TimeOffset is the seconds east of UTC that on:, before: and after: days
+	// are read in.
+	TimeOffset int
 }
 
 // SearchFiles is the files a search finds, newest first. SearchFiles.
 func (c *Client) SearchFiles(ctx context.Context, search FileSearch) (*model.FileInfoList, error) {
-	page, offset := 0, 0
+	page := 0
 	return result(c.api.SearchFilesWithParams(ctx, search.TeamID, &model.SearchParameter{
 		Terms:          &search.Terms,
 		IsOrSearch:     &search.MatchAny,
-		TimeZoneOffset: &offset,
+		TimeZoneOffset: &search.TimeOffset,
 		Page:           &page,
 		PerPage:        &search.PerPage,
 	}))
