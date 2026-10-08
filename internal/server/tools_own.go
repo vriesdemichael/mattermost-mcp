@@ -121,7 +121,7 @@ func typingSpec() Spec {
 			Name: "typing",
 			Description: "Show the user as typing in a channel, or in a thread with root_id, while a message is being written there. " +
 				"The indicator stays up until create_post posts there, until stop is sent, or for one minute at most. " +
-				"Call it when you start writing a message the person asked for, not for messages you only consider.",
+				"It is optional: use it only for a long message that takes a while to write, and never for one you only consider.",
 			Annotations: personal("Show typing"),
 		},
 		[]Use{

@@ -105,7 +105,7 @@ func listMentionsSpec() Spec {
 				if err != nil {
 					return nil, Mentions{}, err
 				}
-				return nil, Mentions{Posts: posts, MentionKeys: keys, capped: capped{len(all) >= searchReach}, pageInfo: pageInfo{NextCursor: next}}, nil
+				return nil, Mentions{Posts: clip(posts), MentionKeys: keys, capped: capped{len(all) >= searchReach}, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
 	), withShapes(searchFilterShapes, pagingShapes))

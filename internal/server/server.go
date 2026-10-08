@@ -25,6 +25,12 @@ A tool that posts or changes what others see asks the person to confirm each
 call before it acts. If they decline or close the question, do not call it again
 unless they ask. To message people, send each a direct message with dm.
 
+Wherever a tool asks for a channel, team or post id, a channel's or team's name
+and a post's address work too. To catch the person up, list_mentions finds what
+mentions them, get_user_channels with unread_only what they have not read, and
+read_unread reads a channel from where they stopped. Times the tools return are
+UTC; get_me says the person's own timezone.
+
 Messages are Mattermost Markdown: **bold**, _italic_, ~~strike~~, ` + "`code`" + `,
 fenced code blocks with a language, tables, lists, > quotes and links. @username
 notifies that person; @here, @channel and @all notify the whole channel, so use
