@@ -1,6 +1,7 @@
 package fileview
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -232,5 +233,51 @@ func TestWhatLooksLikeAnArchiveButIsNotOneIsDescribed(t *testing.T) {
 		if view.Kind != testCase.kind || !strings.Contains(view.Text, testCase.says) {
 			t.Errorf("%s: %s %q, want %s saying %q", testCase.path, view.Kind, view.Text, testCase.kind, testCase.says)
 		}
+	}
+}
+
+// TestAListingOfLongNamesStaysWithinItsBound: a tar's names can be a megabyte
+// each, and a gzip of thousands of them is small. Before the bound, such a
+// listing of a 1.2 MB upload grew to gigabytes in memory.
+func TestAListingOfLongNamesStaysWithinItsBound(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("n", 64<<10)
+	var entries []filefixture.Entry
+	for index := range 200 {
+		entries = append(entries, filefixture.Entry{Name: fmt.Sprintf("%d-%s", index, long), Body: []byte("x")})
+	}
+	content := filefixture.Gzip(filefixture.Tar(entries...))
+
+	view, err := Read(t.Context(), Request{Name: "names.tar.gz", LineCount: 1}, content)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if view.Window == nil || view.Window.TotalLines != 200 {
+		t.Fatalf("got %+v", view.Window)
+	}
+	first := view.Window.Content
+	if len(first) > archiveNameRunes+64 || !strings.Contains(first, fmt.Sprintf("… (%d characters)\t1 byte", len(long)+2)) {
+		t.Errorf("the first entry is %d bytes: %.120q", len(first), first)
+	}
+}
+
+// TestAListingStopsAtItsSize: many entries of names within bounds still stop
+// at ArchiveListingBytes, and say where.
+func TestAListingStopsAtItsSize(t *testing.T) {
+	t.Parallel()
+
+	name := strings.Repeat("n", archiveNameRunes-16)
+	count := ArchiveListingBytes/archiveNameRunes + 100
+	entries := make([]filefixture.Entry, 0, count)
+	for index := range count {
+		entries = append(entries, filefixture.Entry{Name: fmt.Sprintf("%08d-%s", index, name), Body: nil})
+	}
+	view, err := Read(t.Context(), Request{Name: "many.zip", LineCount: 1}, filefixture.Zip(entries...))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if view.Window == nil || view.Window.TotalLines >= count || !strings.Contains(view.Text, "of listing") {
+		t.Fatalf("lines %d of %d: %.300q", view.Window.TotalLines, count, view.Text)
 	}
 }
