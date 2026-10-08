@@ -3,6 +3,8 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,5 +176,45 @@ func TestTheProcessDepsAreTheProcesss(t *testing.T) {
 	deps := cli.ProcessDeps()
 	if deps.Getenv == nil || deps.Stdout == nil || deps.Stderr == nil || deps.Serve == nil {
 		t.Fatalf("got %+v", deps)
+	}
+}
+
+// The HTTP handler itself, with no Mattermost behind it: what it refuses is
+// decided before any tool runs.
+func httpAnswer(t *testing.T, method, path string, header map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	server := mcp.NewServer(&mcp.Implementation{Name: "probe", Version: "0"}, nil)
+	body := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`)
+	request := httptest.NewRequestWithContext(t.Context(), method, "http://127.0.0.1:8765"+path, body)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	for name, value := range header {
+		request.Header.Set(name, value)
+	}
+	recorder := httptest.NewRecorder()
+	cli.HTTPHandler(server).ServeHTTP(recorder, request)
+	return recorder
+}
+
+func TestOverHTTPARequestFromAnotherOriginIsRefused(t *testing.T) {
+	t.Parallel()
+	if got := httpAnswer(t, http.MethodPost, cli.HTTPPath, nil); got.Code != http.StatusOK {
+		t.Fatalf("a client's own request: %d %s", got.Code, got.Body)
+	}
+	for _, header := range []map[string]string{
+		{"Origin": "http://evil.example"},
+		{"Sec-Fetch-Site": "cross-site"},
+	} {
+		if got := httpAnswer(t, http.MethodPost, cli.HTTPPath, header); got.Code != http.StatusForbidden {
+			t.Errorf("%v: got %d", header, got.Code)
+		}
+	}
+}
+
+func TestOverHTTPAnotherPathSaysWhereMCPIs(t *testing.T) {
+	t.Parallel()
+	got := httpAnswer(t, http.MethodGet, "/", nil)
+	if got.Code != http.StatusNotFound || !strings.Contains(got.Body.String(), cli.HTTPPath) {
+		t.Fatalf("got %d %s", got.Code, got.Body)
 	}
 }
