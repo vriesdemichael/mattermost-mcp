@@ -9,25 +9,25 @@ and, when you allow it, post and reply, as you or as a bot.
 mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
-> **Young, and released.** The tools read channels, threads, unread posts,
-> mentions and files, search posts, files, people and channels, and, once you
-> allow writes, post, reply, edit, react, pin, keep drafts, join, leave and
-> create channels, and set your status. The
-> [tools page](docs/site/tools.md) lists every one. Views in the chat for
-> clients that render MCP Apps are planned; the
-> [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
+The tools read channels, threads, unread posts, mentions and files, search
+posts, files, people and channels, and, once you allow writes, post, reply,
+edit, react, pin, keep drafts, join, leave and create channels, and set your
+status. The [tools page](docs/site/tools.md) lists every one. Views in the chat
+for clients that render MCP Apps are planned; the
+[issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 
 ## Why it works the way it does
 
 - **Read-only unless you say otherwise.** The tools that post or change anything
-  are not offered until `MM_MCP_ALLOW_WRITES` is true. Then every change others
-  see asks you first: an agent acting with your token speaks as you to your
-  colleagues. Following a thread, saving a post, a reminder, a draft only you
-  see and the typing indicator are yours alone or gone in seconds, and do not
-  ask. The question is an MCP elicitation, so posting needs a client that shows
-  one, such as Claude Code in a terminal. `MM_MCP_ASK_BEFORE_WRITES=false` leaves
-  the asking to your client's own approval instead, for a client that does not
-  show the question, such as the Claude desktop app.
+  are not offered until `MM_MCP_ALLOW_WRITES` is true. Then, by default, every
+  change others see asks you first: an agent acting with your token speaks as
+  you to your colleagues. Following a thread, saving a post, a reminder, a draft
+  only you see and the typing indicator are yours alone or gone in seconds, and
+  do not ask. The question is a form your MCP client shows (an MCP
+  elicitation), so posting needs a client that shows one, such as Claude Code in
+  a terminal. `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to your
+  client's own approval instead, for a client that does not show the question,
+  such as the Claude desktop app.
 - **Your token, a bot's, or your own login.** A personal access token, a bot
   token, or your own login through `mm-mcp login`, single sign-on included,
   kept in your system's credential store, for servers where

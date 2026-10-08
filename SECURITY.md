@@ -92,4 +92,7 @@ cosign verify-blob --bundle sha256sums.txt.sigstore.json --certificate-identity 
 ## Telemetry
 
 mm-mcp sends no telemetry and makes no network calls other than to the
-Mattermost server you configure.
+Mattermost server you configure. What its tools answer goes to your MCP
+client, and from there to whoever runs the model: the
+[security page](https://vriesdemichael.github.io/mm-mcp/security/) says what
+that means.

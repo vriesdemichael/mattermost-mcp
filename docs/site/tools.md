@@ -1,32 +1,29 @@
 # Tools
 
-Every tool declares a title and the four MCP annotations: whether it only reads,
-whether it may destroy something, whether repeating it changes nothing more, and
-that it works in a closed domain, your one Mattermost server
-([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+Every tool mm-mcp offers, by what it is for. Your MCP client shows the model each
+tool's arguments; this page says what each does, and what to expect of it.
 
-Each tool also accounts for every parameter of the Mattermost endpoints it
-calls: which argument sets it, or why it is fixed or left out
-([ADR-028](adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)).
+What every tool has in common:
 
-Every list pages the same way: give `limit`, and pass the `next_cursor` an
-answer ends with back as `cursor`, with the same other arguments, for the next
-page, until an answer has none
-([ADR-032](adr/032-every-list-pages-by-an-opaque-cursor.md)).
-
-Every post comes back in one shape: its address, which opens it in
-Mattermost, its author's username and name, its channel and team by name, its
-files with their ids, reactions with who reacted, whether it is pinned or
-marked as written with AI, its thread, and when it was edited. An answer whose
-posts are all in one channel names the channel and team once, rather than on
-every post. A list cuts a message longer than 4,000 characters short and says
-its whole length; `read_post` reads it whole. Times are in UTC. A tool that takes a name, of a channel, a team or a person,
-matches it in any case, whole or in part; an ambiguous name is refused with every
-candidate, and an unknown one with the closest names
-([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
-Every `channel_id` and `team_id` takes a name as well as an id, a channel's
-with `~` or `#` before it or not, and every `post_id` and `root_id` takes
-the address the post opens at.
+- **Names work where ids do.** Every `channel_id` and `team_id` takes a name as
+  well as an id, a channel's with `~` or `#` before it or not, and every
+  `post_id` and `root_id` takes the address the post opens at. A name of a
+  channel, a team or a person matches in any case, whole or in part; an
+  ambiguous one is refused with every candidate, and an unknown one with the
+  closest names
+  ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
+- **Every list pages the same way.** Give `limit`, and pass the `next_cursor` an
+  answer ends with back as `cursor`, with the same other arguments, for the next
+  page, until an answer has none
+  ([ADR-032](adr/032-every-list-pages-by-an-opaque-cursor.md)).
+- **Every post comes back in one shape:** its address, which opens it in
+  Mattermost, its author's username and name, its channel and team by name, its
+  files with their ids, reactions with who reacted, whether it is pinned or
+  marked as written with AI, its thread, and when it was edited. An answer whose
+  posts are all in one channel names the channel and team once.
+- **A list cuts a long message short.** A message longer than 4,000 characters
+  is cut, with its whole length said; `read_post` reads it whole.
+- **Times are in UTC.**
 
 ## People
 
@@ -97,6 +94,11 @@ the address the post opens at.
     the post that started it, as Mattermost shows a channel with collapsed reply
     threads.
 
+    A page here or of `read_unread` can hold a few more posts than its limit:
+    posts written in the same millisecond stay on one page, since Mattermost
+    reads on from a post by its time alone, and a page split inside a
+    millisecond would lose posts.
+
 `read_unread`: Read unread posts
 :   Catches up on a channel from where you stopped reading: a few posts you have
     read, then the ones you have not, oldest first, with the first unread one
@@ -104,10 +106,6 @@ the address the post opens at.
     the pages after going further back. It marks nothing read: what you have
     read is yours to record
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
-
-Posts written in the same millisecond stay on one page, so a page of a channel
-can hold a few more posts than its limit: Mattermost reads on from a post by
-its time alone, and a page split inside a millisecond would lose posts.
 
 `read_post`: Read post
 :   A post and the thread it is in, oldest first, 100 posts a page by default.
@@ -361,3 +359,17 @@ not to Mattermost
   read is yours to record, and a model reading a channel is not you reading
   it; `mark_channel_read` marks a channel read when you ask
   ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+
+## How the tools are built
+
+Every tool declares a title and the four MCP annotations: whether it only reads,
+whether it may destroy something, whether repeating it changes nothing more, and
+that it works in a closed domain, your one Mattermost server
+([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). A client
+may use them to decide what to ask you about.
+
+Each tool also accounts for every parameter of the Mattermost endpoints it
+calls: which argument sets it, or why it is fixed or left out
+([ADR-028](adr/028-every-parameter-of-an-operation-a-tool-calls-is-accounted-for.md)),
+and a live test calls every tool against a real Mattermost
+([ADR-004](adr/004-live-tests-against-a-real-mattermost.md)).

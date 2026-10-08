@@ -98,6 +98,9 @@ nav:
       - Installation: installation.md
       - Logging in: login.md
       - Configuration: configuration.md
+  - For organisations:
+      - Security: security.md
+      - For administrators: administrators.md
   - Reference:
       - Tools: tools.md
       - Supported Mattermost releases: mattermost-releases.md

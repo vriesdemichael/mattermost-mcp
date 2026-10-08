@@ -18,8 +18,9 @@ setting left empty, counts as unset.
 
 `MM_TOKEN`
 :   The credential mm-mcp acts with: a personal access token, a bot token, or
-    a session token. The server acts as whoever owns it. Leave it unset after
-    `mm-mcp login`, and the session that stored for `MM_URL` is used.
+    a session token. The server acts as whoever owns it. Leave it unset once
+    `mm-mcp login` keeps a token or a login for `MM_URL`, which is then used; a
+    token set here goes first.
 
 `MM_MCP_ALLOW_WRITES`
 :   Optional, `false` by default. `true` offers the tools that post and change
@@ -136,6 +137,12 @@ setting left empty, counts as unset.
     for a window, and `--client-id` the OAuth app an administrator registered
     for mm-mcp, whose callback is on `--callback-port`. `--url` is `MM_URL` when
     not given ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+
+    `--with paste` keeps a personal access token or a bot's token the same way,
+    so it need not sit in your MCP client's configuration. On success it prints
+    `Logged in to … as @you` on standard output and exits with status 0; when no
+    way worked, it sums up each way it tried and why it failed, on standard
+    error, and exits with status 1; a wrong flag exits with status 2.
 
 `mm-mcp logout [--url https://chat.example.com]`
 :   Ends the stored session at Mattermost, and forgets it.

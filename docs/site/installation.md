@@ -9,7 +9,10 @@ mm-mcp needs the address of your Mattermost server and one of:
 
 - **A personal access token.** In Mattermost, open **Profile → Security →
   Personal Access Tokens**. If the section is missing, your administrator has
-  not enabled them for you.
+  switched them off, under System Console > Integrations > Integration
+  Management > Enable Personal Access Tokens, or has not let your account make
+  them, under System Console > User Management > Users > your account > Manage
+  roles.
 - **A bot token**, if your administrator gives you a bot account.
 - **Your own login**, for when personal access tokens are switched off.
 
@@ -56,7 +59,9 @@ manager (below), in Claude Code:
 ```
 
 It asks for your Mattermost's address, and a token: leave it empty once
-`mm-mcp login` keeps one ([above](#get-a-token)).
+`mm-mcp login` keeps one ([above](#get-a-token)). Use the plugin or
+`claude mcp add` ([below](#any-mcp-client)), not both: each adds a server named
+`mattermost`.
 
 ## Claude Desktop
 
@@ -150,8 +155,29 @@ agent who it is connected as: it calls `get_me` and answers with your
 Mattermost user. When it does not, `mm-mcp doctor --url https://chat.example.com`
 says what to fix.
 
+For two Mattermost servers, such as work and an open-source community, add a
+second server under another name, with its own `MM_URL`. `mm-mcp login` keeps
+a login for each address, and `mm-mcp logout --url` names the one to end.
+
 With Go installed, `go install github.com/vriesdemichael/mm-mcp/cmd/mm-mcp@latest`
 builds it from source instead; such a build reports its version as `dev`.
+
+## First steps
+
+Once your AI app is connected, ask it in your own words. Some to start with, and
+the [tools](tools.md) it reaches for:
+
+| Ask | What it does |
+|---|---|
+| Who am I in Mattermost? | Checks the connection, with `get_me` |
+| What did I miss? Catch me up on my unread channels. | Finds the channels with something unread, with `get_user_channels`, and reads each from where you stopped, with `read_unread`, without marking anything read |
+| What mentions me since Monday? | `list_mentions` |
+| What did we decide about the release date? | `search_posts`, and `read_post` for the thread around a match |
+| Draft a reply to Sam in ~release-planning that I can send myself. | Puts a draft in your message box in Mattermost, with `save_draft`, once writes are allowed |
+| Reply in that thread that the notes are ready. | Posts with `create_post`, once writes are allowed, asking you first |
+
+Writes are off until you allow them, with `MM_MCP_ALLOW_WRITES` or your app's
+"Allow posting" setting ([Configuration](configuration.md)).
 
 ## Over HTTP
 
@@ -165,6 +191,13 @@ loopback address
 ([ADR-020](adr/020-stdio-and-streamable-http-single-tenant-first.md)), and
 refuses a request a browser marks as sent from a web page of another origin,
 so a page you open cannot use it.
+
+Over HTTP, what reaches your disk is not offered, since a client of an HTTP
+server need not be you at this machine: `save_file`, and attaching a file by
+its `path`. A file the model writes, given a name and its content, is still
+attached. Anything on your machine that reaches the port acts as mm-mcp's
+account
+([Security](security.md#over-http)).
 
 ## Verifying a download
 
