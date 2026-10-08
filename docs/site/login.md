@@ -90,10 +90,12 @@ What works from here:
 | Passwords or LDAP, without single sign-on | your password, then a browser window, then a pasted token |
 | Neither that mm-mcp can see, or it could not read the server | a browser window, then a pasted token |
 
-OAuth comes before all of these when the server's OAuth service is on and
-mm-mcp has a client to log in as: the server lets it register one itself, you
-gave one with `--client-id`, or an earlier login remembered one. `--with oauth`,
-`--with window`, `--with password` or `--with paste` tries only that way.
+When the server offers OAuth, it is the only way tried: its OAuth service is
+on, and mm-mcp has a client to log in as, because the server lets it register
+one itself, you gave one with `--client-id`, or an earlier login remembered
+one. An administrator who opened that way in chose it, so mm-mcp does not fall
+back to the others on its own. `--with oauth`, `--with window`,
+`--with password` or `--with paste` tries only the way it names.
 
 ### The four ways
 

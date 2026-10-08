@@ -28,8 +28,10 @@ What a policy does decide is the way the agent comes in:
 
 So the safer choice is to make the agent visible and give it a proper way in,
 rather than to try to keep it out. mm-mcp then logs in through the person's own
-browser, in one click, and its other ways in, a browser window of its own, a
-Chromium outside your browser policies, a pasted token, are not needed.
+browser, in one click. Once the server offers OAuth, it is the only way
+`mm-mcp login` tries on its own; its other ways in, a browser window of its
+own, a Chromium outside your browser policies, a pasted token, are tried only
+when the person names one.
 
 This will not satisfy every security policy, and it is not meant to. It is the
 honest trade: a policy that closes the proper ways in does not keep agents

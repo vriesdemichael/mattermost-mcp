@@ -207,7 +207,7 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 			address, user.Username, deps.Credentials.Where, address)
 		return ExitOK
 	}
-	fmt.Fprint(deps.Stderr, advice(signIn, address, failed))
+	fmt.Fprint(deps.Stderr, advice(signIn, client, given.with, address, failed))
 	return ExitFailure
 }
 
@@ -219,17 +219,19 @@ var routeNames = map[string]string{
 	WithPaste:    "pasted token",
 }
 
-// routes are the ways to try, in order: the one asked for alone, or else
-// OAuth where the server allows it, a browser window for single sign-on, the
+// routes are the ways to try, in order: the one asked for alone; OAuth alone
+// where the server offers it; or else a browser window for single sign-on, the
 // terminal for a server that keeps passwords, and a pasted token last.
 func routes(signIn login.SignIn, client login.Client, with string) []string {
 	if with != "" {
 		return []string{with}
 	}
-	var plan []string
-	if signIn.OAuth && (signIn.OAuthRegistering || client.ID != "") {
-		plan = append(plan, WithOAuth)
+	// Where the server offers OAuth, an administrator opened that way in, and
+	// it is the only one tried; another is used only when named (ADR-034).
+	if offersOAuth(signIn, client) {
+		return []string{WithOAuth}
 	}
+	var plan []string
 	switch {
 	case len(signIn.SSO) > 0:
 		plan = append(plan, WithWindow)
@@ -339,13 +341,17 @@ func passwordRoute(ctx context.Context, deps Deps, address string, transport htt
 
 // advice is what to do when no way worked, for the server as it signs people in,
 // after why each way tried failed.
-func advice(signIn login.SignIn, address string, failed []string) string {
+func advice(signIn login.SignIn, client login.Client, with, address string, failed []string) string {
 	var b strings.Builder
 	b.WriteString("\nmm-mcp found no way to log in to " + address + " that worked:\n")
 	for _, why := range failed {
 		b.WriteString("  - " + why + "\n")
 	}
 	b.WriteString("\nWhat works from here:\n")
+	if with == "" && offersOAuth(signIn, client) {
+		b.WriteString("  - Another way: your server offers OAuth, so mm-mcp tried only that. Name another to try it:\n" +
+			"      mm-mcp login --with window, --with password or --with paste --url " + address + "\n")
+	}
 	b.WriteString("  - A browser window: install Playwright's Chromium, which no company policy for Chrome or Edge reaches, with\n" +
 		"      npx playwright install chromium\n    and run mm-mcp login again.\n")
 	b.WriteString("  - A token: create a personal access token in Mattermost under Profile > Security > Personal Access Tokens,\n" +
@@ -468,4 +474,10 @@ func loginTransport(deps Deps) (http.RoundTripper, error) {
 		caFile = ""
 	}
 	return doctor.Transport(config.Config{CAFile: caFile})
+}
+
+// offersOAuth reports whether mm-mcp can log in through the server's OAuth
+// service: it is on, and mm-mcp may register itself or has an app to log in as.
+func offersOAuth(signIn login.SignIn, client login.Client) bool {
+	return signIn.OAuth && (signIn.OAuthRegistering || client.ID != "")
 }
