@@ -211,9 +211,7 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, options ServeOptions) err
 	if options.Transport == "stdio" {
 		return mcpServer.Run(ctx, &mcp.StdioTransport{})
 	}
-	mux := http.NewServeMux()
-	mux.Handle(HTTPPath, mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil))
-	httpServer := &http.Server{Addr: options.Address, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	httpServer := &http.Server{Addr: options.Address, Handler: HTTPHandler(mcpServer), ReadHeaderTimeout: 10 * time.Second}
 	stopped := make(chan error, 1)
 	go func() { stopped <- httpServer.ListenAndServe() }()
 	select {
@@ -224,4 +222,19 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, options ServeOptions) err
 		defer cancel()
 		return httpServer.Shutdown(shutdown) //nolint:contextcheck // the request context has ended; shutdown needs its own
 	}
+}
+
+// HTTPHandler serves mcpServer over Streamable HTTP at HTTPPath.
+func HTTPHandler(mcpServer *mcp.Server) http.Handler {
+	mux := http.NewServeMux()
+	// A web page the person opens can send requests to a loopback port. The
+	// SDK refuses a Host that is not loopback, which stops DNS rebinding; the
+	// cross-origin protection refuses a request a browser marks as sent from
+	// another origin, by its Origin or Sec-Fetch-Site header.
+	mux.Handle(HTTPPath, http.NewCrossOriginProtection().Handler(
+		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)))
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "mm-mcp serves MCP at "+HTTPPath+", not here", http.StatusNotFound)
+	})
+	return mux
 }
