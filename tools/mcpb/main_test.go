@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
 func template(t *testing.T, name string) []byte {
@@ -48,6 +50,32 @@ func TestAWindowsBundleNamesItsExeAndOnlyItsPlatform(t *testing.T) {
 	}
 	if manifest.Server.MCPConfig.Env["MM_TOKEN"] != "${user_config.mattermost_token}" {
 		t.Fatalf("the token no longer reaches the server: %v", manifest.Server.MCPConfig.Env)
+	}
+}
+
+func TestTheBundleListsEveryToolTheServerHas(t *testing.T) {
+	t.Parallel()
+	raw, err := Manifest(template(t, "mcpb/manifest.json"), "v0.3.1", "linux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Tools []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"tools"`
+		ToolsGenerated bool `json:"tools_generated"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Tools) != len(server.AllSpecs()) || !manifest.ToolsGenerated {
+		t.Fatalf("the bundle lists %d tools of %d", len(manifest.Tools), len(server.AllSpecs()))
+	}
+	for _, tool := range manifest.Tools {
+		if tool.Name == "" || !strings.HasSuffix(tool.Description, ".") || strings.Contains(tool.Description, ". ") {
+			t.Errorf("a tool reads %+v", tool)
+		}
 	}
 }
 

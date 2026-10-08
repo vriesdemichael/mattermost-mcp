@@ -24,6 +24,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/vriesdemichael/mm-mcp/internal/server"
 )
 
 func main() {
@@ -119,6 +121,7 @@ func Manifest(template []byte, version, goos string) ([]byte, error) {
 		manifest["compatibility"] = compatibility
 	}
 	compatibility["platforms"] = []string{platform}
+	manifest["tools"] = tools()
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	return append(encoded, '\n'), err
 }
@@ -226,4 +229,17 @@ func ServerJSON(template, manifest []byte, version, baseURL string, hashes map[s
 	document["packages"] = packages
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	return append(encoded, '\n'), err
+}
+
+// tools lists every tool the server has, by name and the first sentence of
+// its description, so a client shows them before the bundle is installed. The
+// list is the catalogue's, so it cannot fall behind it; tools_generated says
+// the server answers with the tools its configuration offers.
+func tools() []map[string]string {
+	var out []map[string]string
+	for _, spec := range server.AllSpecs() {
+		description, _, _ := strings.Cut(spec.Tool.Description, ". ")
+		out = append(out, map[string]string{"name": spec.Tool.Name, "description": strings.TrimSuffix(description, ".") + "."})
+	}
+	return out
 }
