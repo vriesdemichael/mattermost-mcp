@@ -107,12 +107,19 @@ func knownEmoji(ctx context.Context, client *mattermost.Client, name string) err
 	for system := range model.SystemEmojis {
 		candidates = append(candidates, system)
 	}
-	if custom, err := client.AutocompleteEmoji(ctx, firstWord(name)); err == nil {
-		for _, emoji := range custom {
-			candidates = append(candidates, emoji.Name)
+	near := nearestBySearch(name, 5, candidates, func(term string) ([]string, bool) {
+		found, err := client.AutocompleteEmoji(ctx, term)
+		if err != nil {
+			return nil, false
 		}
-	}
-	if near := closest(name, candidates, 5); len(near) > 0 {
+		custom := make([]string, 0, len(found))
+		for _, emoji := range found {
+			custom = append(custom, emoji.Name)
+		}
+		// Mattermost answers an autocomplete with at most a page of its own.
+		return custom, len(found) < emojiAutocompletePage
+	})
+	if len(near) > 0 {
 		return fmt.Errorf("no emoji is called %q on this server; the closest are %s", name, quoteAll(near))
 	}
 	return fmt.Errorf("no emoji is called %q on this server", name)
@@ -174,7 +181,7 @@ func addReactionSpec() Spec {
 				},
 			},
 			{Operation: "GetEmojiByName", Params: map[string]Coverage{"emoji_name": SetBy("emoji")}},
-			{Operation: "AutocompleteEmoji", Params: map[string]Coverage{"name": Fixed("the start of an unknown name", "finds the server's custom emoji closest to it")}},
+			{Operation: "AutocompleteEmoji", Params: map[string]Coverage{"name": Fixed("starts of an unknown name, longest first", "finds the server's custom emoji closest to it, among however many share its first letters")}},
 		}, postContextUses()),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[reactionInput, Reaction] {
 			return asking("add_reaction",
@@ -264,3 +271,7 @@ func removeReactionSpec() Spec {
 		},
 	)
 }
+
+// emojiAutocompletePage is the most custom emoji Mattermost answers an
+// autocomplete with, EmojiMaxAutocompleteItems in its api4 package.
+const emojiAutocompletePage = 100
