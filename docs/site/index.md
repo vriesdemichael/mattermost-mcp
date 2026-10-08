@@ -13,7 +13,7 @@ hide:
 
 <p class="mm-hero__lead">mm-mcp is an MCP server for Mattermost. It lets an AI
 agent read and search your Mattermost, and, when you allow it, post and reply,
-as you or as a bot. Each post others will see waits for your yes.</p>
+as you or as a bot. By default, each post others will see waits for your yes.</p>
 
 [Install mm-mcp](installation.md){ .md-button .md-button--primary }
 [Log in](login.md){ .md-button }
@@ -128,10 +128,10 @@ differs on purpose:
 - **Any edition, no plugin.** mm-mcp talks to Mattermost's REST API as a client
   does, so it runs against Team Edition as well; the other's write tools need an
   Enterprise licence, and it runs inside a plugin on the server.
-- **As you.** It acts with your own token or a bot's, and every post says it was
-  written with AI.
-- **Asks before every write others see**, through your MCP client, showing what
-  will be posted, where and as whom.
+- **As you.** It acts with your own token or a bot's, and by default every post
+  says it was written with AI.
+- **Asks before every write others see**, by default, through your MCP client,
+  showing what will be posted, where and as whom.
 - **Tools shaped for an agent** rather than one per endpoint: a post comes with
   its author, channel, team, files and reactions, and names are found as a
   person writes them ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).

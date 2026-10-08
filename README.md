@@ -49,8 +49,11 @@ Install mm-mcp with `brew install vriesdemichael/tap/mm-mcp`,
 download the binary for your machine from the
 [latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest).
 Then get a personal access token in Mattermost under **Profile → Security →
-Personal Access Tokens**, or, where those are switched off, log in once with
-`mm-mcp login --url https://chat.example.com` and leave `MM_TOKEN` out.
+Personal Access Tokens**, and keep it in your system's credential store, out of
+your client's configuration, with
+`mm-mcp login --with paste --url https://chat.example.com`. Where those tokens
+are switched off, log in once with `mm-mcp login --url https://chat.example.com`
+instead.
 
 ```json
 {
@@ -59,8 +62,7 @@ Personal Access Tokens**, or, where those are switched off, log in once with
       "command": "mm-mcp",
       "args": ["serve"],
       "env": {
-        "MM_URL": "https://chat.example.com",
-        "MM_TOKEN": "your-token"
+        "MM_URL": "https://chat.example.com"
       }
     }
   }
@@ -78,7 +80,7 @@ leave empty after `mm-mcp login`:
 or the server alone:
 
 ```bash
-claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=your-token -- mm-mcp serve
+claude mcp add mattermost --scope user --env MM_URL=https://chat.example.com -- mm-mcp serve
 ```
 
 Claude Desktop users can open the `.mcpb` bundle for their machine from the

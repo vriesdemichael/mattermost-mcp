@@ -1,7 +1,8 @@
 # Logging in
 
 Where your Mattermost lets you make a personal access token, that token is the
-simplest way in: put it in `MM_TOKEN` ([Installation](installation.md)). Many
+simplest way in: `mm-mcp login --with paste` keeps it in your system's
+credential store ([Installation](installation.md#get-a-token)). Many
 organisations switch those tokens off, often to keep programs and agents out;
 [that no longer works](#why-letting-agents-in-is-the-safer-choice), and an
 administrator can open a proper way in instead. Until then, log in once with
@@ -311,3 +312,14 @@ not; there, mm-mcp says to run it in a terminal you can type in. Never paste a
 token into the conversation: run `mm-mcp login --with paste` yourself and paste
 it at the command's own prompt. When nothing works, mm-mcp ends with what it
 tried and what to do next, which an agent can read to you.
+
+For the agent:
+
+- **Give the login time.** It waits up to ten minutes for the person, longer
+  than a shell's usual timeout. Run it with a timeout of ten minutes or in the
+  background, and tell the person first what will open.
+- **Check that it took** with `mm-mcp doctor --url https://chat.example.com --json`,
+  which exits with status 1 when a check failed.
+- **Restart the MCP client**, or reconnect its server, after adding mm-mcp or
+  changing its settings: a client reads both when it starts. On Windows, a shell
+  started before mm-mcp was installed does not find it either.
