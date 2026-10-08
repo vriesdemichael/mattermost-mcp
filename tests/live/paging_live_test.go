@@ -64,6 +64,16 @@ func TestListsLongerThanMattermostsPageAreReadToTheirEnd(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
+	// Mattermost may record that the user follows a thread after answering the
+	// reply, so a thread could be missing from one page's read and present in
+	// the next, which would move every thread after it by one.
+	eventually(t, 30*time.Second, func() (bool, string) {
+		followed, _, err := author.GetUserThreads(t.Context(), user.Id, team.Id, model.GetUserThreadsOpts{TotalsOnly: true})
+		if err != nil {
+			return false, err.Error()
+		}
+		return followed.Total == many, fmt.Sprintf("the user follows %d threads", followed.Total)
+	})
 	var saved model.Preferences
 	for _, root := range roots {
 		saved = append(saved, model.Preference{UserId: user.Id, Category: model.PreferenceCategoryFlaggedPost, Name: root, Value: "true"})
