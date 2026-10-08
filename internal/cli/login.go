@@ -352,7 +352,7 @@ func advice(signIn login.SignIn, client login.Client, with, address string, fail
 		b.WriteString("  - Another way: your server offers OAuth, so mm-mcp tried only that. Name another to try it:\n" +
 			"      mm-mcp login --with window, --with password or --with paste --url " + address + "\n")
 	}
-	b.WriteString("  - A browser window: install Playwright's Chromium, which no company policy for Chrome or Edge reaches, with\n" +
+	b.WriteString("  - A browser window: install Playwright's Chromium, a browser of its own in your user folder, with\n" +
 		"      npx playwright install chromium\n    and run mm-mcp login again.\n")
 	b.WriteString("  - A token: create a personal access token in Mattermost under Profile > Security > Personal Access Tokens,\n" +
 		"    or copy the MMAUTHTOKEN cookie from your browser's developer tools while you are logged in, and run\n" +

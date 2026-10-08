@@ -30,7 +30,8 @@ setting left empty, counts as unset.
     ([Tools](tools.md#how-a-write-is-asked)), unless
     `MM_MCP_ASK_BEFORE_WRITES` leaves the asking to your client. A change
     that is yours alone or gone in seconds does not: following a thread, saving
-    a post, setting a reminder, saving a draft, and showing that you are typing
+    a post, setting a reminder, saving a draft, marking a channel read when you
+    ask, and showing that you are typing
     ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)). Accepts
     `true`, `false`, `1`, `0`, `yes`, `no`, `on` and `off`.
 
@@ -43,7 +44,8 @@ setting left empty, counts as unset.
     `false` leaves the asking to your MCP client: mm-mcp asks nothing, and the
     client's own approval of each tool call, as its permission rules decide, is
     the only check. Use it where your client does not show mm-mcp's question,
-    such as the Claude desktop app, which declines it unseen, or for an agent
+    such as Claude Code in the Claude desktop app's Code tab, which declines it
+    without showing it, or for an agent
     you allow to post on its own. The model is told that mm-mcp does not ask,
     and mm-mcp says so in its log at start.
 
@@ -121,6 +123,15 @@ setting left empty, counts as unset.
     but the loopback ones
     ([ADR-006](adr/006-a-unit-test-inherits-nothing-and-reaches-nothing.md)).
     Leave it unset.
+
+## Through a proxy
+
+mm-mcp reaches Mattermost through the proxy the standard variables name:
+`HTTPS_PROXY` for an `https` address, `HTTP_PROXY` for an `http` one, and
+`NO_PROXY` for the hosts to reach directly. `mm-mcp serve`, `login`, `logout`
+and `doctor` all read them, and `doctor` says which proxy, if any, a request to
+your server goes through. Set them where each runs: in your MCP client's
+configuration for the server, and in your terminal for `mm-mcp login`.
 
 ## Command line
 

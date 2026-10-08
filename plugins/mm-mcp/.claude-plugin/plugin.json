@@ -31,7 +31,7 @@
     "ask_before_writes": {
       "type": "boolean",
       "title": "Ask before posting",
-      "description": "mm-mcp asks you before each change others see. The Claude desktop app answers that question without showing it, so turn this off there: Claude Code's own permission prompt is then the check, and a rule or mode that allows the tool posts as you unseen.",
+      "description": "mm-mcp asks you before each change others see. In the Claude desktop app's Code tab, Claude Code declines that question without showing it, so turn this off there: Claude Code's own permission prompt is then the check, and a rule or mode that allows the tool posts as you unseen.",
       "required": false,
       "default": true
     },

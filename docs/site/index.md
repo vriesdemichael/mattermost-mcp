@@ -53,7 +53,7 @@ as you or as a bot. By default, each post others will see waits for your yes.</p
 
     Posts, replies, edits, reactions and pins, joining and creating channels,
     and your status, once you allow writes, each confirmed by you before it is
-    sent.
+    sent, by default.
 
 -   :material-bookmark-outline:{ .lg .middle } **Your own things**
 

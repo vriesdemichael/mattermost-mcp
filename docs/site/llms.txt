@@ -10,13 +10,13 @@ This file is for an AI agent asked to set mm-mcp up for a person. The pages belo
 2. Get the address the person opens Mattermost at, such as `https://chat.example.com`.
 3. Keep a credential in the system's credential store, never in a file or the conversation:
    - The person has a personal access token or a bot token: they run `mm-mcp login --with paste --url <address>` in a terminal they type in, and paste it at the prompt. Never ask for the token, and never pass it as an argument or an environment variable yourself.
-   - Otherwise: run `mm-mcp login --url <address>`. It may open the person's browser to approve mm-mcp, or a browser window at their sign-in page, where they log in themselves. It waits up to ten minutes: give it that long, or run it in the background, and tell the person first what will open. A password or token prompt cannot be answered from your shell; mm-mcp then says to run it in a terminal the person types in.
+   - Otherwise: run `mm-mcp login --url <address>`. It may open the person's browser to approve mm-mcp, or a browser window at their sign-in page, where they log in themselves. It waits up to ten minutes: run it in the background, since a timeout of exactly ten minutes can end it as it finishes, and tell the person first what will open. A password or token prompt cannot be answered from your shell; mm-mcp then says to run it in a terminal the person types in.
    - On success it prints `Logged in to <address> as @<username>` and exits 0. When nothing works it exits 1, after a summary of each way it tried and what to do next: read that to the person.
 4. Check: `mm-mcp doctor --url <address> --json` exits 1 when a check failed, and says what to fix.
 5. Add the server to the person's MCP client, with only `MM_URL` in its environment (below). Do not set `MM_TOKEN` when a login is stored.
 6. Restart the client, or reconnect the server, then call the `get_me` tool. It answers with the person's Mattermost user.
 
-Writes are off until the person allows them with `MM_MCP_ALLOW_WRITES=true`. Turn that on only when they ask. Each post others will see then asks the person first, through a form the client shows; in a client that does not show it, such as the Claude desktop app, `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to the client's own approval.
+Writes are off until the person allows them with `MM_MCP_ALLOW_WRITES=true`. Turn that on only when they ask. Each post others will see then asks the person first, through a form the client shows; in a client that does not show it, such as Claude Code in the Claude desktop app's Code tab, `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to the client's own approval.
 
 ## Adding the server to a client
 
