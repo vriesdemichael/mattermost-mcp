@@ -11,7 +11,8 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
 > **Young, and released.** The tools read channels, threads, unread posts,
 > mentions and files, search posts, files, people and channels, and, once you
-> allow writes, post, reply, edit, react, pin and keep drafts. The
+> allow writes, post, reply, edit, react, pin, keep drafts, join, leave and
+> create channels, and set your status. The
 > [tools page](docs/site/tools.md) lists every one. Views in the chat for
 > clients that render MCP Apps are planned; the
 > [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
