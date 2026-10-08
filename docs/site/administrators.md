@@ -23,7 +23,7 @@ What a policy does decide is the way the agent comes in:
 | Posting | As the person, unmarked | Not offered until writes are allowed |
 | Before a post others see | Nobody is asked | A person is asked by default |
 | Telling its posts apart | Impossible | Marked as written with AI, as Mattermost shows it, by default |
-| Telling its requests apart | Impossible | `User-Agent: mm-mcp/<version>` while it serves |
+| Telling its requests apart | Impossible | `User-Agent: mm-mcp/<version>` |
 | Ending it | Ending the session the person works in | Ending the one session mm-mcp keeps |
 
 So the safer choice is to make the agent visible and give it a proper way in,
@@ -82,9 +82,10 @@ mm-mcp; an app gets nothing until a person logged in to Mattermost approves it.
 - **Its posts**, marked as written with AI by default, as Mattermost's web app
   shows beside the post's time. Each person can turn the mark off; the server
   cannot require it.
-- **Its requests while it serves** carry `User-Agent: mm-mcp/<version>`, in your
-  proxy's or load balancer's logs. A login through mm-mcp's own browser window
-  makes its session in that browser, so the session looks like a browser's.
+- **Its requests** carry `User-Agent: mm-mcp/<version>`, in your proxy's or load
+  balancer's logs, its login's included. A login through mm-mcp's own browser
+  window happens in that browser, whose requests are the browser's own, so that
+  session looks like a browser's.
 - **Its OAuth app**, when people log in through OAuth: the one you registered,
   or one per person with dynamic registration.
 
