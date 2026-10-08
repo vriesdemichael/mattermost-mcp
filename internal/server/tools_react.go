@@ -70,6 +70,23 @@ func emojiAliases(name string) []string {
 	return systemEmojiNames()[code]
 }
 
+// joinedName is the name to react to post with emoji under: the name a
+// reaction to it already has, when one has any name of the same emoji, so a
+// thumbsup joins the +1 others gave rather than showing as an emoji of its
+// own beside it; otherwise emoji.
+func joinedName(post *model.Post, emoji string) string {
+	if post == nil || post.Metadata == nil {
+		return emoji
+	}
+	aliases := emojiAliases(emoji)
+	for _, reaction := range post.Metadata.Reactions {
+		if slices.Contains(aliases, reaction.EmojiName) {
+			return reaction.EmojiName
+		}
+	}
+	return emoji
+}
+
 // emojiName is an emoji's name as Mattermost stores it: a name without the
 // colons a message writes around it, or the name of an emoji character.
 func emojiName(emoji string) (string, error) {
@@ -189,6 +206,7 @@ func addReactionSpec() Spec {
 					if err := knownEmoji(ctx, client, emoji); err != nil {
 						return confirmation{}, err
 					}
+					emoji = joinedName(p.post, emoji)
 					return confirmation{
 						Message: fmt.Sprintf("React as @%s with :%s: to @%s's post in %s:\n“%s”",
 							p.self.Username, emoji, p.author, p.in, excerpt(p.post.Message)),
@@ -208,7 +226,11 @@ func addReactionSpec() Spec {
 					if err != nil {
 						return nil, Reaction{}, err
 					}
-					reaction, err := client.React(ctx, self.Id, input.PostID, emoji)
+					post, err := client.Post(ctx, input.PostID)
+					if err != nil {
+						return nil, Reaction{}, err
+					}
+					reaction, err := client.React(ctx, self.Id, input.PostID, joinedName(post, emoji))
 					if err != nil {
 						return nil, Reaction{}, err
 					}

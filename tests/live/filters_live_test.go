@@ -46,6 +46,16 @@ func TestReadChannelSinceATimeReadsWhatWasWrittenFromThenOn(t *testing.T) {
 	if strings.Join(got, "|") != "after one|after two" || read.NextCursor != "" {
 		t.Fatalf("read %v (next cursor %q); want the two posts written since", got, read.NextCursor)
 	}
+
+	// A day is the person's own day from its start; this user set no
+	// timezone, so it is UTC's.
+	var today server.ChannelPosts
+	structured(t, callTool(t, sessionFor(t, admin, user), &mcp.CallToolParams{Name: "read_channel", Arguments: map[string]any{
+		"channel_id": channel.Id, "since": time.Now().UTC().Format(time.DateOnly),
+	}}), &today)
+	if len(today.Posts) < 3 {
+		t.Errorf("since today read %d posts; want every post written today", len(today.Posts))
+	}
 }
 
 func TestSearchPostsByWhoWroteThemWhereAndWhen(t *testing.T) {

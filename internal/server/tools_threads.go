@@ -192,6 +192,8 @@ func toThreadSummary(thread *model.ThreadResponse, started Post) ThreadSummary {
 			participants = append(participants, user.Username)
 		}
 	}
+	// The post the threads view carries counts no replies; the thread does.
+	started.ReplyCount, started.LastReplyAt = thread.ReplyCount, timestamp(thread.LastReplyAt)
 	return ThreadSummary{
 		RootID:         thread.PostId,
 		Started:        started,

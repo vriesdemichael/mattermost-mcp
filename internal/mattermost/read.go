@@ -308,3 +308,9 @@ func (c *Client) Preference(ctx context.Context, userID, category, name string) 
 	}
 	return nil, nil
 }
+
+// GroupsByNames is the user groups that go by any of the names, which a
+// mention of one notifies. GetGroupsByNames.
+func (c *Client) GroupsByNames(ctx context.Context, names []string) ([]*model.Group, error) {
+	return result(c.api.GetGroupsByNames(ctx, names))
+}

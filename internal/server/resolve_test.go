@@ -62,3 +62,20 @@ func TestAnIDArgumentsDescriptionSaysANameWorksToo(t *testing.T) {
 		t.Errorf("post_id reads %q", description)
 	}
 }
+
+func TestAnEmptyListIsAnsweredAsOneNotAsNull(t *testing.T) {
+	t.Parallel()
+	type page struct{ NextCursor string }
+	type answer struct {
+		Items []string
+		Kept  []string
+		page
+		Omitted []string `json:"omitted,omitempty"`
+		hidden  []string
+	}
+	out := answer{Kept: []string{"a"}}
+	emptyLists(reflect.ValueOf(&out).Elem())
+	if out.Items == nil || len(out.Kept) != 1 || out.Omitted == nil || out.hidden != nil {
+		t.Fatalf("got %+v", out)
+	}
+}
