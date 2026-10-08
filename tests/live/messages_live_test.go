@@ -242,3 +242,48 @@ func TestAddReactionTakesTheEmojiItselfAndRefusesAnUnknownNameWithTheClosest(t *
 	}
 	questions.only(t)
 }
+
+func TestAddReactionJoinsTheReactionOthersGaveUnderAnotherNameOfTheEmoji(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user, other := seedUser(t, admin), seedUser(t, admin)
+	team := seedTeam(t, admin, user, other)
+	channel := seedChannel(t, admin, team, user, other)
+	post := postAs(t, clientAs(t, other), channel.Id, "", "shipped")
+	_, _, err := clientAs(t, other).SaveReaction(t.Context(), &model.Reaction{UserId: other.Id, PostId: post.Id, EmojiName: "+1"})
+	check(t, err)
+	session, questions := writingSession(t, admin, user, accept)
+
+	var reaction server.Reaction
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "add_reaction", Arguments: map[string]any{"post_id": post.Id, "emoji": "thumbsup"}}), &reaction)
+
+	if reaction.EmojiName != "+1" {
+		t.Fatalf("thumbsup was stored as %q beside the +1 already there", reaction.EmojiName)
+	}
+	if label := label(t, questions.only(t)); !strings.Contains(label, ":+1:") {
+		t.Errorf("the question asked to add %q", label)
+	}
+}
+
+// TestAMentionOfNobodyIsRefusedInEveryMessage: on Team Edition no mention is a
+// user group, which Mattermost answers needs a licence, so a mention that
+// names no user is refused before anyone is asked.
+func TestAMentionOfNobodyIsRefusedInEveryMessage(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user, other, third := seedUser(t, admin), seedUser(t, admin), seedUser(t, admin)
+	session, questions := writingSession(t, admin, user, accept)
+	message := "ping @" + uniqueName("nobody")
+
+	for _, call := range []*mcp.CallToolParams{
+		{Name: "dm", Arguments: map[string]any{"username": other.Username, "message": message}},
+		{Name: "group_message", Arguments: map[string]any{"usernames": []string{other.Username, third.Username}, "message": message}},
+	} {
+		if result := callTool(t, session, call); !result.IsError || !strings.Contains(errorText(result), "nobody is called") {
+			t.Errorf("%s: %s", call.Name, errorText(result))
+		}
+	}
+	if n := questions.count(); n != 0 {
+		t.Errorf("asked %d questions about a message that mentions nobody", n)
+	}
+}

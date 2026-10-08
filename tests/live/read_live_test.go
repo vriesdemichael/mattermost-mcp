@@ -308,6 +308,13 @@ func TestGetUsersNamesTheClosestUsernamesForOneNobodyHas(t *testing.T) {
 	if !missing.IsError || !strings.Contains(errorText(missing), `"`+other.Username+`"`) {
 		t.Fatalf("an unknown username: got %s; want it to suggest %s", errorText(missing), other.Username)
 	}
+
+	// Beside someone found, the slip is named rather than costing the rest.
+	var some server.Users
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "get_users", Arguments: map[string]any{"users": []string{user.Username, slip}}}), &some)
+	if len(some.Users) != 1 || some.Users[0].Username != user.Username || len(some.NotFound) != 1 || !strings.Contains(some.NotFound[0], `"`+other.Username+`"`) {
+		t.Fatalf("one known and one slip: got %+v", some)
+	}
 }
 
 // TestTheClosestUsernameIsFoundAmongManyThatShareItsStart: more people share

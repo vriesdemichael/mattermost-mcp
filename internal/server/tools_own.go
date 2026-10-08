@@ -509,3 +509,20 @@ func reminderTime(at string, zone *time.Location, now time.Time) (time.Time, err
 	}
 	return parsed.Truncate(time.Second), nil
 }
+
+// localTime reads a time a person writes: with an offset as it says, without
+// one in zone, and a day alone as its start in zone.
+func localTime(at string, zone *time.Location) (time.Time, error) {
+	at = strings.TrimSpace(at)
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04Z07:00"} {
+		if parsed, err := time.Parse(layout, at); err == nil {
+			return parsed, nil
+		}
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04", time.DateOnly} {
+		if parsed, err := time.ParseInLocation(layout, at, zone); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("%q is not a time", at)
+}

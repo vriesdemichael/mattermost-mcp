@@ -58,3 +58,27 @@ func TestAZoneThatDoesNotLoadIsRefusedRatherThanReadAsUTC(t *testing.T) {
 		t.Errorf("no zone set: %v, %v", zone, err)
 	}
 }
+
+func TestATimeAPersonWritesIsReadInTheirZoneUnlessItSaysOtherwise(t *testing.T) {
+	t.Parallel()
+	zone, err := time.LoadLocation("Europe/Amsterdam")
+	if err != nil {
+		t.Skip("no timezone database")
+	}
+	for given, want := range map[string]string{
+		"2026-10-07":               "2026-10-06T22:00:00Z",
+		"2026-10-07T09:00":         "2026-10-07T07:00:00Z",
+		"2026-10-07 09:00":         "2026-10-07T07:00:00Z",
+		"2026-10-07T09:00:00Z":     "2026-10-07T09:00:00Z",
+		"2026-10-07T09:00+05:00":   "2026-10-07T04:00:00Z",
+		" 2026-10-07T09:00:00.5Z ": "2026-10-07T09:00:00.5Z",
+	} {
+		got, err := localTime(given, zone)
+		if err != nil || got.UTC().Format(time.RFC3339Nano) != want {
+			t.Errorf("%q: got %s, %v; want %s", given, got.UTC().Format(time.RFC3339Nano), err, want)
+		}
+	}
+	if _, err := localTime("last tuesday", zone); err == nil {
+		t.Error("last tuesday was read as a time")
+	}
+}

@@ -102,9 +102,21 @@ func checkMessage(ctx context.Context, client *mattermost.Client, message, where
 		byName[user.Username] = user
 	}
 	var unknown []string
+	var groupless []mention
+	for _, m := range people {
+		if m.user(byName) == nil {
+			groupless = append(groupless, m)
+		}
+	}
+	groups := mentionedGroups(ctx, client, groupless)
 	for _, m := range people {
 		user := m.user(byName)
 		switch {
+		case user == nil && groups[m.word] != "":
+			if !noted[m.word] {
+				noted[m.word] = true
+				checked.notes = append(checked.notes, groups[m.word])
+			}
 		case user == nil:
 			unknown = append(unknown, m.word)
 		case user.DeleteAt > 0 && !noted[user.Id]:
@@ -239,6 +251,7 @@ func messageUses(stats bool) []Use {
 	out := []Use{
 		{Operation: "GetClientConfig", Params: map[string]Coverage{}},
 		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
+		{Operation: "GetGroupsByNames", Params: map[string]Coverage{}},
 		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("starts of an unknown mention, longest first", "finds the usernames closest to one that is unknown, among however many share its first letters"))},
 	}
 	if stats {
@@ -282,4 +295,44 @@ func aiNote(on bool) string {
 		return ""
 	}
 	return "\n\nThe post will be marked as written with AI."
+}
+
+// mentionedGroups says what each of the mentions that name no user does when
+// it names a user group instead, by the mention as written: the members it
+// notifies, or that it notifies nobody. Groups are a licensed feature: Team
+// Edition answers 501, and then no mention is a group. GetGroupsByNames.
+func mentionedGroups(ctx context.Context, client *mattermost.Client, mentioned []mention) map[string]string {
+	out := map[string]string{}
+	if len(mentioned) == 0 {
+		return out
+	}
+	var names []string
+	for _, m := range mentioned {
+		names = append(names, m.names...)
+	}
+	groups, err := client.GroupsByNames(ctx, names)
+	if err != nil {
+		return out
+	}
+	byName := map[string]*model.Group{}
+	for _, group := range groups {
+		if group.Name != nil {
+			byName[strings.ToLower(*group.Name)] = group
+		}
+	}
+	for _, m := range mentioned {
+		for _, name := range m.names {
+			group := byName[name]
+			switch {
+			case group == nil:
+				continue
+			case !group.AllowReference:
+				out[m.word] = fmt.Sprintf("%s names the group %s, which cannot be mentioned, so it notifies nobody.", m.word, group.DisplayName)
+			default:
+				out[m.word] = fmt.Sprintf("%s notifies the group %s: %s.", m.word, group.DisplayName, peopleCount(int64(group.GetMemberCount())))
+			}
+			break
+		}
+	}
+	return out
 }

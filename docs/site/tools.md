@@ -38,7 +38,9 @@ the address the post opens at.
 `get_users`: Get users
 :   People by username, user id or email address, any mix of them in one call,
     with whether each is a bot or deactivated. An email address finds someone
-    only when the server shows you addresses.
+    only when the server shows you addresses. A name nobody has is listed
+    with the closest usernames beside the people found, and refused only when
+    nobody is found.
 
 `search_users`: Search users
 :   Users whose username, name, nickname or email address contains a term,
@@ -89,7 +91,8 @@ the address the post opens at.
 :   A channel's messages, 30 a page by default and at most 200, oldest first
     within a page: the newest, and the pages after go further back. `before`
     starts back from a post; `after` and `since`, from a post or a time, read
-    forward. `collapse_threads` leaves the replies out and shows each thread by
+    forward. `since` takes a time with an offset, or a time or a day in your
+    own timezone. `collapse_threads` leaves the replies out and shows each thread by
     the post that started it, as Mattermost shows a channel with collapsed reply
     threads.
 
@@ -181,8 +184,9 @@ Every message is checked before you are asked
 ([ADR-031](adr/031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)):
 one longer than the server takes is refused with its length and the limit, an
 @mention of someone nobody is is refused with the closest usernames, and the
-question says how many people `@here`, `@channel` and `@all` reach and who of
-those mentioned is deactivated. Mentions are found as Mattermost finds them, so
+question says how many people `@here`, `@channel` and `@all` reach, who of
+those mentioned is deactivated, and, on a licensed server with user groups,
+how many a group's mention notifies. Mentions are found as Mattermost finds them, so
 code mentions nobody and `@here.` ending a sentence is `@here`. What a post
 does, and every file it carries, comes before the message in the question.
 
@@ -230,8 +234,10 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 
 `add_reaction`: Add reaction
 :   Reacts to a post with an emoji, by name, such as `thumbsup`, or as itself,
-    such as 👍. An unknown name is refused with the closest ones. Reacting again
-    with the same emoji changes nothing.
+    such as 👍. An unknown name is refused with the closest ones. A reaction
+    joins one others gave under another name of the same emoji, so
+    `thumbsup` beside a `+1` is the one 👍. Reacting again with the same
+    emoji changes nothing.
 
 `remove_reaction`: Remove reaction
 :   Takes back one of your reactions.

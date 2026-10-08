@@ -89,7 +89,7 @@ func getUsersSpec() Spec {
 		&mcp.Tool{
 			Name: "get_users",
 			Description: "Look up people by username, user id or email address, any mix of them in one call: their name, nickname, position, " +
-				"whether they are a bot and whether they are deactivated. An unknown name is refused with the closest usernames.",
+				"whether they are a bot and whether they are deactivated. A name nobody has is listed in not_found with the closest usernames; when nobody is found at all, the call is refused with them.",
 			Annotations: readOnly("Get users"),
 		},
 		[]Use{
@@ -110,13 +110,20 @@ func getUsersSpec() Spec {
 				if err != nil {
 					return nil, Users{}, err
 				}
-				found, err := lookUpUsers(ctx, client, input.Users)
-				if err != nil {
+				found, unknown, err := resolveUsers(ctx, client, input.Users)
+				switch {
+				case err != nil:
 					return nil, Users{}, err
+				case len(found) == 0:
+					return nil, Users{}, unknownUsers(ctx, client, unknown)
 				}
+				// One slip does not cost the people found: it is named beside them.
 				out := Users{Users: make([]UserSummary, 0, len(found))}
 				for _, user := range found {
 					out.Users = append(out.Users, summarise(user))
+				}
+				for _, ref := range unknown {
+					out.NotFound = append(out.NotFound, unknownUser(ctx, client, ref))
 				}
 				return nil, out, nil
 			}
@@ -129,6 +136,19 @@ func getUsersSpec() Spec {
 // names no user is tried as a username. Unknown references are refused
 // together, each with the closest usernames.
 func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) ([]*model.User, error) {
+	out, unknown, err := resolveUsers(ctx, client, refs)
+	if err != nil {
+		return nil, err
+	}
+	if len(unknown) > 0 {
+		return nil, unknownUsers(ctx, client, unknown)
+	}
+	return out, nil
+}
+
+// resolveUsers is the users the given references name, in their order, and
+// the references that name nobody.
+func resolveUsers(ctx context.Context, client *mattermost.Client, refs []string) ([]*model.User, []string, error) {
 	byRef := map[string]*model.User{}
 	var ids, names []string
 	for _, ref := range refs {
@@ -137,7 +157,7 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 		case strings.Contains(strings.TrimPrefix(ref, "@"), "@"):
 			user, err := client.UserByEmail(ctx, ref)
 			if err != nil && !notFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
 			if user != nil {
 				byRef[ref] = user
@@ -153,7 +173,7 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 	if len(ids) > 0 {
 		users, err := client.Users(ctx, ids)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, user := range users {
 			byRef[user.Id] = user
@@ -167,7 +187,7 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 	if len(names) > 0 {
 		users, err := client.UsersByUsernames(ctx, names)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, user := range users {
 			byRef[user.Username] = user
@@ -187,36 +207,37 @@ func lookUpUsers(ctx context.Context, client *mattermost.Client, refs []string) 
 		}
 		out = append(out, user)
 	}
-	if len(unknown) > 0 {
-		return nil, unknownUsers(ctx, client, unknown)
-	}
-	return out, nil
+	return out, unknown, nil
 }
 
 // unknownUsers is the error for references that name no user, with the
 // closest usernames for each, so the model corrects itself.
 func unknownUsers(ctx context.Context, client *mattermost.Client, unknown []string) error {
-	var parts []string
+	parts := make([]string, 0, len(unknown))
 	for _, ref := range unknown {
-		name := strings.TrimPrefix(ref, "@")
-		near := nearestBySearch(name, 3, nil, func(term string) ([]string, bool) {
-			users, err := client.SearchUsers(ctx, &model.UserSearch{Term: term, Limit: suggestionPage})
-			if err != nil {
-				return nil, false
-			}
-			known := make([]string, 0, len(users))
-			for _, user := range users {
-				known = append(known, user.Username)
-			}
-			return known, len(users) < suggestionPage
-		})
-		if len(near) > 0 {
-			parts = append(parts, fmt.Sprintf("%q (closest: %s)", ref, quoteAll(near)))
-		} else {
-			parts = append(parts, fmt.Sprintf("%q", ref))
-		}
+		parts = append(parts, unknownUser(ctx, client, ref))
 	}
 	return fmt.Errorf("no user is known as %s. search_users finds people by part of their name", strings.Join(parts, ", "))
+}
+
+// unknownUser is a reference that names nobody, quoted, with the closest
+// usernames to it.
+func unknownUser(ctx context.Context, client *mattermost.Client, ref string) string {
+	near := nearestBySearch(strings.TrimPrefix(ref, "@"), 3, nil, func(term string) ([]string, bool) {
+		users, err := client.SearchUsers(ctx, &model.UserSearch{Term: term, Limit: suggestionPage})
+		if err != nil {
+			return nil, false
+		}
+		known := make([]string, 0, len(users))
+		for _, user := range users {
+			known = append(known, user.Username)
+		}
+		return known, len(users) < suggestionPage
+	})
+	if len(near) > 0 {
+		return fmt.Sprintf("%q (closest: %s)", ref, quoteAll(near))
+	}
+	return fmt.Sprintf("%q", ref)
 }
 
 // prefixes are the starts of a name to search by for the names closest to it,
@@ -270,6 +291,8 @@ const (
 // Users wraps a list of users.
 type Users struct {
 	Users []UserSummary `json:"users"`
+	// NotFound is what get_users was asked for that names nobody.
+	NotFound []string `json:"not_found,omitempty" jsonschema:"each name asked for that nobody has, with the closest usernames"`
 	pageInfo
 }
 

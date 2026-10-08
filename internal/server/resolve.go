@@ -48,12 +48,10 @@ func bareName(given string) string {
 	return strings.TrimLeft(strings.TrimSpace(given), "~#")
 }
 
-// resolving reads a tool's id arguments into ids before its handler runs.
+// resolving reads a tool's id arguments into ids before its handler runs, and
+// answers a list the handler left empty as [] rather than null.
 func resolving[In, Out any](handler mcp.ToolHandlerFor[In, Out], clientFor ClientFor) mcp.ToolHandlerFor[In, Out] {
 	fields := idFields(reflect.TypeFor[In]())
-	if len(fields) == 0 {
-		return handler
-	}
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
 		value := reflect.ValueOf(&input).Elem()
@@ -69,7 +67,30 @@ func resolving[In, Out any](handler mcp.ToolHandlerFor[In, Out], clientFor Clien
 			}
 			field.SetString(resolved)
 		}
-		return handler(ctx, request, input)
+		result, out, err := handler(ctx, request, input)
+		if err == nil {
+			emptyLists(reflect.ValueOf(&out).Elem())
+		}
+		return result, out, err
+	}
+}
+
+// emptyLists sets each nil list among a struct's fields, embedded ones
+// included, to an empty one: a model reads "channels": null as something
+// missing, where "channels": [] says that nothing matched.
+func emptyLists(value reflect.Value) {
+	if value.Kind() != reflect.Struct {
+		return
+	}
+	for i := range value.NumField() {
+		field := value.Field(i)
+		switch {
+		case !value.Type().Field(i).IsExported():
+		case field.Kind() == reflect.Slice && field.IsNil():
+			field.Set(reflect.MakeSlice(field.Type(), 0, 0))
+		case value.Type().Field(i).Anonymous:
+			emptyLists(field)
+		}
 	}
 }
 

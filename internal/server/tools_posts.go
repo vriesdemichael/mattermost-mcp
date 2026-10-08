@@ -34,7 +34,7 @@ type readChannelInput struct {
 	Limit     int    `json:"limit,omitempty" jsonschema:"how many posts a page holds, at most 200; 30 when not given"`
 	Before    string `json:"before,omitempty" jsonschema:"read the posts before this post id; the next pages go further back"`
 	After     string `json:"after,omitempty" jsonschema:"read the posts after this post id; the next pages come forward"`
-	Since     string `json:"since,omitempty" jsonschema:"read the posts written from this time on, as an RFC 3339 time such as 2026-10-07T09:00:00Z; the next pages come forward"`
+	Since     string `json:"since,omitempty" jsonschema:"read the posts written from this time on: an RFC 3339 time such as 2026-10-07T09:00:00Z, a time without an offset such as 2026-10-07T09:00, or a day such as 2026-10-07, both in the person's timezone; the next pages come forward"`
 	// CollapseThreads reads the channel as collapsed reply threads show it.
 	CollapseThreads bool `json:"collapse_threads,omitempty" jsonschema:"leave replies out, showing each thread by the post that started it with its reply count and last reply, as Mattermost shows a channel with collapsed reply threads"`
 	pageArgs
@@ -189,9 +189,21 @@ const (
 // readSince reads the posts written from a time on, oldest first; the pages
 // after the first go on from the last post by after.
 func readSince(ctx context.Context, client *mattermost.Client, input readChannelInput, at position, limit int) (*mcp.CallToolResult, ChannelPosts, error) {
-	since, err := time.Parse(time.RFC3339, input.Since)
+	since, err := time.Parse(time.RFC3339, strings.TrimSpace(input.Since))
 	if err != nil {
-		return nil, ChannelPosts{}, fmt.Errorf("since must be an RFC 3339 time such as 2026-10-07T09:00:00Z, not %q", input.Since)
+		// A day, or a time without an offset, is the person's own, as they
+		// would say "since this morning".
+		self, meErr := client.Me(ctx)
+		if meErr != nil {
+			return nil, ChannelPosts{}, meErr
+		}
+		zone, zoneErr := userZone(self)
+		if zoneErr != nil {
+			return nil, ChannelPosts{}, zoneErr
+		}
+		if since, err = localTime(input.Since, zone); err != nil {
+			return nil, ChannelPosts{}, fmt.Errorf("since must be a time such as 2026-10-07T09:00:00Z, 2026-10-07T09:00 in the person's timezone, or a day such as 2026-10-07, not %q", input.Since)
+		}
 	}
 	written, err := postsWrittenSince(ctx, client, input.ChannelID, input.CollapseThreads, since.UnixMilli())
 	if err != nil {

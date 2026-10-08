@@ -139,8 +139,8 @@ func TestFollowThreadPutsItAmongTheThreadsWithItsUnreadReplies(t *testing.T) {
 		t.Fatal("the followed thread with a new reply is not among the unread threads")
 	case thread.Started.Message != "Postmortem notes" || thread.Started.Author != other.Username || thread.Started.Channel != channel.DisplayName:
 		t.Errorf("the thread reads %+v", thread)
-	case thread.ReplyCount != 2 || thread.UnreadReplies == 0 || len(thread.Participants) == 0:
-		t.Errorf("the thread counts %d replies, %d unread, participants %v", thread.ReplyCount, thread.UnreadReplies, thread.Participants)
+	case thread.ReplyCount != 2 || thread.Started.ReplyCount != 2 || thread.UnreadReplies == 0 || len(thread.Participants) == 0:
+		t.Errorf("the thread counts %d replies (its first post %d), %d unread, participants %v", thread.ReplyCount, thread.Started.ReplyCount, thread.UnreadReplies, thread.Participants)
 	}
 
 	callTool(t, session, &mcp.CallToolParams{Name: "follow_thread", Arguments: map[string]any{"post_id": root.Id, "following": false}})
