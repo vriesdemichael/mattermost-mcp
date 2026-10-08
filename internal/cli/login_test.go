@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -96,10 +97,34 @@ func TestLoginTriesTheNextWayAndEndsWithWhatToDo(t *testing.T) {
 	if got.code != cli.ExitFailure || len(store) != 0 || strings.Join(who.tried, ",") != "window,secret" {
 		t.Fatalf("got %+v after trying %v, stored %v", got, who.tried, store)
 	}
-	for _, advice := range []string{"npx playwright install chromium", "--with paste", "Enable Dynamic Client Registration", "http://127.0.0.1:8766/callback"} {
-		if !strings.Contains(got.stderr, advice) {
-			t.Errorf("the advice leaves out %q:\n%s", advice, got.stderr)
+	_, summary, found := strings.Cut(got.stderr, "found no way to log in to https://chat.example.com")
+	if !found {
+		t.Fatalf("no summary of the ways tried:\n%s", got.stderr)
+	}
+	for _, advice := range []string{
+		"  - browser window: " + login.ErrNoBrowser.Error() + "\n", "  - pasted token: no token was given\n",
+		"npx playwright install chromium", "--with paste", "Enable Dynamic Client Registration", "http://127.0.0.1:8766/callback",
+	} {
+		if !strings.Contains(summary, advice) {
+			t.Errorf("the summary leaves out %q:\n%s", advice, summary)
 		}
+	}
+}
+
+func TestAPromptWithNothingToReadSaysWhereToRunTheLogin(t *testing.T) {
+	t.Parallel()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+	_ = writer.Close()
+	reach := cli.ProcessLogin(reader, io.Discard)
+	if _, err := reach.Line("Email address or username: "); !errors.Is(err, cli.ErrNoInput) {
+		t.Errorf("a line: %v", err)
+	}
+	if _, err := reach.Secret("Token: "); !errors.Is(err, cli.ErrNoInput) {
+		t.Errorf("a secret: %v", err)
 	}
 }
 

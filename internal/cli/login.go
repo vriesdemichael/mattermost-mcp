@@ -57,13 +57,20 @@ type Login struct {
 	Browsers func() ([]login.Browser, error)
 }
 
+// ErrNoInput is the answer to a prompt in a terminal with nothing to read.
+var ErrNoInput = errors.New("nothing could be read here: run mm-mcp login in a terminal you can type in")
+
 // ProcessLogin reaches the person through their own browser and terminal.
 func ProcessLogin(stdin *os.File, stderr io.Writer) *Login {
 	reader := bufio.NewReader(stdin)
 	line := func(prompt string) (string, error) {
 		fmt.Fprint(stderr, prompt)
 		text, err := reader.ReadString('\n')
-		if err != nil && (!errors.Is(err, io.EOF) || text == "") {
+		if errors.Is(err, io.EOF) && text == "" {
+			// As in an AI agent's shell, which nobody types into.
+			return "", ErrNoInput
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
 			return "", err
 		}
 		return strings.TrimSpace(text), nil
@@ -156,10 +163,14 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 	}
 	client := storedClient(deps, address, given)
 	plan := routes(signIn, client, given.with)
+	// failed is why each way tried did not log in, to sum up at the end, where
+	// the person reads, after the browser windows and prompts in between.
+	var failed []string
 	for _, route := range plan {
 		token, oauthClient, err := runRoute(waiting, deps, route, address, signIn, client, given, httpClient)
 		if err != nil {
-			fmt.Fprintf(deps.Stderr, "mm-mcp: %s\n", err)
+			fmt.Fprintf(deps.Stderr, "mm-mcp: %s: %v\n", routeNames[route], err)
+			failed = append(failed, routeNames[route]+": "+err.Error())
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				break
 			}
@@ -167,7 +178,8 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 		}
 		user, _, err := mattermost.New(address, token, network.NewSafeTransport()).Check(ctx)
 		if err != nil {
-			fmt.Fprintf(deps.Stderr, "mm-mcp: the token does not work: %v\n", err)
+			fmt.Fprintf(deps.Stderr, "mm-mcp: %s: the token does not work: %v\n", routeNames[route], err)
+			failed = append(failed, routeNames[route]+": the token does not work: "+err.Error())
 			continue
 		}
 		if err := deps.Credentials.Store(address, token); err != nil {
@@ -184,8 +196,16 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 			address, user.Username, deps.Credentials.Where, address)
 		return ExitOK
 	}
-	fmt.Fprint(deps.Stderr, advice(signIn, address))
+	fmt.Fprint(deps.Stderr, advice(signIn, address, failed))
 	return ExitFailure
+}
+
+// routeNames are the ways to log in as the person reads them.
+var routeNames = map[string]string{
+	WithOAuth:    "OAuth",
+	WithWindow:   "browser window",
+	WithPassword: "password",
+	WithPaste:    "pasted token",
 }
 
 // routes are the ways to try, in order: the one asked for alone, or else
@@ -236,7 +256,7 @@ func runRoute(ctx context.Context, deps Deps, route, address string, signIn logi
 	reach := deps.Login
 	if (route == WithOAuth && reach.Open == nil) || (route == WithWindow && reach.Window == nil) ||
 		(route == WithPassword && (reach.Line == nil || reach.Secret == nil)) || (route == WithPaste && reach.Secret == nil) {
-		return "", login.Client{}, fmt.Errorf("%s: not available here", route)
+		return "", login.Client{}, errors.New("not available here")
 	}
 	switch route {
 	case WithOAuth:
@@ -249,24 +269,25 @@ func runRoute(ctx context.Context, deps Deps, route, address string, signIn logi
 			Open: func(page string) error { return deps.Login.Open(ctx, page) },
 		}.Login(ctx)
 		if err != nil {
-			return "", login.Client{}, fmt.Errorf("OAuth: %w", err)
+			return "", login.Client{}, err
 		}
 		return token.Access, token.Client, nil
 	case WithWindow:
 		fmt.Fprintf(deps.Stderr, "Opening Mattermost's login page in a browser window of its own. Log in there as you always do; the window closes once you have.\n")
 		token, err := deps.Login.Window(ctx, given.browser, address+"/login", address, deps.Stderr)
 		if err != nil {
-			return "", login.Client{}, fmt.Errorf("browser window: %w", err)
+			return "", login.Client{}, err
 		}
 		return token, login.Client{}, nil
 	case WithPassword:
 		token, err := passwordRoute(ctx, deps, address)
 		if err != nil {
-			return "", login.Client{}, fmt.Errorf("password: %w", err)
+			return "", login.Client{}, err
 		}
 		return token, login.Client{}, nil
 	default:
-		fmt.Fprintf(deps.Stderr, "Paste a personal access token, a bot's token, or the value of the MMAUTHTOKEN cookie your browser holds for %s.\n", address)
+		fmt.Fprintf(deps.Stderr, "Paste a personal access token, a bot's token, or the value of the MMAUTHTOKEN cookie your browser holds for %s.\n"+
+			"Paste it here only, never into a conversation with an AI agent: it is everything you can do in Mattermost.\n", address)
 		token, err := deps.Login.Secret("Token: ")
 		// A copy from a browser's cookie list brings spaces and a line end.
 		token = strings.TrimSpace(token)
@@ -284,8 +305,11 @@ func runRoute(ctx context.Context, deps Deps, route, address string, signIn logi
 // one, its second factor's code.
 func passwordRoute(ctx context.Context, deps Deps, address string) (string, error) {
 	id, err := deps.Login.Line("Email address or username: ")
-	if err != nil || id == "" {
-		return "", errors.Join(errors.New("no login was given"), err)
+	switch {
+	case err != nil:
+		return "", err
+	case id == "":
+		return "", errors.New("no login was given")
 	}
 	password, err := deps.Login.Secret("Password: ")
 	if err != nil {
@@ -302,10 +326,15 @@ func passwordRoute(ctx context.Context, deps Deps, address string) (string, erro
 	return token, err
 }
 
-// advice is what to do when no way worked, for the server as it signs people in.
-func advice(signIn login.SignIn, address string) string {
+// advice is what to do when no way worked, for the server as it signs people in,
+// after why each way tried failed.
+func advice(signIn login.SignIn, address string, failed []string) string {
 	var b strings.Builder
-	b.WriteString("mm-mcp could not log in. What works from here:\n")
+	b.WriteString("\nmm-mcp found no way to log in to " + address + " that worked:\n")
+	for _, why := range failed {
+		b.WriteString("  - " + why + "\n")
+	}
+	b.WriteString("\nWhat works from here:\n")
 	b.WriteString("  - A browser window: install Playwright's Chromium, which no company policy for Chrome or Edge reaches, with\n" +
 		"      npx playwright install chromium\n    and run mm-mcp login again.\n")
 	b.WriteString("  - A token: create a personal access token in Mattermost under Profile > Security > Personal Access Tokens,\n" +
