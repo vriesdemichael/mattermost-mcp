@@ -17,6 +17,7 @@ import (
 
 	"github.com/vriesdemichael/mm-mcp/internal/adr"
 	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 	"github.com/vriesdemichael/mm-mcp/internal/testsupport"
 )
 
@@ -391,5 +392,17 @@ func TestEveryTestPackageIsSealed(t *testing.T) {
 			rel, _ := filepath.Rel(root, dir)
 			t.Errorf("%s has tests and no TestMain calling testsupport.SealedMain", rel)
 		}
+	}
+}
+
+func TestTheOldestSupportedReleaseIsTheESRStacks(t *testing.T) {
+	t.Parallel()
+	compose := read(t, filepath.Join(root, "docker", "esr", "compose.yml"))
+	match := regexp.MustCompile(`mattermost/mattermost-team-edition:(\d+\.\d+)\.\d+`).FindStringSubmatch(compose)
+	if match == nil {
+		t.Fatal("docker/esr/compose.yml names no Mattermost Team Edition image")
+	}
+	if match[1] != mattermost.OldestSupported {
+		t.Fatalf("mattermost.OldestSupported is %s; the ESR stack runs %s (ADR-025)", mattermost.OldestSupported, match[1])
 	}
 }

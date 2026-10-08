@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -119,15 +120,81 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 		return ExitConfig
 	}
 	cfg.Local = *transport == "stdio"
-	client := mattermost.New(cfg.URL, cfg.Token, network.NewSafeTransport())
+	httpTransport := network.NewSafeTransport()
+	if cfg.CAFile != "" {
+		pem, err := os.ReadFile(cfg.CAFile)
+		if err == nil {
+			err = network.TrustCertificates(httpTransport, pem)
+		}
+		if err != nil {
+			fmt.Fprintf(deps.Stderr, "mm-mcp: %s %s cannot be used: %v\n", config.EnvCAFile, cfg.CAFile, err)
+			return ExitConfig
+		}
+	}
+	if unencrypted(cfg.URL) {
+		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s is plain http, so the token in %s crosses the network unencrypted; use the https address if the server has one\n", cfg.URL, config.EnvToken)
+	}
+	client := mattermost.New(cfg.URL, cfg.Token, httpTransport)
+	if code, ok := preflight(ctx, client, cfg, deps.Stderr); !ok {
+		return code
+	}
 	mcpServer := server.New(cfg, server.Single(client))
 
 	options := ServeOptions{Transport: *transport, Address: net.JoinHostPort(*host, strconv.Itoa(*port))}
+	if options.Transport == "http" {
+		fmt.Fprintf(deps.Stderr, "mm-mcp: serving MCP over Streamable HTTP at http://%s%s\n", options.Address, HTTPPath)
+	}
 	if err := deps.Serve(ctx, mcpServer, options); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
 		return ExitFailure
 	}
 	return ExitOK
+}
+
+// PreflightTimeout bounds the check of the server and the credential at start.
+const PreflightTimeout = 15 * time.Second
+
+// preflight asks Mattermost who the credential belongs to before serving, so a
+// wrong address or a refused token stops the server at start with what to fix,
+// in the client's log, instead of failing every tool call later. A server that
+// cannot be reached is only warned about: a laptop starts its MCP client before
+// its VPN, and the tools work once Mattermost can be reached.
+func preflight(ctx context.Context, client *mattermost.Client, cfg config.Config, stderr io.Writer) (int, bool) {
+	checking, cancel := context.WithTimeout(ctx, PreflightTimeout)
+	defer cancel()
+	user, serverVersion, err := client.Check(checking)
+	var answered *mattermost.Error
+	var redirect *network.RedirectError
+	switch {
+	case err == nil:
+	case errors.As(err, &answered) && answered.Status == http.StatusUnauthorized:
+		fmt.Fprintf(stderr, "mm-mcp: %s refused the token in %s: it is wrong, was revoked, or is a session that expired. Get a new one, with `mm-mcp login` or as a personal access token, and restart.\n", cfg.URL, config.EnvToken)
+		return ExitConfig, false
+	case errors.Is(err, mattermost.ErrNotMattermost),
+		errors.As(err, &answered) && (answered.Status == http.StatusNotFound || answered.ID == "" && answered.Status < http.StatusInternalServerError):
+		fmt.Fprintf(stderr, "mm-mcp: %s does not answer as a Mattermost server (%v). Set %s to the address you open Mattermost at in a browser.\n", cfg.URL, err, config.EnvURL)
+		return ExitConfig, false
+	case errors.As(err, &redirect):
+		fmt.Fprintf(stderr, "mm-mcp: %v\n", err)
+		return ExitConfig, false
+	case errors.As(err, &answered):
+		fmt.Fprintf(stderr, "mm-mcp: warning: checking the token at %s failed: %v\n", cfg.URL, err)
+		return ExitOK, true
+	default:
+		fmt.Fprintf(stderr, "mm-mcp: warning: %v; serving anyway, and each tool says so until Mattermost can be reached\n", err)
+		return ExitOK, true
+	}
+	if mattermost.OlderThanSupported(serverVersion) {
+		fmt.Fprintf(stderr, "mm-mcp: warning: %s runs Mattermost %s, older than %s, the oldest release mm-mcp supports; some tools may fail\n", cfg.URL, serverVersion, mattermost.OldestSupported)
+	}
+	fmt.Fprintf(stderr, "mm-mcp: connected to %s as @%s\n", cfg.URL, user.Username)
+	return ExitOK, true
+}
+
+// unencrypted reports whether address is plain http to a host beyond this machine.
+func unencrypted(address string) bool {
+	parsed, err := url.Parse(address)
+	return err == nil && parsed.Scheme == "http" && !IsLoopback(parsed.Hostname())
 }
 
 // IsLoopback reports whether host names this machine only.

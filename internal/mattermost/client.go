@@ -13,15 +13,23 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"github.com/vriesdemichael/mm-mcp/internal/network"
 	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
 
-// RequestTimeout bounds one request to Mattermost.
+// RequestTimeout bounds one request to Mattermost that carries no file.
 const RequestTimeout = 30 * time.Second
+
+// TransferTimeout bounds one request that uploads or downloads a file. Go's
+// client timeout covers reading the whole body, so a 100 MiB file on a slow
+// line would fail within RequestTimeout.
+const TransferTimeout = 15 * time.Minute
 
 // Client is one Mattermost identity on one server.
 //
@@ -30,15 +38,24 @@ const RequestTimeout = 30 * time.Second
 // they live (ADR-019), which is not this type's concern.
 type Client struct {
 	api *model.Client4
+	// transfer is api with TransferTimeout, for the requests that carry a file.
+	transfer *model.Client4
 }
 
 // New builds a client for the server at address, acting with token, over transport.
 func New(address, token string, transport http.RoundTripper) *Client {
+	return &Client{
+		api:      client4(address, token, transport, RequestTimeout),
+		transfer: client4(address, token, transport, TransferTimeout),
+	}
+}
+
+func client4(address, token string, transport http.RoundTripper, timeout time.Duration) *model.Client4 {
 	api := model.NewAPIv4Client(address)
-	api.HTTPClient = &http.Client{Transport: transport, Timeout: RequestTimeout}
+	api.HTTPClient = &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: network.SameOriginRedirects}
 	api.HTTPHeader["User-Agent"] = "mm-mcp/" + version.Version
 	api.SetToken(token)
-	return &Client{api: api}
+	return api
 }
 
 // Error is an answer Mattermost gave with an error status.
@@ -54,7 +71,50 @@ func (e *Error) Error() string {
 	if id == "" {
 		id = "no error id"
 	}
-	return fmt.Sprintf("Mattermost answered %d (%s): %s", e.Status, id, e.Message)
+	message := fmt.Sprintf("Mattermost answered %d (%s): %s", e.Status, id, e.Message)
+	if e.Status == http.StatusUnauthorized {
+		message += " " + RefusedCredential
+	}
+	return message
+}
+
+// RefusedCredential is what a 401 means for mm-mcp: the credential it was
+// started with no longer works, whatever Mattermost's own words suggest.
+const RefusedCredential = "The credential mm-mcp was started with was refused: the token in MM_TOKEN is wrong, was revoked, or is a session that expired. " +
+	"Get a new one, with `mm-mcp login` or as a personal access token, and restart the server."
+
+// OldestSupported is the oldest Mattermost release mm-mcp supports, the
+// Extended Support Release its live suite runs against (ADR-025). A
+// governance test holds it to docker/esr.
+const OldestSupported = "11.7"
+
+// Check is who the credential belongs to, and which release the server runs,
+// as it names itself in every answer.
+func (c *Client) Check(ctx context.Context) (*model.User, string, error) {
+	user, response, err := c.api.GetMe(ctx, "")
+	if err != nil {
+		return nil, "", translate(response, err)
+	}
+	return user, response.ServerVersion, nil
+}
+
+// OlderThanSupported reports whether a server's version, as it names it in an
+// answer, such as 11.7.11.20260901.abc or 11.7.11, is a release older than
+// OldestSupported. A version it cannot read is not called older.
+func OlderThanSupported(serverVersion string) bool {
+	major, minor, ok := majorMinor(serverVersion)
+	oldestMajor, oldestMinor, _ := majorMinor(OldestSupported)
+	return ok && (major < oldestMajor || major == oldestMajor && minor < oldestMinor)
+}
+
+func majorMinor(version string) (int, int, bool) {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, errMajor := strconv.Atoi(parts[0])
+	minor, errMinor := strconv.Atoi(parts[1])
+	return major, minor, errMajor == nil && errMinor == nil
 }
 
 // Me is the user the credential belongs to.
@@ -80,5 +140,14 @@ func translate(response *model.Response, err error) error {
 	if response != nil && response.StatusCode >= http.StatusBadRequest {
 		return &Error{Status: response.StatusCode, Message: err.Error(), RequestID: response.RequestId}
 	}
+	if response != nil && response.StatusCode > 0 {
+		// Something answered with a success, in a form Client4 cannot read: the
+		// web app's page, or a proxy's, at an address that is not the API's.
+		return fmt.Errorf("%w: %w", ErrNotMattermost, err)
+	}
 	return fmt.Errorf("could not reach Mattermost: %w", err)
 }
+
+// ErrNotMattermost is an answer with a success status that is not what
+// Mattermost's API sends: the address is not Mattermost's.
+var ErrNotMattermost = errors.New("the address answered, but not as Mattermost's API does; check MM_URL")

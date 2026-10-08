@@ -194,7 +194,7 @@ func (c *Client) FileInfo(ctx context.Context, id string) (*model.FileInfo, erro
 // File is an uploaded file's bytes, held whole; read its FileInfo first to
 // know how many that is. GetFile.
 func (c *Client) File(ctx context.Context, id string) ([]byte, error) {
-	return result(c.api.GetFile(ctx, id))
+	return result(c.transfer.GetFile(ctx, id))
 }
 
 // FileSearch asks Mattermost's file search.

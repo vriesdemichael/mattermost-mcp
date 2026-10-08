@@ -41,6 +41,29 @@ func TestTheURLLosesItsTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestTheURLLosesTheAPIPathMattermostsClientAdds(t *testing.T) {
+	t.Parallel()
+	for raw, want := range map[string]string{
+		"https://chat.example.com/api/v4":      "https://chat.example.com",
+		"https://chat.example.com/API/V4/":     "https://chat.example.com",
+		"https://chat.example.com/sub/api/v4/": "https://chat.example.com/sub",
+		"https://chat.example.com/api/v4x":     "https://chat.example.com/api/v4x",
+	} {
+		cfg, err := config.FromEnv(testsupport.Env(with(config.EnvURL, raw)))
+		if err != nil || cfg.URL != want {
+			t.Errorf("%s: got %q, %v; want %q", raw, cfg.URL, err, want)
+		}
+	}
+}
+
+func TestACertificateAuthorityFileIsRead(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.FromEnv(testsupport.Env(with(config.EnvCAFile, " /etc/ssl/company.pem ")))
+	if err != nil || cfg.CAFile != "/etc/ssl/company.pem" {
+		t.Fatalf("got %q, %v", cfg.CAFile, err)
+	}
+}
+
 func TestTheTokenNeverAppearsWhenTheConfigIsPrinted(t *testing.T) {
 	t.Parallel()
 	cfg, err := config.FromEnv(testsupport.Env(valid()))
