@@ -148,6 +148,12 @@ tasks:
       - mkdir -p .tmp
       - go test -tags=live -count=1 -timeout 15m -parallel {{.LIVE_PARALLEL}} -covermode=atomic -coverpkg=./cmd/...,./internal/... -coverprofile=.tmp/coverage.live.out ./tests/live/
 
+  test:browser:
+    desc: The browser tests, with every browser on this machine, Playwright's Chromium included, which it installs first (ADR-009). Needs Node
+    cmds:
+      - npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium
+      - go test -tags=browser -count=1 -timeout 10m ./internal/login/
+
   test:live:compile:
     desc: Build the live suite without running it, so a break shows in seconds
     # It catches a live test that no longer compiles, not one whose assertion has
