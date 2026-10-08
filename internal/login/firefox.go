@@ -66,7 +66,10 @@ func startFirefox(ctx context.Context, browser Browser, profile, address string,
 		args = append(args, "-headless")
 	}
 	args = append(args, address)
-	process := exec.CommandContext(ctx, browser.Path, args...) //nolint:gosec // the browser the person has, or names
+	// Not bound to ctx: ending a context kills only the browser's first
+	// process, which leaves its others running with the profile; Close ends
+	// it whole, through the browser's own protocol.
+	process := exec.Command(browser.Path, args...) //nolint:gosec,noctx // the browser the person has, or names
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
 	}

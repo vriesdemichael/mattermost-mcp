@@ -7,8 +7,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -131,11 +133,28 @@ func TestEveryBrowserIsDrivenAsALoginDrivesIt(t *testing.T) {
 				t.Error("a script that rejects was taken as done")
 			}
 
+			profile := profileOf(window)
 			window.Close()
 			closed = true
 			if _, err := window.Cookies(ctx); !errors.Is(err, ErrBrowserClosed) {
 				t.Errorf("after closing it: %v", err)
 			}
+			// A process of the browser's left running keeps files of the
+			// profile open, which on Windows keeps it from being removed.
+			if _, err := os.Stat(profile); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("the profile %s is still there after closing the browser: %v", profile, err)
+			}
 		})
 	}
+}
+
+// profileOf is the profile mm-mcp made for a window.
+func profileOf(window Window) string {
+	switch w := window.(type) {
+	case *chromiumWindow:
+		return w.profile
+	case *firefoxWindow:
+		return w.profile
+	}
+	return ""
 }
