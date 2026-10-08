@@ -6,9 +6,9 @@ Mattermost, and, when you allow it, post and reply, as you or as a bot.
 mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
-!!! warning "Early development"
+!!! note "Young"
     mm-mcp is young: its [tools](tools.md) read, search, post and handle files,
-    and are tested against a real Mattermost, but nothing is released yet. The
+    and are tested against a real Mattermost on every change. The
     [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 
 ## What it is for

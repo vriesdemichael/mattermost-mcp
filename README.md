@@ -9,10 +9,10 @@ and, when you allow it, post and reply, as you or as a bot.
 mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 
-> **Early development.** Nothing is released yet. The tools read channels,
-> threads, unread posts and files, search posts, files, people and channels,
-> and, once you allow writes, post, reply, edit, react, pin and keep drafts.
-> The [tools page](docs/site/tools.md) lists every one. Views in the chat for
+> **Young, and released.** The tools read channels, threads, unread posts,
+> mentions and files, search posts, files, people and channels, and, once you
+> allow writes, post, reply, edit, react, pin and keep drafts. The
+> [tools page](docs/site/tools.md) lists every one. Views in the chat for
 > clients that render MCP Apps are planned; the
 > [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 

@@ -83,20 +83,21 @@ candidate, and an unknown one with the closest names
 :   A channel's messages, 30 a page by default and at most 200, oldest first
     within a page: the newest, and the pages after go further back. `before`
     starts back from a post; `after` and `since`, from a post or a time, read
-    forward. `collapse_threads` leaves the
-    replies out and shows each thread by the post that started it, as Mattermost
-    shows a channel with collapsed reply threads.
+    forward. `collapse_threads` leaves the replies out and shows each thread by
+    the post that started it, as Mattermost shows a channel with collapsed reply
+    threads.
 
 `read_unread`: Read unread posts
 :   Catches up on a channel from where you stopped reading: a few posts you have
     read, then the ones you have not, oldest first, with the first unread one
     named. A channel you never opened is all unread, and reads newest first,
-    the pages after going further back.
+    the pages after going further back. It marks nothing read: what you have
+    read is yours to record
+    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
 
 Posts written in the same millisecond stay on one page, so a page of a channel
-can hold a few more posts than its limit; Mattermost reads on from a post by
-its time alone, and a page split inside a millisecond would lose posts. It marks nothing read: what you have read is yours to record
-    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+can hold a few more posts than its limit: Mattermost reads on from a post by
+its time alone, and a page split inside a millisecond would lose posts.
 
 `read_post`: Read post
 :   A post and the thread it is in, oldest first, 100 posts a page by default.
