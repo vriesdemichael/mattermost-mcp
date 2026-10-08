@@ -29,17 +29,16 @@ See [Configuration](configuration.md) for every setting.
 
 ## Claude Code
 
-The mm-mcp plugin sets up the server and adds a skill that logs you in, single
-sign-on included. With mm-mcp installed (below), in Claude Code:
+The mm-mcp plugin sets up the server. With mm-mcp installed (below), in Claude
+Code:
 
 ```text
 /plugin marketplace add vriesdemichael/mm-mcp
 /plugin install mm-mcp@mm-mcp
 ```
 
-It asks for your Mattermost's address, and a token, which you can leave empty:
-ask Claude to log you in to Mattermost, and its skill runs `mm-mcp login` with
-you ([Logging in](login.md)).
+It asks for your Mattermost's address, and a token, which you can leave empty
+once you have run `mm-mcp login` ([Logging in](login.md)).
 
 ## Claude Desktop
 
@@ -51,24 +50,39 @@ posting, whether to mark posts as written with AI, and where to save files.
 
 ## With a package manager
 
-On macOS or Linux, with Homebrew:
+=== "Homebrew"
 
-```bash
-brew install vriesdemichael/tap/mm-mcp
-```
+    On macOS or Linux:
 
-On Windows, with WinGet:
+    ```bash
+    brew install vriesdemichael/tap/mm-mcp
+    ```
 
-```powershell
-winget install vriesdemichael.mm-mcp
-```
+=== "WinGet"
 
-or with Scoop:
+    On Windows:
 
-```powershell
-scoop bucket add vriesdemichael https://github.com/vriesdemichael/scoop
-scoop install vriesdemichael/mm-mcp
-```
+    ```powershell
+    winget install vriesdemichael.mm-mcp
+    ```
+
+=== "Scoop"
+
+    On Windows:
+
+    ```powershell
+    scoop bucket add vriesdemichael https://github.com/vriesdemichael/scoop
+    scoop install vriesdemichael/mm-mcp
+    ```
+
+=== "Debian, Ubuntu, RHEL, Fedora"
+
+    The release has packages that put `mm-mcp` in `/usr/bin`:
+
+    ```bash
+    curl -LO "https://github.com/vriesdemichael/mm-mcp/releases/latest/download/mm-mcp_<version>_linux_amd64.deb"
+    sudo dpkg -i mm-mcp_<version>_linux_amd64.deb
+    ```
 
 Each puts `mm-mcp` on your `PATH`, and `brew upgrade`, `winget upgrade` and
 `scoop update` bring it to the newest release. WinGet takes a day or two to
@@ -79,40 +93,33 @@ review each new version, so it can lag the release by that long.
 Install mm-mcp with a package manager, or download the archive for your machine
 from the [latest release](https://github.com/vriesdemichael/mm-mcp/releases/latest)
 and put `mm-mcp` somewhere on your `PATH`. Then add a server that runs
-`mm-mcp serve` with the settings in its env block. For a client configured with
-JSON:
+`mm-mcp serve` with the settings in its env block:
 
-```json
-{
-  "mcpServers": {
-    "mattermost": {
-      "command": "mm-mcp",
-      "args": ["serve"],
-      "env": {
-        "MM_URL": "https://chat.example.com",
-        "MM_TOKEN": "your-token"
+=== "JSON configuration"
+
+    ```json
+    {
+      "mcpServers": {
+        "mattermost": {
+          "command": "mm-mcp",
+          "args": ["serve"],
+          "env": {
+            "MM_URL": "https://chat.example.com",
+            "MM_TOKEN": "your-token"
+          }
+        }
       }
     }
-  }
-}
-```
+    ```
 
-For Claude Code:
+=== "Claude Code"
 
-```bash
-claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=your-token -- mm-mcp serve
-```
+    ```bash
+    claude mcp add mattermost --env MM_URL=https://chat.example.com --env MM_TOKEN=your-token -- mm-mcp serve
+    ```
 
-Ask the agent who it is connected as. It calls `get_me` and answers with your
-Mattermost user.
-
-On Debian or Ubuntu, and on RHEL or Fedora, the release has packages that put
-`mm-mcp` in `/usr/bin`:
-
-```bash
-curl -LO "https://github.com/vriesdemichael/mm-mcp/releases/latest/download/mm-mcp_<version>_linux_amd64.deb"
-sudo dpkg -i mm-mcp_<version>_linux_amd64.deb
-```
+Leave `MM_TOKEN` out after `mm-mcp login`. Ask the agent who it is connected
+as: it calls `get_me` and answers with your Mattermost user.
 
 With Go installed, `go install github.com/vriesdemichael/mm-mcp/cmd/mm-mcp@latest`
 builds it from source instead; such a build reports its version as `dev`.

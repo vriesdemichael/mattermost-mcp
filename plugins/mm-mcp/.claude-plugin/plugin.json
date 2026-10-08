@@ -1,6 +1,6 @@
 {
   "name": "mm-mcp",
-  "description": "Read, search and post in Mattermost as yourself, through the mm-mcp server, with a skill that logs you in, single sign-on included. Needs mm-mcp installed: https://vriesdemichael.github.io/mm-mcp/installation/",
+  "description": "Read, search and post in Mattermost as yourself, through the mm-mcp server. Log in once with mm-mcp login, single sign-on included. Needs mm-mcp installed: https://vriesdemichael.github.io/mm-mcp/installation/",
   "author": { "name": "vriesdemichael", "url": "https://github.com/vriesdemichael" },
   "homepage": "https://vriesdemichael.github.io/mm-mcp/",
   "repository": "https://github.com/vriesdemichael/mm-mcp",

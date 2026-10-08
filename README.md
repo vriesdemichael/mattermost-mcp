@@ -67,7 +67,8 @@ Personal Access Tokens**, or, where those are switched off, log in once with
 }
 ```
 
-Or, for Claude Code, the plugin, which also logs you in, single sign-on included:
+Or, for Claude Code, the plugin, which asks for the address and a token you can
+leave empty after `mm-mcp login`:
 
 ```text
 /plugin marketplace add vriesdemichael/mm-mcp
