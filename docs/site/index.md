@@ -16,9 +16,12 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 - **Reading and searching** channels, threads, unread messages and mentions, and
   looking up people and channels.
 - **Posting and replying**, editing and deleting your own posts, reacting and
-  pinning, once you allow writes, each confirmed by you before it is sent.
-- **Your own things**: following threads, saving posts, reminders, drafts and the
-  typing indicator, once you allow writes, without a question each time.
+  pinning, joining, leaving and creating channels and adding people to them,
+  and setting your status, once you allow writes, each confirmed by you before
+  it is sent.
+- **Your own things**: following threads, saving posts, reminders, drafts, the
+  typing indicator and marking a channel read when you ask, once you allow
+  writes, without a question each time.
 - **Files and attachments**, read, uploaded and saved to your machine.
 
 Planned, not yet built: **views in the chat**, so that in a client that renders

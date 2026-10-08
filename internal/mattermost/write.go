@@ -135,3 +135,74 @@ func (c *Client) DeleteDraft(ctx context.Context, userID, channelID, rootID stri
 func (c *Client) Remind(ctx context.Context, userID, postID string, at time.Time) error {
 	return done(c.api.SetPostReminder(ctx, &model.PostReminder{UserId: userID, PostId: postID, TargetTime: at.Unix()}))
 }
+
+// AddToChannel adds users to a channel: the user themselves to join it, or
+// others. AddChannelMember.
+func (c *Client) AddToChannel(ctx context.Context, channelID string, userIDs []string) error {
+	if len(userIDs) == 1 {
+		_, err := result(c.api.AddChannelMember(ctx, channelID, userIDs[0]))
+		return err
+	}
+	_, err := result(c.api.AddChannelMembers(ctx, channelID, "", userIDs))
+	return err
+}
+
+// Leave takes the user out of a channel. RemoveUserFromChannel.
+func (c *Client) Leave(ctx context.Context, channelID, userID string) error {
+	response, err := c.api.RemoveUserFromChannel(ctx, channelID, userID)
+	return done(response, err)
+}
+
+// NewChannel is a channel to create.
+type NewChannel struct {
+	TeamID      string
+	Name        string
+	DisplayName string
+	Private     bool
+	Purpose     string
+	Header      string
+}
+
+// CreateChannel creates a channel in a team. CreateChannel.
+func (c *Client) CreateChannel(ctx context.Context, channel NewChannel) (*model.Channel, error) {
+	kind := model.ChannelTypeOpen
+	if channel.Private {
+		kind = model.ChannelTypePrivate
+	}
+	return result(c.api.CreateChannel(ctx, &model.Channel{
+		TeamId: channel.TeamID, Name: channel.Name, DisplayName: channel.DisplayName, Type: kind,
+		Purpose: channel.Purpose, Header: channel.Header,
+	}))
+}
+
+// MarkRead records that the user has read a channel up to now. ViewChannel.
+func (c *Client) MarkRead(ctx context.Context, userID, channelID string) error {
+	_, err := result(c.api.ViewChannel(ctx, userID, &model.ChannelView{ChannelId: channelID}))
+	return err
+}
+
+// SetStatus sets the user's presence: online, away, dnd or offline, with when
+// do not disturb ends. UpdateUserStatus.
+func (c *Client) SetStatus(ctx context.Context, userID, status string, dndEnd time.Time) (*model.Status, error) {
+	set := &model.Status{UserId: userID, Status: status}
+	if !dndEnd.IsZero() {
+		set.DNDEndTime = dndEnd.Unix()
+	}
+	return result(c.api.UpdateUserStatus(ctx, userID, set))
+}
+
+// SetCustomStatus sets the user's status message, until a time when one is
+// given. UpdateUserCustomStatus.
+func (c *Client) SetCustomStatus(ctx context.Context, userID, emoji, text string, until time.Time) (*model.CustomStatus, error) {
+	set := &model.CustomStatus{Emoji: emoji, Text: text}
+	if !until.IsZero() {
+		set.Duration, set.ExpiresAt = "date_and_time", until.UTC()
+	}
+	return result(c.api.UpdateUserCustomStatus(ctx, userID, set))
+}
+
+// ClearCustomStatus clears the user's status message. UnsetUserCustomStatus.
+func (c *Client) ClearCustomStatus(ctx context.Context, userID string) error {
+	response, err := c.api.RemoveUserCustomStatus(ctx, userID)
+	return done(response, err)
+}

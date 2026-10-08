@@ -251,6 +251,30 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
     may hold words you have not sent, so the question shows it and where it is
     first.
 
+`join_channel`: Join channel
+:   Joins a public channel of one of your teams. Everyone in it sees that you
+    joined. A private channel is joined only by being added.
+
+`leave_channel`: Leave channel
+:   Leaves a channel you belong to. Everyone in it sees that you left, and the
+    question says when the channel is private, where only being added brings
+    you back.
+
+`add_channel_members`: Add channel members
+:   Adds up to twenty people, by username, user id or email address, to a
+    channel you belong to. Each is notified, and the question names each.
+
+`create_channel`: Create channel
+:   Creates a public or private channel in one of your teams, with you in it,
+    its address made from its name as Mattermost's own app makes it, and its
+    purpose and header when given.
+
+`set_status`: Set status
+:   Sets your status as everyone sees it beside your name: online, away, do not
+    disturb until a time, or offline, and a status message with an emoji, until
+    a time or until changed; or clears the message. A time without an offset
+    is read in your timezone.
+
 ### Yours alone, or gone in seconds: not asked
 
 `typing`: Show typing
@@ -279,6 +303,12 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 `list_drafts`: List drafts
 :   Your drafts, in channels and threads, with where each is.
 
+`mark_channel_read`: Mark channel read
+:   Marks a channel read, as opening it in Mattermost does, clearing its unread
+    count and mentions, only when you ask for it. Reading a channel for you
+    never marks it read
+    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
+
 ## On your machine
 
 Offered only when the server runs on your own machine, started by your client
@@ -301,6 +331,7 @@ not to Mattermost
 - **Scheduled posts.** Mattermost's scheduled posts need a licence, and Team
   Edition, which mm-mcp is tested against, refuses them
   ([ADR-004](adr/004-live-tests-against-a-real-mattermost.md)).
-- **Marking anything read or unread.** What you have read is yours to record,
-  and a model reading a channel is not you reading it
+- **Marking what the model read as read, or anything unread.** What you have
+  read is yours to record, and a model reading a channel is not you reading
+  it; `mark_channel_read` marks a channel read when you ask
   ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).

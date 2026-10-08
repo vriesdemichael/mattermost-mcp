@@ -55,7 +55,7 @@ func Single(client *mattermost.Client) ClientFor {
 // Mattermost operations it calls.
 type Spec struct {
 	Tool     *mcp.Tool
-	Register func(*mcp.Server, ClientFor, config.Config)
+	Register func(server *mcp.Server, clientFor ClientFor, cfg config.Config, asks bool)
 	// Uses is every operation the tool calls, with what it does with each of the
 	// operation's parameters (ADR-028). The live suite checks that the tool calls
 	// exactly these, and the governance tests that each is accounted for in full
@@ -138,6 +138,10 @@ func Undocumented(arg, reason string) Coverage {
 	return Coverage{How: "undocumented", Arg: arg, Reason: reason}
 }
 
+// Asks reports whether the tool asks the person before each call: it changes
+// what others see in Mattermost (ADR-021).
+func (s Spec) Asks() bool { return !s.ReadOnly() && s.Unasked == "" && !s.Local }
+
 // ReadOnly reports whether the tool changes nothing, as its annotation says.
 func (s Spec) ReadOnly() bool {
 	return s.Tool.Annotations != nil && s.Tool.Annotations.ReadOnlyHint
@@ -158,6 +162,12 @@ func AllSpecs() []Spec {
 		listTeamChannelsSpec(),
 		listArchivedChannelsSpec(),
 		getChannelStatsSpec(),
+		joinChannelSpec(),
+		leaveChannelSpec(),
+		addChannelMembersSpec(),
+		createChannelSpec(),
+		markChannelReadSpec(),
+		setStatusSpec(),
 		readChannelSpec(),
 		readUnreadSpec(),
 		readPostSpec(),
@@ -214,7 +224,7 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 		&mcp.ServerOptions{Instructions: Instructions},
 	)
 	for _, spec := range Exposed(cfg) {
-		spec.Register(server, clientFor, cfg)
+		spec.Register(server, clientFor, cfg, spec.Asks())
 	}
 	return server
 }
@@ -236,8 +246,8 @@ func toolSpec[In, Out any](tool *mcp.Tool, own []Use, handler func(ClientFor) mc
 	return Spec{
 		Tool: tool,
 		Uses: uses(own, nameUses(reflect.TypeFor[In]())),
-		Register: func(server *mcp.Server, clientFor ClientFor, _ config.Config) {
-			mcp.AddTool(server, tool, resolving(handler(clientFor), clientFor))
+		Register: func(server *mcp.Server, clientFor ClientFor, _ config.Config, asks bool) {
+			mcp.AddTool(server, tool, resolving(tool.Name, handler(clientFor), clientFor, asks))
 		},
 	}
 }
@@ -245,8 +255,8 @@ func toolSpec[In, Out any](tool *mcp.Tool, own []Use, handler func(ClientFor) mc
 // configuredToolSpec is toolSpec for a tool that needs the configuration too.
 func configuredToolSpec[In, Out any](tool *mcp.Tool, own []Use, handler func(ClientFor, config.Config) mcp.ToolHandlerFor[In, Out]) Spec {
 	spec := toolSpec[In, Out](tool, own, nil)
-	spec.Register = func(server *mcp.Server, clientFor ClientFor, cfg config.Config) {
-		mcp.AddTool(server, tool, resolving(handler(clientFor, cfg), clientFor))
+	spec.Register = func(server *mcp.Server, clientFor ClientFor, cfg config.Config, asks bool) {
+		mcp.AddTool(server, tool, resolving(tool.Name, handler(clientFor, cfg), clientFor, asks))
 	}
 	return spec
 }

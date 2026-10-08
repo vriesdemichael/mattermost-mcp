@@ -50,10 +50,16 @@ func bareName(given string) string {
 
 // resolving reads a tool's id arguments into ids before its handler runs, and
 // answers a list the handler left empty as [] rather than null.
-func resolving[In, Out any](handler mcp.ToolHandlerFor[In, Out], clientFor ClientFor) mcp.ToolHandlerFor[In, Out] {
+//
+// A tool that asks the person refuses a client that cannot be asked before
+// it reads a name, which reaches Mattermost (ADR-021).
+func resolving[In, Out any](tool string, handler mcp.ToolHandlerFor[In, Out], clientFor ClientFor, asks bool) mcp.ToolHandlerFor[In, Out] {
 	fields := idFields(reflect.TypeFor[In]())
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
+		if asks && !canConfirm(request) {
+			return nil, none, missingElicitation(tool)
+		}
 		value := reflect.ValueOf(&input).Elem()
 		for arg, index := range fields {
 			field := value.FieldByIndex(index)
