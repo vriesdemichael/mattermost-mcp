@@ -120,6 +120,44 @@ func TestAllowWritesRefusesAValueItCannotRead(t *testing.T) {
 	}
 }
 
+// mm-mcp asks before a write unless told not to; the config holds the
+// opposite, so a Config written without it asks.
+func TestWritesAreAskedAboutUnlessAskBeforeWritesIsFalse(t *testing.T) {
+	t.Parallel()
+	for value, skip := range map[string]bool{
+		"": false, "  ": false, "true": false, "1": false, "${user_config.ask_before_writes}": false,
+		"false": true, "0": true, "OFF": true,
+	} {
+		cfg, err := config.FromEnv(testsupport.Env(with(config.EnvAskBeforeWrites, value)))
+		if err != nil || cfg.SkipAsking != skip || cfg.ForceHumanInTheLoop {
+			t.Errorf("%q: got %v, %v; want SkipAsking %v", value, cfg, err, skip)
+		}
+	}
+	_, err := config.FromEnv(testsupport.Env(with(config.EnvAskBeforeWrites, "maybe")))
+	if err == nil || !strings.Contains(err.Error(), config.EnvAskBeforeWrites) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// Forcing a human in the loop is for a client that asks; with mm-mcp asking
+// too, one write would be asked about twice, so the server does not start.
+func TestAHumanInTheLoopIsForcedOnlyWhenMmMcpDoesNotAsk(t *testing.T) {
+	t.Parallel()
+	env := with(config.EnvAskBeforeWrites, "false")
+	env[config.EnvForceHumanInTheLoop] = "true"
+	cfg, err := config.FromEnv(testsupport.Env(env))
+	if err != nil || !cfg.SkipAsking || !cfg.ForceHumanInTheLoop {
+		t.Fatalf("got %v, %v", cfg, err)
+	}
+	for _, ask := range []string{"", "true"} {
+		env[config.EnvAskBeforeWrites] = ask
+		_, err := config.FromEnv(testsupport.Env(env))
+		if err == nil || !strings.Contains(err.Error(), config.EnvForceHumanInTheLoop+"=true needs "+config.EnvAskBeforeWrites+"=false") {
+			t.Errorf("asking %q: got %v", ask, err)
+		}
+	}
+}
+
 func TestARelativeDownloadDirectoryIsRefused(t *testing.T) {
 	t.Parallel()
 	if _, err := config.FromEnv(testsupport.Env(with(config.EnvDownloadDir, "downloads"))); err == nil || !strings.Contains(err.Error(), "full path") {

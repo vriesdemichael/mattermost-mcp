@@ -149,6 +149,39 @@ func TestPlainHTTPBeyondTheMachineIsWarnedAbout(t *testing.T) {
 	}
 }
 
+func TestAServerThatWritesWithoutAskingSaysSoAtStart(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		allow, ask, force string
+		said              string
+	}{
+		{"true", "false", "", "warning: MM_MCP_ASK_BEFORE_WRITES=false"},
+		{"true", "false", "true", "a person on every call"},
+		{"true", "", "", ""},
+		{"false", "false", "", ""},
+	} {
+		got := runCLI(t, map[string]string{
+			config.EnvURL: "https://chat.example.com", config.EnvToken: "token-value",
+			config.EnvAllowWrites: c.allow, config.EnvAskBeforeWrites: c.ask, config.EnvForceHumanInTheLoop: c.force,
+		}, "serve")
+		said := strings.Contains(got.stderr, "does not ask")
+		if got.code != cli.ExitOK || said != (c.said != "") || !strings.Contains(got.stderr, c.said) {
+			t.Errorf("writes %q, ask %q, force %q: got %+v", c.allow, c.ask, c.force, got)
+		}
+	}
+}
+
+func TestForcingAHumanInTheLoopWhileMmMcpAsksStopsTheServer(t *testing.T) {
+	t.Parallel()
+	got := runCLI(t, map[string]string{
+		config.EnvURL: "https://chat.example.com", config.EnvToken: "token-value",
+		config.EnvAllowWrites: "true", config.EnvForceHumanInTheLoop: "true",
+	}, "serve")
+	if got.code != cli.ExitConfig || got.servers != 0 || !strings.Contains(got.stderr, config.EnvAskBeforeWrites+"=false") {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestACertificateAuthorityFileThatCannotBeUsedStopsTheServer(t *testing.T) {
 	t.Parallel()
 	notPEM := filepath.Join(t.TempDir(), "company.pem")

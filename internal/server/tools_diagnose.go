@@ -105,13 +105,27 @@ func clientChecks(request *mcp.CallToolRequest, cfg config.Config, asked bool) [
 	}}
 	const name = "confirmations"
 	switch {
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+		checks = append(checks, doctor.Check{
+			Name: name, Status: doctor.OK,
+			Detail: fmt.Sprintf("%s is false, so mm-mcp asks nothing before a change others see, and %s marks each such tool for the MCP "+
+				"client to ask the person on every call, whatever its permission rules allow; a client that does not read the mark asks as its rules say",
+				config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop),
+		})
+	case cfg.AllowWrites && cfg.SkipAsking:
+		checks = append(checks, doctor.Check{
+			Name: name, Status: doctor.OK,
+			Detail: fmt.Sprintf("%s is false, so mm-mcp asks nothing before a change others see: the MCP client's own approval of each tool "+
+				"call is the only check, and a client that approves tools by itself posts with nobody seeing it first", config.EnvAskBeforeWrites),
+			Next: fmt.Sprintf("Make sure the client asks the person before these tools, or set %s=true to have it ask on every call.", config.EnvForceHumanInTheLoop),
+		})
 	case !canConfirm(request) && cfg.AllowWrites:
 		checks = append(checks, doctor.Check{
 			Name: name, Status: doctor.Failed,
 			Detail: "this client does not declare form elicitation, so it cannot show the question mm-mcp asks before each change others see: " +
 				"every post, reply, edit, deletion, reaction, pin and channel change is refused before anything is written",
 			Next: "Tell the person. They can use an MCP client that supports elicitation, post in Mattermost themselves, or have save_draft " +
-				"put the message in their Mattermost message box for them to send.",
+				"put the message in their Mattermost message box for them to send." + letTheClientAsk,
 		})
 	case !canConfirm(request):
 		checks = append(checks, doctor.Check{
@@ -134,6 +148,11 @@ func clientChecks(request *mcp.CallToolRequest, cfg config.Config, asked bool) [
 	}
 	return checks
 }
+
+// letTheClientAsk ends the advice to a person whose client does not show
+// mm-mcp's questions (ADR-033).
+const letTheClientAsk = " Or they can set " + config.EnvAskBeforeWrites + "=false, so that their client's own approval of each " +
+	"tool call is the check instead."
 
 // testQuestion is the call's answer that asks the person the test question,
 // with the time it was asked, signed, as its request state.
@@ -204,13 +223,13 @@ func answerToTestQuestion(answer any, state string) *doctor.Check {
 		return &doctor.Check{
 			Name: name, Status: doctor.Warning,
 			Detail: fmt.Sprintf("the question was accepted after %s without the box ticked, as a client that accepts questions on its own does; a write is refused on such an answer", took),
-			Next:   "Ask the person whether they saw the question. If not, their client answers mm-mcp's questions itself, and save_draft is the way to post: the message waits in their Mattermost message box for them to send.",
+			Next:   "Ask the person whether they saw the question. If not, their client answers mm-mcp's questions itself, and save_draft is the way to post: the message waits in their Mattermost message box for them to send." + letTheClientAsk,
 		}
 	case fast:
 		return &doctor.Check{
 			Name: name, Status: doctor.Failed,
 			Detail: fmt.Sprintf("the question was answered with %s after %s, too soon for a person to have read it: the client most likely answered it itself, without showing it, and answers every question before a write the same way", result.Action, took),
-			Next:   "Tell the person their MCP client does not show mm-mcp's questions, so every write is refused. save_draft puts a message in their Mattermost message box for them to send themselves.",
+			Next:   "Tell the person their MCP client does not show mm-mcp's questions, so every write is refused. save_draft puts a message in their Mattermost message box for them to send themselves." + letTheClientAsk,
 		}
 	case result.Action == "cancel":
 		return &doctor.Check{Name: name, Status: doctor.Warning, Detail: fmt.Sprintf("the question was closed without an answer after %s", took), Next: "Ask the person whether they saw it."}
@@ -218,7 +237,7 @@ func answerToTestQuestion(answer any, state string) *doctor.Check {
 		return &doctor.Check{
 			Name: name, Status: doctor.Warning,
 			Detail: fmt.Sprintf("the question was declined after %s", took),
-			Next:   "Ask the person whether they saw it. If they did not, their client answered it itself, and would decline every write the same way.",
+			Next:   "Ask the person whether they saw it. If they did not, their client answered it itself, and would decline every write the same way." + letTheClientAsk,
 		}
 	}
 }

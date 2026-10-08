@@ -102,6 +102,7 @@ your password in the terminal, or a token you paste. It keeps the session in
 the system's credential store. MM_MCP_ALLOW_WRITES=true offers
 the tools that change Mattermost. A change others see asks before it acts;
 following a thread, saving a post, a draft and the typing indicator do not.
+MM_MCP_ASK_BEFORE_WRITES=false leaves asking to the MCP client's own approval.
 When something does not work, mm-mcp doctor checks the configuration, the
 stored login, the way to the server and the credential, and says what to fix.
 `
@@ -174,6 +175,14 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 	}
 	if unencrypted(cfg.URL) {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s is plain http, so the token in %s crosses the network unencrypted; use the https address if the server has one\n", cfg.URL, config.EnvToken)
+	}
+	switch {
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+		fmt.Fprintf(deps.Stderr, "mm-mcp: %s=false and %s=true, so mm-mcp does not ask before a post or another change others see; "+
+			"it has the MCP client ask a person on every call, where the client honours that\n", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop)
+	case cfg.AllowWrites && cfg.SkipAsking:
+		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s=false, so mm-mcp does not ask before a post or another change others see; "+
+			"the MCP client's own approval of each tool call is the only check\n", config.EnvAskBeforeWrites)
 	}
 	client := mattermost.New(cfg.URL, cfg.Token, httpTransport)
 	if code, ok := preflight(ctx, client, cfg, deps.Stderr); !ok {

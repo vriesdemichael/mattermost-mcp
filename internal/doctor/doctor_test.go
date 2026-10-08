@@ -263,3 +263,58 @@ func TestTheLoadedConfigurationNamesItsCredentialWithoutShowingIt(t *testing.T) 
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// Who asks before a write is reported as mm-mcp reads it, and the one
+// combination mm-mcp refuses fails with what to change (ADR-033).
+func TestSettingsSayWhoAsksBeforeAWrite(t *testing.T) {
+	t.Parallel()
+	settings := func(ask, force string) []Check {
+		return Settings(testsupport.Env(map[string]string{
+			config.EnvURL: "https://chat.example.com", config.EnvAllowWrites: "true",
+			config.EnvAskBeforeWrites: ask, config.EnvForceHumanInTheLoop: force,
+		}), false)
+	}
+	checks := settings("", "")
+	if got := find(t, checks, config.EnvAllowWrites); !strings.Contains(got.Detail, "asks first") {
+		t.Errorf("asking by default: %+v", got)
+	}
+	for _, name := range []string{config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop} {
+		for _, check := range checks {
+			if check.Name == name {
+				t.Errorf("unset, and still reported: %+v", check)
+			}
+		}
+	}
+	checks = settings("false", "")
+	if got := find(t, checks, config.EnvAllowWrites); !strings.Contains(got.Detail, "client's own approval") {
+		t.Errorf("not asking: %+v", got)
+	}
+	if got := find(t, checks, config.EnvAskBeforeWrites); got.Status != OK || !strings.Contains(got.Detail, "asks nothing") {
+		t.Errorf("not asking: %+v", got)
+	}
+	if got := find(t, settings("false", "true"), config.EnvForceHumanInTheLoop); got.Status != OK || !strings.Contains(got.Detail, "on every call") {
+		t.Errorf("forcing a human in the loop: %+v", got)
+	}
+	for _, ask := range []string{"", "true"} {
+		got := find(t, settings(ask, "true"), config.EnvForceHumanInTheLoop)
+		if got.Status != Failed || !strings.Contains(got.Next, config.EnvAskBeforeWrites+"=false") {
+			t.Errorf("forcing while asking %q: %+v", ask, got)
+		}
+	}
+}
+
+func TestTheLoadedConfigurationSaysWhoAsksBeforeAWrite(t *testing.T) {
+	t.Parallel()
+	loaded := func(skip, force bool) []Check {
+		return Loaded(config.Config{URL: "https://chat.example.com", AllowWrites: true, SkipAsking: skip, ForceHumanInTheLoop: force}, "")
+	}
+	if got := find(t, loaded(false, false), config.EnvAllowWrites); !strings.Contains(got.Detail, "asks first") {
+		t.Errorf("asking: %+v", got)
+	}
+	if got := find(t, loaded(true, false), config.EnvAskBeforeWrites); !strings.Contains(got.Detail, "the only check") {
+		t.Errorf("not asking: %+v", got)
+	}
+	if got := find(t, loaded(true, true), config.EnvForceHumanInTheLoop); !strings.Contains(got.Detail, "on every call") {
+		t.Errorf("forcing a human in the loop: %+v", got)
+	}
+}

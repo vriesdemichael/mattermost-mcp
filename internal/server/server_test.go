@@ -51,6 +51,19 @@ func TestTheServerIntroducesItself(t *testing.T) {
 	}
 }
 
+// A server that does not ask says so; one that cannot write has nothing to say.
+func TestAServerThatDoesNotAskSaysSo(t *testing.T) {
+	t.Parallel()
+	skipping := config.Config{URL: "https://chat.example.com", Token: "t", AllowWrites: true, SkipAsking: true}
+	if got := connect(t, skipping).InitializeResult().Instructions; got != server.Instructions+"\n\n"+server.SkippingInstructions {
+		t.Errorf("writing without asking: %q", got)
+	}
+	skipping.AllowWrites = false
+	if got := connect(t, skipping).InitializeResult().Instructions; got != server.Instructions {
+		t.Errorf("read-only: %q", got)
+	}
+}
+
 func TestGetMeIsOfferedWithAnOutputSchema(t *testing.T) {
 	t.Parallel()
 	for _, tool := range listTools(t, readOnlyConfig) {

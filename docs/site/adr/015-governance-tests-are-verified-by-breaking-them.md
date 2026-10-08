@@ -12,7 +12,8 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestAReadOnlyServerListsOnlyReadOnlyTools`: without writes allowed, no tool that writes is offered.
 - `TestAllowingWritesAddsExactlyTheToolsThatWrite`: allowing writes adds exactly the tools not annotated read-only.
 - `TestEveryListPagesByCursor`: every tool that answers with a list takes limit and cursor and answers with next_cursor, unless its input bounds it.
-- `TestEveryToolThatWritesAsksFirst`: every tool that changes what others see refuses a client that cannot be asked, before it reaches Mattermost.
+- `TestEveryToolThatWritesAsksFirst`: every tool that changes what others see refuses a client that cannot be asked, before it reaches Mattermost, unless the server is set not to ask.
+- `TestAServerThatDoesNotAskLeavesTheCallToTheClient`: a server that does not ask lets each call that would through, tells the model nobody asks, and marks those tools for the client to ask a person on every call only when forced to (ADR-033).
 - `TestAToolThatDoesNotAskChangesNothingOfOthers`: a tool that changes Mattermost without asking says why, and is not destructive.
 - `TestOnlyALocalServerOffersTheToolsThatWriteItsFiles`: a tool that writes this machine's files is offered by a local server only, whether writes are allowed or not.
 - `TestEveryToolIsCalledByALiveTest`: every MCP tool is called by name in tests/live.

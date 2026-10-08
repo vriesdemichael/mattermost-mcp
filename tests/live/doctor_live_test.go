@@ -230,7 +230,30 @@ func TestDiagnoseTellsAQuestionTheClientDeclinedAtOnce(t *testing.T) {
 
 	result := diagnosed(t, session, token, true)
 
-	if got := checkNamed(t, result, "test question"); got.Status != doctor.Failed || !strings.Contains(got.Detail, "answered it itself") {
+	if got := checkNamed(t, result, "test question"); got.Status != doctor.Failed || !strings.Contains(got.Detail, "answered it itself") ||
+		!strings.Contains(got.Next, config.EnvAskBeforeWrites+"=false") {
 		t.Fatalf("test question: %+v", got)
+	}
+}
+
+// A server that leaves the asking to the client says so, whatever the client
+// can show (ADR-033).
+func TestDiagnoseSaysWhoAsksWhenMmMcpDoesNot(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	token := personalAccessToken(t, admin, user.Id).Token
+	for _, c := range []struct {
+		force  bool
+		status doctor.Status
+		says   string
+	}{{false, doctor.OK, "the only check"}, {true, doctor.OK, "on every call"}} {
+		session := mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true, SkipAsking: true, ForceHumanInTheLoop: c.force}, nil)
+
+		result := diagnosed(t, session, token, false)
+
+		if got := checkNamed(t, result, "confirmations"); got.Status != c.status || !strings.Contains(got.Detail, c.says) {
+			t.Errorf("forcing a human in the loop %t: %+v", c.force, got)
+		}
 	}
 }

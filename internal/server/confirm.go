@@ -16,6 +16,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/vriesdemichael/mm-mcp/internal/config"
 )
 
 // Every tool that writes asks the person to confirm each call before it acts,
@@ -24,6 +26,9 @@ import (
 // approvals are set to automatic accepts a form with no fields without anyone
 // seeing it. A client that cannot show a form is refused with the error MCP
 // defines for a missing client capability, and nothing is written.
+//
+// A server configured with MM_MCP_ASK_BEFORE_WRITES=false asks nothing, and
+// leaves the check to the client's own approval of the tool call (ADR-033).
 //
 // A client on the 2026-07-28 revision sees two calls: the first answers with
 // the form and a signed request state, and the retry carries the answer and
@@ -65,6 +70,9 @@ func asking[In, Out any](tool string, confirm func(context.Context, *mcp.CallToo
 func askingBound[In, Out any](tool string, bind func(context.Context, *mcp.CallToolRequest, In) (string, error), confirm func(context.Context, *mcp.CallToolRequest, In) (confirmation, error), handler mcp.ToolHandlerFor[In, Out]) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var none Out
+		if skipping(ctx) {
+			return handler(ctx, request, input)
+		}
 		if !canConfirm(request) {
 			return nil, none, missingElicitation(tool)
 		}
@@ -129,12 +137,35 @@ func askingBound[In, Out any](tool string, bind func(context.Context, *mcp.CallT
 		case result.Action == "cancel":
 			return nil, none, fmt.Errorf("%s did not run: the person closed the question without answering. Do not call it again unless they ask", tool)
 		case result.Action != "accept" || result.Content[confirmKey] != true:
-			return nil, none, fmt.Errorf("%s did not run: the person declined. Do not call it again unless they ask", tool)
+			return nil, none, declined(tool)
 		case expired:
 			return nil, none, fmt.Errorf("%s did not run: the person accepted after the question expired. Call it again to ask again", tool)
 		}
 		return handler(ctx, request, input)
 	}
+}
+
+// declined is the refusal of a call whose question was answered no. mm-mcp
+// cannot tell a person's no from a client that answers the question itself
+// without showing it, as the Claude desktop app's Code tab does, so the model
+// is told both, and what the person can do in the second case (ADR-033).
+func declined(tool string) error {
+	return fmt.Errorf("%s did not run, and nothing was written: the confirmation was answered no. Either the person declined, "+
+		"or their MCP client answered the question without showing it to them. Do not call it again unless they ask. If they "+
+		"say they saw no question, tell them their client does not show mm-mcp's questions: save_draft can put a message in "+
+		"their Mattermost message box for them to send, or they can set %s=false so that their client's own approval of "+
+		"each tool call is the check instead", tool, config.EnvAskBeforeWrites)
+}
+
+// skippingKey marks a call whose server is configured not to ask: the
+// person's MCP client approves each tool call itself, or nobody does
+// (MM_MCP_ASK_BEFORE_WRITES=false, ADR-033). A call without it asks.
+type skippingKey struct{}
+
+// skipping reports whether this call's server is configured not to ask.
+func skipping(ctx context.Context) bool {
+	skip, _ := ctx.Value(skippingKey{}).(bool)
+	return skip
 }
 
 // boundKey carries a call's fingerprint from askingBound to its handler.

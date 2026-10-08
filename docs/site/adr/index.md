@@ -39,3 +39,4 @@ holds and why, and the alternatives it turned down.
 - [ADR-030: Names are matched leniently, and a refusal names the next step](030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)
 - [ADR-031: A message is checked before anyone is asked to post it, and says it was written with AI](031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)
 - [ADR-032: Every list pages by an opaque cursor, to its end](032-every-list-pages-by-an-opaque-cursor.md)
+- [ADR-033: Who asks before a write is a setting, and mm-mcp asks unless told otherwise](033-who-asks-before-a-write-is-a-setting.md)

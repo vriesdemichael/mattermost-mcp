@@ -27,6 +27,20 @@
       "description": "Offer the tools that post and change things. Each change others see asks you first.",
       "required": false,
       "default": false
+    },
+    "ask_before_writes": {
+      "type": "boolean",
+      "title": "Ask before posting",
+      "description": "mm-mcp asks you before each change others see. The Claude desktop app answers that question without showing it, so turn this off there: Claude Code's own permission prompt is then the check, and a rule or mode that allows the tool posts as you unseen.",
+      "required": false,
+      "default": true
+    },
+    "force_human_in_the_loop": {
+      "type": "boolean",
+      "title": "Force a human in the loop",
+      "description": "Only with Ask before posting off: Claude Code asks you before every change others see, in every permission mode, whatever its rules allow. An agent cannot post on its own while it is on.",
+      "required": false,
+      "default": false
     }
   },
   "mcpServers": {
@@ -36,7 +50,9 @@
       "env": {
         "MM_URL": "${user_config.mm_url}",
         "MM_TOKEN": "${user_config.mm_token}",
-        "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}"
+        "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
+        "MM_MCP_ASK_BEFORE_WRITES": "${user_config.ask_before_writes}",
+        "MM_MCP_FORCE_HUMAN_IN_THE_LOOP": "${user_config.force_human_in_the_loop}"
       }
     }
   }

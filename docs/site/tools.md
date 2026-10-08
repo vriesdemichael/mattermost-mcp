@@ -178,8 +178,17 @@ question is an MCP elicitation, a form the client shows, so these tools need a
 client that shows one, such as Claude Code. A client that declares it cannot
 gets an error that says so, and nothing is written; `save_draft`, which does
 not ask, still puts a message in your message box for you to send. Some
-clients declare that they can and never show the form, and the call waits
-until the client gives up on it; Claude Desktop has been reported to.
+clients declare that they can and never show the form: the call waits until
+the client gives up on it, as Claude Desktop has been reported to, or is
+declined at once, as in the Claude desktop app's Code tab.
+
+`MM_MCP_ASK_BEFORE_WRITES` decides who asks
+([Configuration](configuration.md),
+[ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)). Everything in this
+section is how mm-mcp asks, its default. Set to `false`, mm-mcp asks nothing,
+and your MCP client's own approval of each tool call, if it asks, is the only
+check; `MM_MCP_FORCE_HUMAN_IN_THE_LOOP` then has Claude Code ask on every
+call. The checks on a message below hold either way.
 
 Every message is checked before you are asked
 ([ADR-031](adr/031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)):
@@ -335,10 +344,11 @@ not to Mattermost
     `MM_TOKEN` hides it, the proxy, whether the server answers as a supported
     Mattermost, whose credential it is and whether that user belongs to a team.
     It adds what only the client shows: its name and protocol version, and
-    whether it can show the question mm-mcp asks before each write. With
-    `ask_test_question`, it shows you a test question and reports how it was
-    answered: an answer within a few seconds came from the client itself,
-    which then answers every question before a write without showing it. Each
+    whether it can show the question mm-mcp asks before each write, or that
+    mm-mcp leaves the asking to it. With `ask_test_question`, it shows you a
+    test question and reports how it was answered: an answer within a few
+    seconds came from the client itself, which then answers every question
+    before a write without showing it. Each
     check says what it found, and a failed one what to do. It never returns
     the credential ([Configuration](configuration.md#command-line)).
 
