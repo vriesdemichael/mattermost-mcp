@@ -35,6 +35,9 @@ type Config struct {
 	// TokenStored says the token is the one `mm-mcp login` stored, MM_TOKEN
 	// being unset.
 	TokenStored bool
+	// Stored is the credential store the token was looked for in, or nil. The
+	// diagnose tool reads it to find a login MM_TOKEN hides.
+	Stored      Stored
 	AllowWrites bool
 	// MarkAIGenerated marks every post and edit the model writes as written
 	// with AI, as Mattermost shows it. On unless turned off.
@@ -116,7 +119,7 @@ func Load(lookup func(string) string, stored Stored) (Config, error) {
 		return Config{}, errorf("%s must be a full path, not %q.", EnvDownloadDir, downloadDir)
 	}
 	return Config{
-		URL: address, Token: token, TokenStored: fromStore, AllowWrites: allowWrites, MarkAIGenerated: markAI,
+		URL: address, Token: token, TokenStored: fromStore, Stored: stored, AllowWrites: allowWrites, MarkAIGenerated: markAI,
 		DownloadDir: downloadDir,
 		CAFile:      strings.TrimSpace(lookup(EnvCAFile)),
 	}, nil
@@ -167,9 +170,16 @@ const apiPath = "/api/v4"
 func expanded(lookup func(string) string) func(string) string {
 	return func(name string) string {
 		value := lookup(name)
-		if trimmed := strings.TrimSpace(value); strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
+		if Placeholder(value) {
 			return ""
 		}
 		return value
 	}
+}
+
+// Placeholder reports whether value is a placeholder an MCP client left
+// unexpanded, which mm-mcp reads as unset.
+func Placeholder(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}")
 }

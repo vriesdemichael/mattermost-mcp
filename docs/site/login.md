@@ -77,6 +77,32 @@ as Entra ID's Conditional Access and Okta's device trust can. A fresh profile is
 then refused at the sign-on page itself, Playwright's included; OAuth in your own
 browser, or a pasted token, still works.
 
+## When the tools still do not work
+
+```bash
+mm-mcp doctor --url https://chat.example.com
+```
+
+checks the login you stored and everything around it, and says what to fix:
+whether a login is stored under that address in your credential store, whether
+the store can be read at all, whether an `MM_TOKEN` hides the login, whether
+the server can be reached and still accepts the session, and how
+`mm-mcp login` would log you in. The most common causes:
+
+- **`MM_TOKEN` is still set** in your MCP client's configuration. It wins over
+  a stored login; remove it.
+- **Another spelling of the address.** A login is stored under the address you
+  logged in with: `http` is not `https`, and another host name for the same
+  server is another entry. Log in with the address `MM_URL` names.
+- **No credential store.** On Linux, the Secret Service runs with your desktop
+  session; over SSH, in WSL or in a container there is none. Use a token in
+  `MM_TOKEN` there.
+
+The command reads your terminal's environment, not your MCP client's. From
+inside the client, ask the model to call the `diagnose` tool: it makes the same
+checks with the client's own configuration, and says whether the client can
+show the question mm-mcp asks before each write.
+
 ## What to ask your administrator
 
 One change on the server lets everyone log in through their own browser, in

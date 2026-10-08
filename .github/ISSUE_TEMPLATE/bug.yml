@@ -45,6 +45,18 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: doctor
+    attributes:
+      label: What mm-mcp doctor says
+      description: >
+        Output of `mm-mcp doctor --url <your server>`, or of the `diagnose` tool
+        if you can call it from your client. Neither shows your token; they do
+        show your server's address and your username, which you may remove.
+      render: text
+    validations:
+      required: false
+
   - type: input
     id: client
     attributes:

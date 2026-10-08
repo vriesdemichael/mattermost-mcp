@@ -52,6 +52,9 @@ type Login struct {
 	// Line reads a line the person types; Secret reads one without showing it.
 	Line   func(prompt string) (string, error)
 	Secret func(prompt string) (string, error)
+	// Browsers finds the browsers a login window could use, without starting
+	// any, for `mm-mcp doctor` to name.
+	Browsers func() ([]login.Browser, error)
 }
 
 // ProcessLogin reaches the person through their own browser and terminal.
@@ -66,9 +69,10 @@ func ProcessLogin(stdin *os.File, stderr io.Writer) *Login {
 		return strings.TrimSpace(text), nil
 	}
 	return &Login{
-		Open:   func(_ context.Context, address string) error { return login.OpenInBrowser(address) },
-		Window: windowLogin,
-		Line:   line,
+		Open:     func(_ context.Context, address string) error { return login.OpenInBrowser(address) },
+		Window:   windowLogin,
+		Browsers: func() ([]login.Browser, error) { return login.FindBrowsers(login.ThisSystem(), "") },
+		Line:     line,
 		Secret: func(prompt string) (string, error) {
 			// A terminal hides what is typed; a pipe, as an agent passes a
 			// token through, is read as it is.
