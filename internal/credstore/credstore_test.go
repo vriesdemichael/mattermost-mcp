@@ -1,6 +1,7 @@
 package credstore
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -55,5 +56,40 @@ func TestTheStoreIsNamedAsEachSystemCallsIt(t *testing.T) {
 	}
 	if Where() == "" {
 		t.Error("this system's store has no name")
+	}
+}
+
+func TestHowALoginWasMadeIsKeptPerServerAndForgotten(t *testing.T) {
+	if err := StoreOrigin("https://Chat.Example.com/", "paste"); err != nil {
+		t.Fatal(err)
+	}
+	if origin, err := LoadOrigin("https://chat.example.com"); err != nil || origin != "paste" {
+		t.Errorf("got %q, %v", origin, err)
+	}
+	if origin, err := LoadOrigin("https://other.example.com"); err != nil || origin != "" {
+		t.Errorf("another server: got %q, %v", origin, err)
+	}
+	if err := StoreOrigin("https://chat.example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	if origin, err := LoadOrigin("https://chat.example.com"); err != nil || origin != "" {
+		t.Errorf("after forgetting: got %q, %v", origin, err)
+	}
+	if err := StoreOrigin("https://chat.example.com", ""); err != nil {
+		t.Errorf("forgetting what is not there: %v", err)
+	}
+}
+
+func TestAStoreThatFailsIsSaidToHaveFailed(t *testing.T) {
+	keyring.MockInitWithError(errors.New("the store is locked"))
+	t.Cleanup(keyring.MockInit)
+	if err := StoreOrigin("https://chat.example.com", "paste"); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Errorf("storing: %v", err)
+	}
+	if err := StoreOrigin("https://chat.example.com", ""); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Errorf("forgetting: %v", err)
+	}
+	if _, err := LoadOrigin("https://chat.example.com"); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Errorf("reading: %v", err)
 	}
 }
