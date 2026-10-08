@@ -334,6 +334,9 @@ func windowLogin(ctx context.Context, browser, address, server string, progress 
 		if err != nil {
 			return "", err
 		}
+		if window.Unsandboxed() {
+			fmt.Fprintf(progress, "mm-mcp: %s runs without its sandbox, which this system refuses it; the window shows only your login page and closes once you have logged in.\n", candidate.Name)
+		}
 		token, err := window.WaitForToken(ctx, server)
 		window.Close()
 		return token, err

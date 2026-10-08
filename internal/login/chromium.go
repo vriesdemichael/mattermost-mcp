@@ -29,6 +29,9 @@ type chromiumWindow struct {
 	profile string
 	conn    *websocket.Conn
 	session string // the session attached to its page, once there is one
+	// unsandboxed says the system refused the browser its sandbox, and it
+	// runs without one.
+	unsandboxed bool
 
 	mu      sync.Mutex
 	nextID  int
@@ -44,7 +47,33 @@ type cdpReply struct {
 	} `json:"error"`
 }
 
+// startChromium starts a Chromium in its sandbox, and, when the system refuses
+// it the sandbox, once more without it, as Playwright starts its Chromium:
+// Ubuntu 24.04 lets only the browsers it has an AppArmor profile for make the
+// namespaces the sandbox needs, so Playwright's Chromium and a distribution's
+// Chromium cannot have one there, and a broken install's setuid helper stops
+// another. The window shows the login page and closes once the person has
+// logged in, and says it ran without the sandbox.
 func startChromium(ctx context.Context, browser Browser, profile, address string, options Options) (*chromiumWindow, error) {
+	w, err := launchChromium(ctx, browser, profile, address, options, true)
+	var blocked *BlockedError
+	if !errors.As(err, &blocked) || !blocked.sandbox {
+		return w, err
+	}
+	unsandboxed, profileErr := os.MkdirTemp("", "mm-mcp-login-")
+	if profileErr != nil {
+		return nil, err
+	}
+	w, err = launchChromium(ctx, browser, unsandboxed, address, options, false)
+	if err != nil {
+		removeProfile(unsandboxed)
+		return nil, err
+	}
+	w.unsandboxed = true
+	return w, nil
+}
+
+func launchChromium(ctx context.Context, browser Browser, profile, address string, options Options, sandbox bool) (*chromiumWindow, error) {
 	args := []string{
 		"--user-data-dir=" + profile,
 		"--remote-debugging-port=0",
@@ -56,6 +85,9 @@ func startChromium(ctx context.Context, browser Browser, profile, address string
 	}
 	if options.Headless {
 		args = append(args, "--headless=new", "--disable-gpu")
+	}
+	if !sandbox {
+		args = append(args, "--no-sandbox")
 	}
 	// A blank page first, and the address through DevTools once connected:
 	// Chromium 153 never requests an http page given on its command line.
@@ -120,6 +152,7 @@ func (w *chromiumWindow) devToolsEndpoint(ctx context.Context) (string, error) {
 			select {
 			case <-w.exited:
 				reason = "exited as it started, without opening its DevTools port" + w.output.said()
+				return "", &BlockedError{Browser: w.browser, Reason: reason, sandbox: w.output.mentions("sandbox")}
 			default:
 			}
 			return "", &BlockedError{Browser: w.browser, Reason: reason}
@@ -320,3 +353,5 @@ func (w *chromiumWindow) Close() {
 	}
 	removeProfile(w.profile)
 }
+
+func (w *chromiumWindow) Unsandboxed() bool { return w.unsandboxed }

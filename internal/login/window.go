@@ -33,6 +33,8 @@ var ErrBrowserClosed = errors.New("the browser was closed before the login finis
 type BlockedError struct {
 	Browser Browser
 	Reason  string
+	// sandbox says it exited over its sandbox, which the system refused it.
+	sandbox bool
 }
 
 func (e *BlockedError) Error() string {
@@ -51,6 +53,9 @@ type Window interface {
 	// Evaluate runs a script in the window's page and waits for the promise
 	// it returns, for a test that logs in itself.
 	Evaluate(ctx context.Context, script string) error
+	// Unsandboxed says the system refused the browser its sandbox, and it
+	// runs without one.
+	Unsandboxed() bool
 	// Close closes the browser and throws its profile away.
 	Close()
 }
@@ -181,8 +186,25 @@ func (t *tail) said() string {
 	if len(lines) == 1 && lines[0] == "" {
 		return ""
 	}
+	// A crash ends in a stack trace; the line that says why came first.
+	var fatal []string
+	for _, line := range lines {
+		if strings.Contains(line, "FATAL") {
+			fatal = append(fatal, line)
+		}
+	}
+	if len(fatal) > 0 {
+		lines = fatal
+	}
 	if len(lines) > 3 {
 		lines = lines[len(lines)-3:]
 	}
 	return "; it said: " + strings.Join(lines, " | ")
+}
+
+// mentions reports whether the browser wrote word, in any case.
+func (t *tail) mentions(word string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.Contains(strings.ToLower(string(t.kept)), strings.ToLower(word))
 }
