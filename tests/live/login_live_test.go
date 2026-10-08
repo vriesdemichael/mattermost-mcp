@@ -97,7 +97,8 @@ type approver struct {
 
 func loggedInBrowser(t *testing.T, username string) *approver {
 	t.Helper()
-	window, err := login.Start(t.Context(), browsers(t)[0], liveURL+"/login", login.Options{Headless: true})
+	// Not t.Context(), which ends before the cleanup closes the browser.
+	window, err := login.Start(context.Background(), browsers(t)[0], liveURL+"/login", login.Options{Headless: true})
 	check(t, err)
 	t.Cleanup(window.Close)
 	check(t, retry(t.Context(), window, loginScript(username)))
