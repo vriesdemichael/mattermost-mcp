@@ -193,6 +193,15 @@ func TestReadChannelReturnsTheConversationOldestFirstAndPagesThroughIt(t *testin
 	if got := messages(latest.Posts); !slices.Equal(got, want) || latest.NextCursor == "" {
 		t.Fatalf("the newest two: got %v (next cursor %q), want %v", got, latest.NextCursor, want)
 	}
+	// The channel is named once for every post, and each post links to itself.
+	if latest.Channel != channel.DisplayName || latest.Team != team.DisplayName {
+		t.Errorf("the answer names channel %q in team %q", latest.Channel, latest.Team)
+	}
+	for _, post := range latest.Posts {
+		if post.Channel != "" || post.ChannelID != "" || post.Team != "" || post.URL != liveURL+"/_redirect/pl/"+post.ID {
+			t.Errorf("a post reads %+v", post)
+		}
+	}
 	older := readChannel(t, session, map[string]any{"channel_id": channel.Id, "limit": 2, "cursor": latest.NextCursor})
 	if got := messages(older.Posts); !slices.Contains(got, other.Username+": one") {
 		t.Fatalf("the page before the newest two: got %v", got)

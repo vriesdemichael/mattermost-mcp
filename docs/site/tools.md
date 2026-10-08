@@ -14,10 +14,12 @@ answer ends with back as `cursor`, with the same other arguments, for the next
 page, until an answer has none
 ([ADR-032](adr/032-every-list-pages-by-an-opaque-cursor.md)).
 
-Every post comes back in one shape: its author's username and name, its channel
-and team by name, its files with their ids, reactions with who reacted, whether
-it is pinned or marked as written with AI, its thread, and when it was edited.
-Times are in UTC. A tool that takes a name, of a channel, a team or a person,
+Every post comes back in one shape: its address, which opens it in
+Mattermost, its author's username and name, its channel and team by name, its
+files with their ids, reactions with who reacted, whether it is pinned or
+marked as written with AI, its thread, and when it was edited. An answer whose
+posts are all in one channel names the channel and team once, rather than on
+every post. Times are in UTC. A tool that takes a name, of a channel, a team or a person,
 matches it in any case, whole or in part; an ambiguous name is refused with every
 candidate, and an unknown one with the closest names
 ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).

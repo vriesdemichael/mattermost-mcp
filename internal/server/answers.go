@@ -28,8 +28,9 @@ func timestamp(ms int64) string {
 // Post is one message as a tool returns it.
 type Post struct {
 	ID         string `json:"id"`
-	ChannelID  string `json:"channel_id"`
-	Channel    string `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
+	URL        string `json:"url" jsonschema:"the post's address, which opens it in Mattermost; give it to the person to link the post"`
+	ChannelID  string `json:"channel_id,omitempty" jsonschema:"left out where the answer names its one channel for all its posts"`
+	Channel    string `json:"channel,omitempty" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
 	Team       string `json:"team,omitempty" jsonschema:"the team's display name; empty for a direct or group message, which belong to no team"`
 	Author     string `json:"author" jsonschema:"the author's username, or their id when it could not be read"`
 	AuthorName string `json:"author_name,omitempty" jsonschema:"the author's full name or nickname, as people know them"`
@@ -51,6 +52,7 @@ type Post struct {
 // surroundings is what posts name, read once for all of them: the user, each
 // channel and its team, and each author and reactor.
 type surroundings struct {
+	client   *mattermost.Client
 	self     *model.User
 	channels map[string]*model.Channel
 	teams    map[string]*model.Team
@@ -72,7 +74,7 @@ func describePosts(ctx context.Context, client *mattermost.Client, posts []*mode
 }
 
 func readSurroundings(ctx context.Context, client *mattermost.Client, posts []*model.Post) (surroundings, error) {
-	around := surroundings{channels: map[string]*model.Channel{}, teams: map[string]*model.Team{}, people: map[string]*model.User{}}
+	around := surroundings{client: client, channels: map[string]*model.Channel{}, teams: map[string]*model.Team{}, people: map[string]*model.User{}}
 	if len(posts) == 0 {
 		return around, nil
 	}
@@ -128,6 +130,7 @@ func (s surroundings) usernames() map[string]string {
 func (s surroundings) post(post *model.Post) Post {
 	out := Post{
 		ID:          post.Id,
+		URL:         s.client.Permalink(post.Id),
 		ChannelID:   post.ChannelId,
 		Author:      post.UserId,
 		AuthorID:    post.UserId,
@@ -162,6 +165,27 @@ func (s surroundings) post(post *model.Post) Post {
 		}
 	}
 	return out
+}
+
+// inOneChannel names the channel and team the posts are all in once, and
+// leaves them out of each post, which would otherwise repeat them on every
+// one. Posts from more than one channel are left as they are.
+func inOneChannel(posts []Post) (channel, team string, out []Post) {
+	if len(posts) == 0 {
+		return "", "", posts
+	}
+	for _, post := range posts[1:] {
+		if post.ChannelID != posts[0].ChannelID {
+			return "", "", posts
+		}
+	}
+	channel, team = posts[0].Channel, posts[0].Team
+	out = make([]Post, len(posts))
+	for i, post := range posts {
+		post.ChannelID, post.Channel, post.Team = "", "", ""
+		out[i] = post
+	}
+	return channel, team, out
 }
 
 // displayName is how people know a user: their full name, or their nickname.
