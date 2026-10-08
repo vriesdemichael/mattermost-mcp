@@ -239,7 +239,7 @@ func messageUses(stats bool) []Use {
 	out := []Use{
 		{Operation: "GetClientConfig", Params: map[string]Coverage{}},
 		{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
-		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("the start of an unknown mention", "enough to find the usernames closest to one that is unknown"))},
+		{Operation: "SearchUsers", Params: suggestionSearch(Fixed("starts of an unknown mention, longest first", "finds the usernames closest to one that is unknown, among however many share its first letters"))},
 	}
 	if stats {
 		out = append(out, Use{

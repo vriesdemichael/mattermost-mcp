@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -196,13 +197,18 @@ func unknownUsers(ctx context.Context, client *mattermost.Client, unknown []stri
 	var parts []string
 	for _, ref := range unknown {
 		name := strings.TrimPrefix(ref, "@")
-		var known []string
-		if users, err := client.SearchUsers(ctx, &model.UserSearch{Term: firstWord(name), Limit: 20}); err == nil {
+		near := nearestBySearch(name, 3, nil, func(term string) ([]string, bool) {
+			users, err := client.SearchUsers(ctx, &model.UserSearch{Term: term, Limit: suggestionPage})
+			if err != nil {
+				return nil, false
+			}
+			known := make([]string, 0, len(users))
 			for _, user := range users {
 				known = append(known, user.Username)
 			}
-		}
-		if near := closest(name, known, 3); len(near) > 0 {
+			return known, len(users) < suggestionPage
+		})
+		if len(near) > 0 {
 			parts = append(parts, fmt.Sprintf("%q (closest: %s)", ref, quoteAll(near)))
 		} else {
 			parts = append(parts, fmt.Sprintf("%q", ref))
@@ -211,12 +217,44 @@ func unknownUsers(ctx context.Context, client *mattermost.Client, unknown []stri
 	return fmt.Errorf("no user is known as %s. search_users finds people by part of their name", strings.Join(parts, ", "))
 }
 
-// firstWord is the start of a name to search by, short enough that a typo
-// further on still finds the name meant.
-func firstWord(name string) string {
+// prefixes are the starts of a name to search by for the names closest to it,
+// longest first: a search returns a page of matches, and on a server where
+// many names share their first letters, a short start finds a page that need
+// not hold the one meant. A longer start finds fewer and closer names; a
+// shorter one still finds a name whose typo comes early.
+func prefixes(name string) []string {
 	runes := []rune(name)
-	return string(runes[:min(3, len(runes))])
+	var out []string
+	for _, n := range []int{len(runes) - 1, (len(runes)*2 + 2) / 3, (len(runes) + 1) / 2, 3} {
+		n = min(n, len(runes))
+		if n < 1 || (len(out) > 0 && len([]rune(out[len(out)-1])) <= n) {
+			continue
+		}
+		out = append(out, string(runes[:n]))
+	}
+	return out
 }
+
+// nearestBySearch is up to n names closest to name, among extra and what
+// searching by its prefixes finds, longest first. search answers with the
+// names a term finds and whether that is all of them. The searches stop once
+// one found every name that starts as the prefix does and a close name is
+// among what was found: a page cut short at its limit need not hold the name
+// meant, so a shorter prefix is searched too.
+func nearestBySearch(name string, n int, extra []string, search func(term string) ([]string, bool)) []string {
+	found := slices.Clone(extra)
+	for _, prefix := range prefixes(name) {
+		names, all := search(prefix)
+		found = append(found, names...)
+		if near := closest(name, found, n); all && len(near) > 0 {
+			return near
+		}
+	}
+	return closest(name, found, n)
+}
+
+// suggestionPage is how many names one search for suggestions reads.
+const suggestionPage = 200
 
 // The most users one search page holds, and how many when not told; and the
 // most matches Mattermost's user search answers with, which is as far as its
@@ -336,7 +374,7 @@ func getStatusSpec() Spec {
 		[]Use{
 			{Operation: "GetUsersByUsernames", Params: map[string]Coverage{}},
 			{Operation: "GetUsersStatusesByIds", Params: map[string]Coverage{}},
-			{Operation: "SearchUsers", Params: suggestionSearch(Fixed("the start of an unknown username", "enough to find the usernames closest to one that is unknown"))},
+			{Operation: "SearchUsers", Params: suggestionSearch(Fixed("starts of an unknown username, longest first", "finds the usernames closest to one that is unknown, among however many share its first letters"))},
 		},
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getStatusInput, Statuses] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input getStatusInput) (*mcp.CallToolResult, Statuses, error) {

@@ -3,6 +3,8 @@
 package live
 
 import (
+	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -305,6 +307,33 @@ func TestGetUsersNamesTheClosestUsernamesForOneNobodyHas(t *testing.T) {
 	missing := callTool(t, session, &mcp.CallToolParams{Name: "get_users", Arguments: map[string]any{"users": []string{slip}}})
 	if !missing.IsError || !strings.Contains(errorText(missing), `"`+other.Username+`"`) {
 		t.Fatalf("an unknown username: got %s; want it to suggest %s", errorText(missing), other.Username)
+	}
+}
+
+// TestTheClosestUsernameIsFoundAmongManyThatShareItsStart: more people share
+// a username's first letters than one search page holds, as every jon… does in
+// a large organisation, and the one meant is still suggested.
+func TestTheClosestUsernameIsFoundAmongManyThatShareItsStart(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	crowd := uniqueName("crowd")
+	meant := crowd + "-meant"
+	for i := range 30 {
+		username := fmt.Sprintf("%s-%02d", crowd, i)
+		if i == 29 {
+			username = meant
+		}
+		created, _, err := admin.CreateUser(t.Context(), &model.User{Username: username, Password: fixturePassword, Email: username + "@example.com"})
+		check(t, err)
+		t.Cleanup(func() { _, _ = admin.DeleteUser(context.Background(), created.Id) })
+	}
+	session := sessionFor(t, admin, user)
+
+	slip := crowd + "-maent"
+	missing := callTool(t, session, &mcp.CallToolParams{Name: "get_users", Arguments: map[string]any{"users": []string{slip}}})
+	if !missing.IsError || !strings.Contains(errorText(missing), `"`+meant+`"`) {
+		t.Fatalf("got %s; want it to suggest %s", errorText(missing), meant)
 	}
 }
 

@@ -73,3 +73,42 @@ func TestClosestKeepsSlipsAndLeavesOtherNames(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestASuggestionSearchesLongerStartsFirst(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string][]string{
+		"jonh.smith": {"jonh.smit", "jonh.sm", "jonh.", "jon"},
+		"bob":        {"bo"},
+		"al":         {"a"},
+		"":           nil,
+	} {
+		if got := prefixes(name); !slices.Equal(got, want) {
+			t.Errorf("%q: got %q, want %q", name, got, want)
+		}
+	}
+	// A page cut short at its limit is not the end: the shorter start is
+	// searched too, and the closest of everything found is the answer.
+	searched := []string{}
+	near := nearestBySearch("jonh.smith", 1, nil, func(term string) ([]string, bool) {
+		searched = append(searched, term)
+		switch term {
+		case "jonh.":
+			return []string{"jonh.smyth-2"}, false
+		case "jon":
+			return []string{"john.smith"}, true
+		}
+		return nil, true
+	})
+	if !slices.Equal(near, []string{"john.smith"}) || !slices.Equal(searched, []string{"jonh.smit", "jonh.sm", "jonh.", "jon"}) {
+		t.Errorf("found %v after searching %v", near, searched)
+	}
+	// A complete page with a close name ends the searches.
+	searched = searched[:0]
+	nearestBySearch("jonh.smith", 1, nil, func(term string) ([]string, bool) {
+		searched = append(searched, term)
+		return []string{"john.smith"}, true
+	})
+	if len(searched) != 1 {
+		t.Errorf("searched %v after a complete page with a close name", searched)
+	}
+}
