@@ -147,7 +147,10 @@ setting left empty, counts as unset.
     error, and exits with status 1; a wrong flag exits with status 2.
 
 `mm-mcp logout [--url https://chat.example.com]`
-:   Ends the stored session at Mattermost, and forgets it.
+:   Forgets the stored login. A session mm-mcp made itself, through OAuth, its
+    browser window or your password, it also ends at Mattermost. A token you
+    pasted it only forgets: it may be your browser's own session, or a personal
+    access token you revoke under Profile > Security.
 
 `mm-mcp doctor [--url https://chat.example.com] [--json]`
 :   Checks what mm-mcp needs, and says what to fix for each check that fails:

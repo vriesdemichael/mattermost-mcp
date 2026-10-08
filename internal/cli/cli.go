@@ -66,6 +66,10 @@ type Credentials struct {
 	Delete      func(address string) error
 	LoadClient  func(address string) (string, bool, error)
 	StoreClient func(address, client string) error
+	// StoreOrigin keeps how a login obtained its token, and LoadOrigin reads it
+	// back; either may be nil, and then a token counts as one mm-mcp made.
+	StoreOrigin func(address, origin string) error
+	LoadOrigin  func(address string) (string, error)
 	// Where names the store, for a person to find it.
 	Where string
 }
@@ -77,7 +81,8 @@ func ProcessDeps() Deps {
 		Getenv: os.Getenv, Stdout: os.Stdout, Stderr: os.Stderr, Serve: Serve,
 		Credentials: &Credentials{
 			Load: credstore.Load, Store: credstore.Store, Delete: credstore.Delete,
-			LoadClient: credstore.LoadClient, StoreClient: credstore.StoreClient, Where: credstore.Where(),
+			LoadClient: credstore.LoadClient, StoreClient: credstore.StoreClient,
+			StoreOrigin: credstore.StoreOrigin, LoadOrigin: credstore.LoadOrigin, Where: credstore.Where(),
 		},
 		Login: ProcessLogin(os.Stdin, os.Stderr),
 	}
