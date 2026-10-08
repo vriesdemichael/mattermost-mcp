@@ -17,16 +17,29 @@ mm-mcp needs the address of your Mattermost server and one of:
     mm-mcp login --url https://chat.example.com
     ```
 
-    opens Mattermost's login page in a Chrome or Edge window of its own. Log in
-    as you always do, single sign-on and second factor included; the window
-    closes once you have, and the session is kept in your system's credential
-    store: the Windows Credential Manager, your macOS keychain, or your Linux
-    desktop's Secret Service. Then set only `MM_URL` for the server, without
-    `MM_TOKEN`. When Mattermost ends the session, run `mm-mcp login` again;
-    `mm-mcp logout` ends it yourself. Install mm-mcp with a package manager
-    for this, also when Claude Desktop runs its bundle.
+    logs you in the way your server allows: through your own browser where it
+    offers OAuth, a browser window of its own for single sign-on, your password
+    in the terminal, or a token you paste. The session is kept in your
+    system's credential store. Then set only `MM_URL` for the server, without
+    `MM_TOKEN`. [Logging in](login.md) has every way, and what to ask your
+    administrator. Install mm-mcp with a package manager for this, also when
+    Claude Desktop runs its bundle.
 
 See [Configuration](configuration.md) for every setting.
+
+## Claude Code
+
+The mm-mcp plugin sets up the server and adds a skill that logs you in, single
+sign-on included. With mm-mcp installed (below), in Claude Code:
+
+```text
+/plugin marketplace add vriesdemichael/mm-mcp
+/plugin install mm-mcp@mm-mcp
+```
+
+It asks for your Mattermost's address, and a token, which you can leave empty:
+ask Claude to log you in to Mattermost, and its skill runs `mm-mcp login` with
+you ([Logging in](login.md)).
 
 ## Claude Desktop
 

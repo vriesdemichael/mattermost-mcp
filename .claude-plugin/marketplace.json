@@ -1,0 +1,12 @@
+{
+  "name": "mm-mcp",
+  "owner": { "name": "vriesdemichael", "url": "https://github.com/vriesdemichael" },
+  "description": "mm-mcp, an MCP server for Mattermost, with the skill that logs you in to it.",
+  "plugins": [
+    {
+      "name": "mm-mcp",
+      "source": "./plugins/mm-mcp",
+      "description": "Read, search and post in Mattermost as yourself, through the mm-mcp server, with a skill that logs you in, single sign-on included."
+    }
+  ]
+}
