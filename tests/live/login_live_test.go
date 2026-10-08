@@ -235,6 +235,16 @@ func TestLoginThroughOAuthAsTheAppAnAdministratorRegistered(t *testing.T) {
 	if code != cli.ExitOK || whoIs(t, r.stored[liveURL]) != user.Username || !strings.Contains(r.clients[liveURL], app.Id) {
 		t.Fatalf("login: exit %d\n%s%s", code, stdout, stderr)
 	}
+
+	// Deleting the app is how an administrator ends every login made through
+	// it at once, as the administrators page says.
+	_, err = admin.DeleteOAuthApp(t.Context(), app.Id)
+	check(t, err)
+	_, _, err = mattermost.New(liveURL, r.stored[liveURL], network.NewSafeTransport()).Check(t.Context())
+	var refused *mattermost.Error
+	if !errors.As(err, &refused) || refused.Status != 401 {
+		t.Fatalf("the session made through the app works after the app was deleted: %v", err)
+	}
 }
 
 func TestLoginThroughAWindowWithEveryBrowserOnThisMachine(t *testing.T) {
