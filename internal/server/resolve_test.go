@@ -79,3 +79,25 @@ func TestAnEmptyListIsAnsweredAsOneNotAsNull(t *testing.T) {
 		t.Fatalf("got %+v", out)
 	}
 }
+
+func TestAnIDArgumentWithoutADescriptionIsGivenOne(t *testing.T) {
+	t.Parallel()
+	type bare struct {
+		TeamID string `json:"team_id"`
+	}
+	if description := inputSchema[bare]().Properties["team_id"].Description; !strings.Contains(description, "its name") {
+		t.Errorf("team_id reads %q", description)
+	}
+}
+
+func TestPostsFromSeveralChannelsKeepTheirChannels(t *testing.T) {
+	t.Parallel()
+	posts := []Post{{ID: "a", ChannelID: "c1", Channel: "One"}, {ID: "b", ChannelID: "c2", Channel: "Two"}}
+	channel, team, out := inOneChannel(posts)
+	if channel != "" || team != "" || out[0].Channel != "One" || out[1].ChannelID != "c2" {
+		t.Errorf("got %q %q %+v", channel, team, out)
+	}
+	if channel, _, out := inOneChannel(nil); channel != "" || len(out) != 0 {
+		t.Errorf("no posts: %q %+v", channel, out)
+	}
+}

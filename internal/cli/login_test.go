@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -135,5 +137,36 @@ func TestServeUsesTheStoredSessionWhenNoTokenIsSet(t *testing.T) {
 	})
 	if code != cli.ExitOK || !served {
 		t.Fatalf("exit %d, served %v: %s", code, served, stderr.String())
+	}
+}
+
+func TestTheTerminalIsReadALineAtATime(t *testing.T) {
+	t.Parallel()
+	typed := filepath.Join(t.TempDir(), "typed")
+	if err := os.WriteFile(typed, []byte("sysadmin\n a-token \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := os.Open(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	var prompts bytes.Buffer
+	reach := cli.ProcessLogin(stdin, &prompts)
+
+	line, err := reach.Line("Username: ")
+	if err != nil || line != "sysadmin" {
+		t.Fatalf("line: %q, %v", line, err)
+	}
+	// Not a terminal, as when an agent pipes a token in: read as a line.
+	secret, err := reach.Secret("Token: ")
+	if err != nil || secret != "a-token" {
+		t.Fatalf("secret: %q, %v", secret, err)
+	}
+	if _, err := reach.Line("More: "); err == nil {
+		t.Error("a line was read past the end")
+	}
+	if !strings.Contains(prompts.String(), "Username: ") {
+		t.Errorf("prompted %q", prompts.String())
 	}
 }

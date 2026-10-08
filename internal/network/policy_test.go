@@ -179,3 +179,32 @@ func statusOf(transport http.RoundTripper, request *http.Request) (int, error) {
 	defer response.Body.Close()
 	return response.StatusCode, nil
 }
+
+func TestTheWaitA429AsksForIsReadInEveryForm(t *testing.T) {
+	t.Parallel()
+	soon := time.Now().Add(3 * time.Second).UTC().Format(http.TimeFormat)
+	for name, c := range map[string]struct {
+		header http.Header
+		short  bool
+	}{
+		"seconds":                {http.Header{"Retry-After": {"2"}}, true},
+		"a time to come":         {http.Header{"Retry-After": {soon}}, true},
+		"a time gone":            {http.Header{"Retry-After": {"Mon, 02 Jan 2006 15:04:05 GMT"}}, true},
+		"Mattermost's own reset": {http.Header{"X-Ratelimit-Reset": {"1"}}, true},
+		"too long to wait":       {http.Header{"Retry-After": {"3600"}}, false},
+		"nothing said":           {http.Header{}, true},
+		"nonsense":               {http.Header{"Retry-After": {"later"}}, true},
+	} {
+		wait, ok := retryWait(c.header)
+		if ok != c.short || wait <= 0 {
+			t.Errorf("%s: waits %s, %v", name, wait, ok)
+		}
+	}
+}
+
+func TestACertificateAuthorityNeedsATransportNewSafeTransportBuilt(t *testing.T) {
+	t.Parallel()
+	if err := TrustCertificates(http.DefaultTransport, selfSignedPEM(t)); err == nil {
+		t.Error("another transport was given an authority")
+	}
+}
