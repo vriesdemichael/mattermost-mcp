@@ -344,3 +344,118 @@
 .md-copyright {
   max-width: 40rem;
 }
+
+/* ------------------------------------------------------------ tools page */
+
+/* What a tool does beyond reading: asks you first, yours alone, your disk. */
+[data-md-color-scheme="default"] {
+  --mm-kind-read: #2160c4;
+  --mm-kind-asks: #b26a00;
+  --mm-kind-yours: #138a65;
+  --mm-kind-disk: #7a4fc4;
+}
+
+[data-md-color-scheme="slate"] {
+  --mm-kind-read: #85b2ff;
+  --mm-kind-asks: #f2b552;
+  --mm-kind-yours: #5fd0a5;
+  --mm-kind-disk: #b89bf0;
+}
+
+.md-typeset .mm-lead {
+  font-size: 0.95rem;
+  color: var(--md-default-fg-color--light);
+  max-width: 38rem;
+}
+
+.mm-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.2rem 0 1.6rem;
+}
+
+.md-typeset .mm-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--mm-surface-line);
+  border-radius: 999px;
+  background: var(--mm-surface);
+  color: var(--md-default-fg-color);
+  font-size: 0.68rem;
+}
+
+.md-typeset .mm-stat strong {
+  font-size: 0.85rem;
+}
+
+.md-typeset a.mm-stat:hover {
+  border-color: var(--md-accent-fg-color);
+}
+
+.mm-stat--read strong { color: var(--mm-kind-read); }
+.mm-stat--asks strong { color: var(--mm-kind-asks); }
+.mm-stat--yours strong { color: var(--mm-kind-yours); }
+.mm-stat--disk strong { color: var(--mm-kind-disk); }
+
+.md-typeset .mm-example {
+  margin: 0.6em 0;
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--mm-surface-line);
+  font-style: italic;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset a.mm-chip {
+  display: inline-block;
+  margin: 0.15rem 0.1rem;
+  text-decoration: none;
+}
+
+.md-typeset a.mm-chip code {
+  padding: 0.15em 0.55em;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--mm-kind-read);
+  background: var(--mm-surface);
+  font-size: 0.62rem;
+}
+
+.md-typeset a.mm-chip:hover code {
+  border-color: currentColor;
+}
+
+.md-typeset a.mm-chip--asks code { color: var(--mm-kind-asks); }
+.md-typeset a.mm-chip--yours code { color: var(--mm-kind-yours); }
+.md-typeset a.mm-chip--disk code { color: var(--mm-kind-disk); }
+
+/* The badge after a tool's name in the reference, and in its legend. */
+.md-typeset .mm-badge,
+.md-typeset dt.mm-asks::after,
+.md-typeset dt.mm-yours::after,
+.md-typeset dt.mm-disk::after {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05em 0.6em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+
+.md-typeset dt.mm-asks::after { content: "asks you first"; color: var(--mm-kind-asks); }
+.md-typeset dt.mm-yours::after { content: "yours alone"; color: var(--mm-kind-yours); }
+.md-typeset dt.mm-disk::after { content: "your disk"; color: var(--mm-kind-disk); }
+
+.md-typeset .mm-badge--asks { color: var(--mm-kind-asks); }
+.md-typeset .mm-badge--yours { color: var(--mm-kind-yours); }
+.md-typeset .mm-badge--disk { color: var(--mm-kind-disk); }
+
+/* A linked tool lands below the sticky header, not under it. */
+.md-typeset dt[id] {
+  scroll-margin-top: 4rem;
+}

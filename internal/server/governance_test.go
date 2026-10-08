@@ -420,3 +420,61 @@ func TestEveryListPagesByCursor(t *testing.T) {
 		t.Fatal("no tool answers with a list; the check has stopped matching")
 	}
 }
+
+// toolKind is what a tool does beyond reading, as the tools page marks it:
+// asks the person first, changes only what is theirs, or reaches their disk.
+func toolKind(spec server.Spec) string {
+	switch {
+	case spec.Local:
+		return "disk"
+	case spec.Asks():
+		return "asks"
+	case !spec.ReadOnly():
+		return "yours"
+	}
+	return ""
+}
+
+// TestTheToolsPageLinksAndMarksEveryTool holds the tools page's overview to
+// the tools: each has a chip that links to its entry, the entry has the
+// anchor, both say what kind of tool it is, and the counts add up. A tool
+// added, or one that starts to ask, without its page changing would show a
+// person the wrong thing.
+func TestTheToolsPageLinksAndMarksEveryTool(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "site", "tools.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+	counts := map[string]int{}
+	for _, spec := range server.AllSpecs() {
+		name, kind := spec.Tool.Name, toolKind(spec)
+		counts[kind]++
+		entry, chip := "{ #"+name+" }", "[`"+name+"`](#"+name+"){ .mm-chip }"
+		if kind != "" {
+			entry = "{ #" + name + " .mm-" + kind + " }"
+			chip = "[`" + name + "`](#" + name + "){ .mm-chip .mm-chip--" + kind + " }"
+		}
+		if !regexp.MustCompile("(?m)^`" + regexp.QuoteMeta(name) + "`: .* " + regexp.QuoteMeta(entry) + "$").MatchString(page) {
+			t.Errorf("the entry for %s does not end with %s", name, entry)
+		}
+		if strings.Count(page, chip) != 1 {
+			t.Errorf("the overview does not show %s once as %s", name, chip)
+		}
+	}
+	for _, stat := range []struct {
+		label string
+		count int
+	}{
+		{"tools", len(server.AllSpecs())},
+		{"only read", counts[""]},
+		{"ask you first", counts["asks"]},
+		{"yours alone, not asked", counts["yours"]},
+		{"saves to your disk", counts["disk"]},
+	} {
+		if want := fmt.Sprintf("<strong>%d</strong> %s", stat.count, stat.label); !strings.Contains(page, want) {
+			t.Errorf("the counts at the top do not say %q", want)
+		}
+	}
+}

@@ -27,7 +27,7 @@ setting left empty, counts as unset.
     things in Mattermost. A change others see, such as a post, a reply, an
     edit, a deletion, a reaction or a pin, asks you before it acts, through a
     question your MCP client must be able to show
-    ([Tools](tools.md#what-others-see-asked-every-time)), unless
+    ([Tools](tools.md#how-a-write-is-asked)), unless
     `MM_MCP_ASK_BEFORE_WRITES` leaves the asking to your client. A change
     that is yours alone or gone in seconds does not: following a thread, saving
     a post, setting a reminder, saving a draft, and showing that you are typing
@@ -157,7 +157,7 @@ setting left empty, counts as unset.
     to a team, and how `mm-mcp login` would log you in there, with the browsers
     a login window could use. It reads the terminal's environment, which is not
     your MCP client's: `--url` names the server, and the `diagnose` tool
-    ([Tools](tools.md#when-something-does-not-work)) checks the client's own
+    ([Tools](tools.md#diagnose)) checks the client's own
     configuration from inside it. It changes nothing, and never prints the
     credential; it does print the address and your username. `--json` gives the
     checks to an agent. It exits with status 1 when a check failed.
