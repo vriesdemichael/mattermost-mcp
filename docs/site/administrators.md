@@ -35,7 +35,8 @@ This will not satisfy every security policy, and it is not meant to. It is the
 honest trade: a policy that closes the proper ways in does not keep agents
 out. It moves them to the way nobody can see. Large organisations may take
 years to come to that; the sooner they do, the less of their Mattermost is used
-unseen.
+unseen. mm-mcp holds to this as a rule
+([ADR-034](adr/034-agents-are-let-in-visibly-not-kept-out.md)).
 
 ## Letting mm-mcp in
 
