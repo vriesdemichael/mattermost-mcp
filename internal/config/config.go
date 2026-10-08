@@ -79,6 +79,7 @@ type Stored func(address string) (token string, found bool, err error)
 // Load is FromEnv, with the token stored for MM_URL used when MM_TOKEN is not
 // set (ADR-019). stored may be nil, and then MM_TOKEN is required.
 func Load(lookup func(string) string, stored Stored) (Config, error) {
+	lookup = expanded(lookup)
 	address, err := parseURL(lookup(EnvURL))
 	if err != nil {
 		return Config{}, err
@@ -160,3 +161,15 @@ func parseURL(raw string) (string, error) {
 
 // apiPath is where Mattermost serves its REST API, below its address.
 const apiPath = "/api/v4"
+
+// expanded reads a variable an MCP client left as a placeholder, such as
+// ${user_config.mm_token} for a setting the person left empty, as unset.
+func expanded(lookup func(string) string) func(string) string {
+	return func(name string) string {
+		value := lookup(name)
+		if trimmed := strings.TrimSpace(value); strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
+			return ""
+		}
+		return value
+	}
+}

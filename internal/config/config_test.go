@@ -158,3 +158,13 @@ func TestAStoredLoginIsUsedOnlyWhenNoTokenIsSet(t *testing.T) {
 		t.Fatalf("with the store unreadable: %v", err)
 	}
 }
+
+func TestAPlaceholderTheClientLeftIsReadAsUnset(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Load(testsupport.Env(map[string]string{
+		config.EnvURL: "https://chat.example.com", config.EnvToken: "${user_config.mm_token}", config.EnvAllowWrites: "${user_config.allow_writes}",
+	}), func(string) (string, bool, error) { return "stored", true, nil })
+	if err != nil || cfg.Token != "stored" || !cfg.TokenStored || cfg.AllowWrites {
+		t.Fatalf("got %v, %v", cfg, err)
+	}
+}
