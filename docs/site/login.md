@@ -18,15 +18,65 @@ session, run `mm-mcp login` again; `mm-mcp logout` ends it yourself
 
 Before it opens anything, mm-mcp reads how your server signs people in, which
 any server says to anyone: its login page's settings, and whether it is an OAuth
-authorization server. Then it tries, in this order, what your server allows:
+authorization server. From that it makes a plan, a list of ways to log in, and
+tries them one after the other until one gives it a session Mattermost accepts.
 
-1. **OAuth, in your own browser.** Where your server's OAuth service is on and
-   either lets mm-mcp register itself or has an app registered for it, mm-mcp
-   opens Mattermost's authorization page in your default browser, whichever it
-   is, Safari included, with your everyday profile. You are usually logged in
-   there already, so you only approve mm-mcp. Mattermost sends your browser back
-   to a page mm-mcp serves on `127.0.0.1` with a one-time code, which mm-mcp
-   exchanges for a session. Nothing reads your browser's cookies.
+```mermaid
+flowchart TD
+    start(["mm-mcp login"]) --> discover["Read how the server<br>signs people in"]
+    discover -->|"could not read it"| guess["Warn, and assume<br>single sign-on"]
+    discover --> plan["Plan the ways to try,<br>or take the one<br>--with names"]
+    guess --> plan
+    plan --> next{"A way left<br>to try?"}
+    next --> try["Try the next way"]
+    try -->|a token| check{"Does Mattermost<br>say whose it is?"}
+    check -->|yes| store["Keep it in the<br>credential store"]
+    store --> done(["Logged in as @you"])
+    store -->|"no credential<br>store here"| env(["Put the token<br>in MM_TOKEN instead"])
+    try -. "failed, and says why" .-> next
+    check -. "no" .-> next
+    try -->|"ten minutes passed,<br>or Ctrl+C"| advice
+    next -->|"none left"| advice(["Sum up what failed,<br>and what works instead"])
+```
+
+Every way that fails says why before the next is tried. When none is left,
+mm-mcp sums up each way it tried and why it failed, and what would work for your
+server: Playwright's Chromium, a token, or the change to ask your administrator
+for. The whole login waits at most ten minutes.
+
+```text
+mm-mcp found no way to log in to https://chat.example.com that worked:
+  - browser window: no browser would let mm-mcp watch the login: Chrome opened no DevTools port within 20s; …
+  - pasted token: no token was given
+
+What works from here:
+  - A browser window: install Playwright's Chromium, which no company policy for Chrome or Edge reaches, with
+      npx playwright install chromium
+    and run mm-mcp login again.
+  …
+```
+
+### The order it tries them in
+
+| What your server offers | What mm-mcp tries, in order |
+|---|---|
+| Single sign-on, perhaps beside passwords | a browser window, then your password if the server keeps passwords or uses LDAP, then a pasted token |
+| Passwords or LDAP, without single sign-on | your password, then a browser window, then a pasted token |
+| Neither that mm-mcp can see, or it could not read the server | a browser window, then a pasted token |
+
+OAuth comes before all of these when the server's OAuth service is on and
+mm-mcp has a client to log in as: the server lets it register one itself, you
+gave one with `--client-id`, or an earlier login remembered one. `--with oauth`,
+`--with window`, `--with password` or `--with paste` tries only that way.
+
+### The four ways
+
+1. **OAuth, in your own browser.** mm-mcp opens Mattermost's authorization
+   page in your default browser, whichever it is, Safari included, with your
+   everyday profile. You are usually logged in there already, so you only
+   approve mm-mcp. Mattermost sends your browser back to a page mm-mcp serves on
+   `127.0.0.1` with a one-time code, which mm-mcp exchanges for a session.
+   Nothing reads your browser's cookies ([below](#oauth-step-by-step)).
 2. **A browser window of mm-mcp's own**, for single sign-on: SAML, Entra ID,
    OpenID Connect, GitLab, Google. mm-mcp starts a Chrome, Edge, Chromium or
    Firefox installed on your machine, or the Chromium Playwright downloads, with
@@ -34,21 +84,77 @@ authorization server. Then it tries, in this order, what your server allows:
    You log in as you always do, second factor included; mm-mcp watches the
    window's cookies until Mattermost sets its session cookie, and closes it.
    Because the profile is new, you log in fresh there, even when your everyday
-   browser is logged in.
-3. **Your password, in the terminal**, where your server keeps passwords: an
-   email address or username, the password, and your authenticator's code when
-   your account has a second factor. An account made through single sign-on has
-   no password in Mattermost, and is told so.
+   browser is logged in ([below](#the-browser-window)).
+3. **Your password, in the terminal**, where your server keeps passwords or
+   signs people in with LDAP: an email address or username, the password, and
+   your authenticator's code when your account has a second factor. An account
+   made through single sign-on has no password in Mattermost, and is told so.
 4. **A token you paste**, as the last resort: a personal access token, a bot's
    token, or the value of the `MMAUTHTOKEN` cookie your browser holds for the
    server, from its developer tools while you are logged in (Application or
-   Storage, then Cookies).
+   Storage, then Cookies). The terminal does not show what you type, and a
+   token piped into the command is read as it is.
 
-`--with oauth`, `--with window`, `--with password` or `--with paste` picks one.
-Whatever way you log in, mm-mcp checks the session with Mattermost before it
-keeps it.
+Whatever way you log in, mm-mcp asks Mattermost whose the session is before it
+keeps it, and says so: `Logged in to https://chat.example.com as @you`.
 
-## When the browser window will not open
+## OAuth, step by step
+
+mm-mcp logs in as a program on your machine does under OAuth (RFC 8252), with
+PKCE in place of a client secret, so a code another program catches on the way
+is of no use to it:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as mm-mcp
+    participant B as Your browser
+    participant S as Mattermost
+    opt No client to log in as yet
+        M->>S: Register mm-mcp as a public client,<br>with a callback on 127.0.0.1
+        S-->>M: Its client id, remembered for the next login
+    end
+    Note over M: Listen on 127.0.0.1,<br>make a secret verifier
+    M->>B: Open the authorization page
+    B->>S: You approve mm-mcp, logged in as you already are
+    S-->>B: Back to 127.0.0.1/callback, with a one-time code
+    B->>M: The code
+    M->>S: The code and the verifier
+    S-->>M: A session token
+```
+
+The page on `127.0.0.1` says whether mm-mcp is logged in; you can close the tab
+then. A callback that does not answer the login mm-mcp started is turned away.
+
+## The browser window
+
+mm-mcp drives none of the login page itself: it only starts the browser, opens
+the page, and reads the browser's cookies, a Chromium's through its DevTools
+protocol and a Firefox's through WebDriver BiDi.
+
+```mermaid
+flowchart TD
+    find["Find the browsers"] --> next{"A browser<br>left?"}
+    next --> confined{"A snap or<br>a Flatpak?"}
+    confined -->|no| launch["Start it with a new profile,<br>at the server's login page"]
+    launch --> answer{"Can mm-mcp reach it<br>within twenty seconds?"}
+    answer -->|yes| wait["You log in; mm-mcp reads<br>the cookies twice a second"]
+    answer -->|"a Chromium refused<br>its sandbox"| bare["Start it again without<br>its sandbox, and say so"] --> wait
+    wait -->|"Mattermost set<br>MMAUTHTOKEN"| got(["Close the browser,<br>delete the profile"])
+    wait -->|"you closed<br>the window"| closed(["The next way<br>is tried"])
+    confined -. "yes: skip it" .-> next
+    answer -. "no: a policy forbids it,<br>or it exited" .-> next
+    next -->|"none left"| none(["No browser would let<br>mm-mcp watch the login:<br>the next way is tried"])
+```
+
+The browsers are the one `--browser` names, alone, or else every Chrome, Edge,
+Firefox and Chromium installed, in that order, and then Playwright's Chromium,
+newest first. On Windows and macOS, mm-mcp looks where each browser's installer
+puts it; on Linux, for `google-chrome`, `microsoft-edge`, `firefox` and
+`chromium` on your `PATH`. Playwright's Chromium is in your user folder, or
+under `PLAYWRIGHT_BROWSERS_PATH` when you set it.
+
+### When the window will not open
 
 A browser can refuse to be watched:
 
@@ -76,6 +182,40 @@ Your organisation's single sign-on may also require a managed device or browser,
 as Entra ID's Conditional Access and Okta's device trust can. A fresh profile is
 then refused at the sign-on page itself, Playwright's included; OAuth in your own
 browser, or a pasted token, still works.
+
+## When the login fails
+
+mm-mcp names what failed, before it tries the next way:
+
+| It says | Which means | What to do |
+|---|---|---|
+| `warning: reading how … lets people sign in` | The server's login settings did not answer; mm-mcp assumes single sign-on | Check the address is the one you open Mattermost at |
+| `… opened no DevTools port within 20s`, or `started no remote agent` | A company policy forbids watching that browser | Install Playwright's Chromium ([above](#when-the-window-will-not-open)) |
+| `… is installed as a snap or a Flatpak` | Its sandbox keeps out mm-mcp's profile | Install Playwright's Chromium, or name another browser with `--browser` |
+| `no browser would let mm-mcp watch the login` | Every browser found refused | The same |
+| `the browser was closed before the login finished` | The window closed before Mattermost set its session cookie | Run `mm-mcp login` again, and log in before you close it |
+| `the server lets no OAuth client register itself, and no client id was given` | OAuth is on, but mm-mcp has no client to log in as | Ask your administrator for [one of two changes](#what-to-ask-your-administrator) |
+| `listening for the OAuth callback on port …` | Another program holds the callback's port | Close it, or use `--callback-port` when the app's callback names another |
+| `mm-mcp was not authorized` | You, or the server, refused mm-mcp on the authorization page | Approve it, or try `--with window` |
+| `the account signs in through single sign-on and has no password` | Your account has no password in Mattermost | `mm-mcp login --with window` |
+| `nothing could be read here` | The password or token prompt runs where nobody types, as in an AI agent's shell | Run `mm-mcp login` in a terminal of your own |
+| `the token does not work` | Mattermost refused what the way obtained | The next way is tried; a pasted token may be mistyped or revoked |
+| `… Set the token as MM_TOKEN in the MCP client's env block instead` | Your system has no credential store mm-mcp can use, as on a Linux without a desktop | Put the token in `MM_TOKEN`, from `--with paste` or a personal access token |
+
+## Where the session is kept, and when it ends
+
+mm-mcp keeps one session per server, under the name `mm-mcp`, in the Windows
+Credential Manager, your login keychain on macOS, or your desktop's Secret
+Service on Linux, such as GNOME Keyring or KWallet. It also keeps, under
+`mm-mcp-oauth-client`, the OAuth client it logged in as, which is no secret, so
+the next login uses it again.
+
+`mm-mcp serve` uses the stored session whenever `MM_URL` names that server and
+`MM_TOKEN` is not set; a token in `MM_TOKEN` always goes first. A session ends
+when Mattermost expires it, or when it is revoked, by you under Profile >
+Security or by an administrator. `mm-mcp serve` then stops at start with
+`refused the session mm-mcp login stored`; run `mm-mcp login` again, and restart
+the MCP server. `mm-mcp logout` ends the session at Mattermost and forgets it.
 
 ## When the tools still do not work
 
@@ -124,9 +264,10 @@ means its OAuth service is off; a JSON answer means it is on, and with a
 
 ## With an AI agent
 
-An agent can run `mm-mcp login` for you; you log in in the window or approve in
-your browser. Never paste a token into the conversation: the agent should run
-`mm-mcp login --with paste` and let you type or pipe the token into the command
-itself. The [mm-mcp plugin for Claude Code](https://github.com/vriesdemichael/mm-mcp/tree/main/plugins/mm-mcp)
-has a skill that guides an agent through this, including installing
-Playwright's Chromium when no browser will do.
+An agent can run `mm-mcp login` for you: OAuth and the browser window need
+nothing typed, so you log in in the window or approve in your browser. Your
+password and a pasted token are typed into a terminal, which an agent's shell is
+not; there, mm-mcp says to run it in a terminal you can type in. Never paste a
+token into the conversation: run `mm-mcp login --with paste` yourself and paste
+it at the command's own prompt. When nothing works, mm-mcp ends with what it
+tried and what to do next, which an agent can read to you.
