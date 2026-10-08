@@ -17,6 +17,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/credstore"
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 	"github.com/vriesdemichael/mm-mcp/internal/network"
 	"github.com/vriesdemichael/mm-mcp/internal/server"
@@ -49,23 +50,46 @@ type Deps struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Serve  func(context.Context, *mcp.Server, ServeOptions) error
+	// Credentials keeps the tokens `mm-mcp login` obtains; nil keeps none.
+	Credentials *Credentials
+	// Login opens a browser at the server's login page and answers with the
+	// session token once the person has logged in.
+	Login func(ctx context.Context, browser, address string) (string, error)
 }
 
-// ProcessDeps is the real process: its environment, its streams, and a real listener.
+// Credentials is where `mm-mcp login` keeps a token per server.
+type Credentials struct {
+	Load   config.Stored
+	Store  func(address, token string) error
+	Delete func(address string) error
+	// Where names the store, for a person to find it.
+	Where string
+}
+
+// ProcessDeps is the real process: its environment, its streams, a real
+// listener, the system's credential store and its browser.
 func ProcessDeps() Deps {
-	return Deps{Getenv: os.Getenv, Stdout: os.Stdout, Stderr: os.Stderr, Serve: Serve}
+	return Deps{
+		Getenv: os.Getenv, Stdout: os.Stdout, Stderr: os.Stderr, Serve: Serve,
+		Credentials: &Credentials{Load: credstore.Load, Store: credstore.Store, Delete: credstore.Delete, Where: credstore.Where()},
+		Login:       browserLogin,
+	}
 }
 
 const usage = `mm-mcp is an MCP server for Mattermost.
 
 Usage:
   mm-mcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8765]
+  mm-mcp login [--url https://chat.example.com] [--browser path]
+  mm-mcp logout [--url https://chat.example.com]
   mm-mcp version
   mm-mcp help
 
-Credentials come from the environment, never from a flag: set MM_URL and
-MM_TOKEN in the MCP client's env block. MM_MCP_ALLOW_WRITES=true offers the
-tools that change Mattermost. A change others see asks before it acts;
+Credentials never come from a flag: set MM_URL and MM_TOKEN in the MCP
+client's env block, or set only MM_URL after logging in once with
+mm-mcp login, which opens your browser at Mattermost's login page and keeps
+the session in the system's credential store. MM_MCP_ALLOW_WRITES=true offers
+the tools that change Mattermost. A change others see asks before it acts;
 following a thread, saving a post, a draft and the typing indicator do not.
 `
 
@@ -84,6 +108,10 @@ func Run(ctx context.Context, args []string, deps Deps) int {
 		return ExitOK
 	case "serve":
 		return serve(ctx, args[1:], deps)
+	case "login":
+		return logIn(ctx, args[1:], deps)
+	case "logout":
+		return logOut(ctx, args[1:], deps)
 	default:
 		fmt.Fprintf(deps.Stderr, "mm-mcp: unknown command %q\n\n%s", args[0], usage)
 		return ExitConfig
@@ -114,7 +142,11 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 		return ExitConfig
 	}
 
-	cfg, err := config.FromEnv(deps.Getenv)
+	var stored config.Stored
+	if deps.Credentials != nil {
+		stored = deps.Credentials.Load
+	}
+	cfg, err := config.Load(deps.Getenv, stored)
 	if err != nil {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
 		return ExitConfig
@@ -167,6 +199,9 @@ func preflight(ctx context.Context, client *mattermost.Client, cfg config.Config
 	var redirect *network.RedirectError
 	switch {
 	case err == nil:
+	case errors.As(err, &answered) && answered.Status == http.StatusUnauthorized && cfg.TokenStored:
+		fmt.Fprintf(stderr, "mm-mcp: %s refused the session `mm-mcp login` stored: it expired or was logged out. Run `mm-mcp login --url %s` again, and restart.\n", cfg.URL, cfg.URL)
+		return ExitConfig, false
 	case errors.As(err, &answered) && answered.Status == http.StatusUnauthorized:
 		fmt.Fprintf(stderr, "mm-mcp: %s refused the token in %s: it is wrong, was revoked, or is a session that expired. Get a new one, with `mm-mcp login` or as a personal access token, and restart.\n", cfg.URL, config.EnvToken)
 		return ExitConfig, false

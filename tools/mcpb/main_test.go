@@ -109,7 +109,7 @@ func TestEveryRegistryPackageDeclaresTheVariablesTheBundleAsksFor(t *testing.T) 
 	}
 	want := map[string]map[string]any{
 		"MM_URL":                   {"isRequired": true, "isSecret": false, "format": "string"},
-		"MM_TOKEN":                 {"isRequired": true, "isSecret": true, "format": "string"},
+		"MM_TOKEN":                 {"isRequired": false, "isSecret": true, "format": "string"},
 		"MM_MCP_ALLOW_WRITES":      {"isRequired": false, "isSecret": false, "format": "boolean", "default": "false"},
 		"MM_MCP_MARK_AI_GENERATED": {"isRequired": false, "isSecret": false, "format": "boolean", "default": "true"},
 		"MM_MCP_DOWNLOAD_DIR":      {"isRequired": false, "isSecret": false, "format": "filepath"},

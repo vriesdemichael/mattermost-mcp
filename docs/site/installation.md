@@ -11,8 +11,20 @@ mm-mcp needs the address of your Mattermost server and one of:
   Personal Access Tokens**. If the section is missing, your administrator has
   not enabled them for you.
 - **A bot token**, if your administrator gives you a bot account.
-- **A session token**, from logging in yourself. A login command that does this
-  through your browser, single sign-on included, is planned.
+- **Your own login**, for when personal access tokens are switched off:
+
+    ```bash
+    mm-mcp login --url https://chat.example.com
+    ```
+
+    opens Mattermost's login page in a Chrome or Edge window of its own. Log in
+    as you always do, single sign-on and second factor included; the window
+    closes once you have, and the session is kept in your system's credential
+    store: the Windows Credential Manager, your macOS keychain, or your Linux
+    desktop's Secret Service. Then set only `MM_URL` for the server, without
+    `MM_TOKEN`. When Mattermost ends the session, run `mm-mcp login` again;
+    `mm-mcp logout` ends it yourself. Install mm-mcp with a package manager
+    for this, also when Claude Desktop runs its bundle.
 
 See [Configuration](configuration.md) for every setting.
 

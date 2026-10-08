@@ -42,9 +42,9 @@
     "mattermost_token": {
       "type": "string",
       "title": "Token",
-      "description": "A personal access token, a bot token, or a session token.",
+      "description": "A personal access token or a bot token. Where those are switched off, leave it empty after logging in once with mm-mcp login --url <address> in a terminal, which keeps your session in the system's credential store.",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "allow_writes": {
       "type": "boolean",
