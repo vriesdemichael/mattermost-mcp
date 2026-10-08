@@ -71,3 +71,29 @@ func Where() string {
 		return "your desktop's Secret Service, such as GNOME Keyring or KWallet, as " + service
 	}
 }
+
+// clientService is the name the OAuth client a login used is stored under,
+// to log in as again: its id and callback, which are not secrets.
+const clientService = "mm-mcp-oauth-client"
+
+// StoreClient keeps the OAuth client mm-mcp logged in to the server at
+// address as, encoded by the caller.
+func StoreClient(address, client string) error {
+	if err := keyring.Set(clientService, key(address), client); err != nil {
+		return fmt.Errorf("storing the OAuth client in the system's credential store: %w", err)
+	}
+	return nil
+}
+
+// LoadClient is the OAuth client stored for the server at address, and
+// whether there is one.
+func LoadClient(address string) (string, bool, error) {
+	client, err := keyring.Get(clientService, key(address))
+	switch {
+	case errors.Is(err, keyring.ErrNotFound):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("reading the system's credential store: %w", err)
+	}
+	return client, true, nil
+}

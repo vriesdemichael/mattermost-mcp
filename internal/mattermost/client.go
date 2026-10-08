@@ -162,3 +162,43 @@ func translate(response *model.Response, err error) error {
 // ErrNotMattermost is an answer with a success status that is not what
 // Mattermost's API sends: the address is not Mattermost's.
 var ErrNotMattermost = errors.New("the address answered, but not as Mattermost's API does; check MM_URL")
+
+// Password login refusals that say what the person should do instead.
+var (
+	// ErrMFARequired is a login that needs the code of the account's second factor.
+	ErrMFARequired = errors.New("the account asks for the code of its second factor")
+	// ErrUseSSO is a login of an account made through single sign-on, which
+	// has no password in Mattermost.
+	ErrUseSSO = errors.New("the account signs in through single sign-on and has no password in Mattermost")
+)
+
+// PasswordLogin logs in with a login id, an email address or a username, and
+// a password, as Mattermost's login page does, with the code of the account's
+// second factor when it has one, and answers with the session token.
+// Login, LoginWithMFA.
+func PasswordLogin(ctx context.Context, address string, transport http.RoundTripper, loginID, password, mfaCode string) (string, error) {
+	api := client4(address, "", transport, RequestTimeout)
+	var response *model.Response
+	var err error
+	if mfaCode == "" {
+		_, response, err = api.Login(ctx, loginID, password)
+	} else {
+		_, response, err = api.LoginWithMFA(ctx, loginID, password, mfaCode)
+	}
+	if err != nil {
+		var appErr *model.AppError
+		if errors.As(err, &appErr) {
+			switch appErr.Id {
+			case "api.user.check_user_mfa.bad_code.app_error":
+				return "", ErrMFARequired
+			case "api.user.login.use_auth_service.app_error":
+				return "", fmt.Errorf("%w: %s", ErrUseSSO, appErr.Message)
+			}
+			// Not Error's own text, which reads a 401 as a token mm-mcp
+			// was started with.
+			return "", fmt.Errorf("the login was refused: %s", appErr.Message)
+		}
+		return "", translate(response, err)
+	}
+	return api.AuthToken, nil
+}

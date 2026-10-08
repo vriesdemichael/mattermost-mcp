@@ -154,8 +154,8 @@ func ReadState(path string) (string, error) {
 	return "", fmt.Errorf("%s records no %s", path, StateURLKey)
 }
 
-// Bootstrap waits for the instance at address to answer and creates its
-// administrator, unless it exists. On an instance already bootstrapped it only
+// Bootstrap waits for the instance at address to answer, creates its
+// administrator unless it exists, and sets its site URL to address. On an instance already bootstrapped it only
 // logs in, which Mattermost records as an update to the administrator. Each live test seeds and removes its own users, bots and
 // channels (ADR-008); this creates only what no test owns.
 func Bootstrap(ctx context.Context, address string) error {
@@ -164,19 +164,36 @@ func Bootstrap(ctx context.Context, address string) error {
 	if err := waitUntilReady(ctx, client, ReadyTimeout); err != nil {
 		return err
 	}
-	if _, _, err := client.Login(ctx, AdminUsername, AdminPassword); err == nil {
+	if _, _, err := client.Login(ctx, AdminUsername, AdminPassword); err != nil {
+		// The first user an instance creates becomes its system administrator.
+		if _, _, err := client.CreateUser(ctx, &model.User{Username: AdminUsername, Password: AdminPassword, Email: AdminEmail}); err != nil {
+			return fmt.Errorf("could not log in as %s or create it (%w); `task stack:reset` starts over", AdminUsername, err)
+		}
+		admin, _, err := client.Login(ctx, AdminUsername, AdminPassword)
+		if err != nil {
+			return fmt.Errorf("created %s but could not log in as it: %w", AdminUsername, err)
+		}
+		if !slices.Contains(strings.Fields(admin.Roles), model.SystemAdminRoleId) {
+			return fmt.Errorf("%s was created but is not a system administrator (%q): the instance already had users; `task stack:reset` starts over", AdminUsername, admin.Roles)
+		}
+	}
+	return siteURL(ctx, client, address)
+}
+
+// siteURL sets the instance's site URL to the address it is reached at.
+// Mattermost's OAuth service answers its metadata only with one set, and a
+// linked worktree's instance is on a port Docker chose, which changes each time
+// it starts, so it cannot be in docker/mattermost.env (ADR-007).
+func siteURL(ctx context.Context, client *model.Client4, address string) error {
+	config, _, err := client.GetConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("reading the instance's configuration: %w", err)
+	}
+	if config.ServiceSettings.SiteURL != nil && *config.ServiceSettings.SiteURL == address {
 		return nil
 	}
-	// The first user an instance creates becomes its system administrator.
-	if _, _, err := client.CreateUser(ctx, &model.User{Username: AdminUsername, Password: AdminPassword, Email: AdminEmail}); err != nil {
-		return fmt.Errorf("could not log in as %s or create it (%w); `task stack:reset` starts over", AdminUsername, err)
-	}
-	admin, _, err := client.Login(ctx, AdminUsername, AdminPassword)
-	if err != nil {
-		return fmt.Errorf("created %s but could not log in as it: %w", AdminUsername, err)
-	}
-	if !slices.Contains(strings.Fields(admin.Roles), model.SystemAdminRoleId) {
-		return fmt.Errorf("%s was created but is not a system administrator (%q): the instance already had users; `task stack:reset` starts over", AdminUsername, admin.Roles)
+	if _, _, err := client.PatchConfig(ctx, &model.Config{ServiceSettings: model.ServiceSettings{SiteURL: &address}}); err != nil {
+		return fmt.Errorf("setting the instance's site URL to %s: %w", address, err)
 	}
 	return nil
 }
