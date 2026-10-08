@@ -573,7 +573,7 @@ func listSavedSpec() Spec {
 				if err != nil {
 					return nil, SearchResults{}, err
 				}
-				return nil, SearchResults{Posts: posts, pageInfo: pageInfo{NextCursor: next}}, nil
+				return nil, SearchResults{Posts: clip(posts), pageInfo: pageInfo{NextCursor: next}}, nil
 			}
 		},
 	), pagingShapes)

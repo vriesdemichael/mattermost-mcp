@@ -371,3 +371,25 @@ func TestSearchUsersFindsUsersByPartOfTheirNameWithinATeam(t *testing.T) {
 		t.Errorf("searching a team they are not in found them: %v", got)
 	}
 }
+
+func TestAListCutsALongMessageShortAndReadPostReadsItWhole(t *testing.T) {
+	t.Parallel()
+	admin := admin(t)
+	user := seedUser(t, admin)
+	team := seedTeam(t, admin, user)
+	channel := seedChannel(t, admin, team, user)
+	long := strings.Repeat("a long report line. ", 300)
+	post := postAs(t, clientAs(t, user), channel.Id, "", long)
+	session := sessionFor(t, admin, user)
+
+	listed := readChannel(t, session, map[string]any{"channel_id": channel.Id})
+	last := listed.Posts[len(listed.Posts)-1]
+	if last.ID != post.Id || last.MessageLength != len(long) || len([]rune(last.Message)) > 4001 || !strings.HasSuffix(last.Message, "…") {
+		t.Fatalf("the list shows %d of %d characters, length %d", len([]rune(last.Message)), len(long), last.MessageLength)
+	}
+	var whole server.PostWithThread
+	structured(t, callTool(t, session, &mcp.CallToolParams{Name: "read_post", Arguments: map[string]any{"post_id": post.Id, "include_thread": false}}), &whole)
+	if whole.Post.Message != long || whole.Post.MessageLength != 0 {
+		t.Fatalf("read_post read %d characters", len(whole.Post.Message))
+	}
+}

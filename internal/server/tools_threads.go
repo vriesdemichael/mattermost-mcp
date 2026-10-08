@@ -196,7 +196,7 @@ func toThreadSummary(thread *model.ThreadResponse, started Post) ThreadSummary {
 	started.ReplyCount, started.LastReplyAt = thread.ReplyCount, timestamp(thread.LastReplyAt)
 	return ThreadSummary{
 		RootID:         thread.PostId,
-		Started:        started,
+		Started:        clip([]Post{started})[0],
 		ReplyCount:     thread.ReplyCount,
 		LastReplyAt:    timestamp(thread.LastReplyAt),
 		Participants:   participants,

@@ -19,7 +19,8 @@ Mattermost, its author's username and name, its channel and team by name, its
 files with their ids, reactions with who reacted, whether it is pinned or
 marked as written with AI, its thread, and when it was edited. An answer whose
 posts are all in one channel names the channel and team once, rather than on
-every post. Times are in UTC. A tool that takes a name, of a channel, a team or a person,
+every post. A list cuts a message longer than 4,000 characters short and says
+its whole length; `read_post` reads it whole. Times are in UTC. A tool that takes a name, of a channel, a team or a person,
 matches it in any case, whole or in part; an ambiguous name is refused with every
 candidate, and an unknown one with the closest names
 ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
@@ -254,7 +255,8 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
 
 `typing`: Show typing
 :   Shows you typing in a channel or thread while a message is written, kept up
-    until `create_post` posts there, `stop` is sent, or a minute passes.
+    until `create_post` posts there, `stop` is sent, or a minute passes. It
+    is optional, for a long message that takes a while to write.
 
 `follow_thread`: Follow thread
 :   Follows a thread, so its replies notify you and it appears in
