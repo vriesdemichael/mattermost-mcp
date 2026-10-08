@@ -120,8 +120,7 @@ func TestReadUnreadPagesForwardThroughWhatWasNotRead(t *testing.T) {
 	user, other := seedUser(t, admin), seedUser(t, admin)
 	team := seedTeam(t, admin, user, other)
 	channel := seedChannel(t, admin, team, user, other)
-	_, _, err := clientAs(t, user).ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: channel.Id})
-	check(t, err)
+	viewed(t, clientAs(t, user), user, channel.Id)
 	time.Sleep(5 * time.Millisecond)
 	var unread []string
 	author := clientAs(t, other)
@@ -246,8 +245,7 @@ func TestAPageEndingInsideAMillisecondLosesNoPost(t *testing.T) {
 	user := seedUser(t, admin)
 	team := seedTeam(t, admin, user)
 	read, unread := seedChannel(t, admin, team, user), seedChannel(t, admin, team, user)
-	_, _, err := clientAs(t, user).ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: unread.Id})
-	check(t, err)
+	viewed(t, clientAs(t, user), user, unread.Id)
 	base := model.GetMillis() + 1000
 	seed := func(channelID string) []string {
 		var ids []string

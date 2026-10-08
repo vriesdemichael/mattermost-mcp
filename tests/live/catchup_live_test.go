@@ -24,8 +24,7 @@ func TestReadUnreadStartsWhereThePersonStoppedReadingAndMarksNothing(t *testing.
 	author, reader := clientAs(t, other), clientAs(t, user)
 	postAs(t, author, channel.Id, "", "old one")
 	postAs(t, author, channel.Id, "", "old two")
-	_, _, err := reader.ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: channel.Id})
-	check(t, err)
+	viewed(t, reader, user, channel.Id)
 	// Mattermost records a read to the millisecond; the next post must come
 	// after it.
 	time.Sleep(5 * time.Millisecond)

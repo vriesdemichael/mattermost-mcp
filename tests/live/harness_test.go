@@ -366,3 +366,22 @@ func postAt(t *testing.T, admin *model.Client4, channelID, rootID, message strin
 	}
 	return post
 }
+
+// viewed marks a channel read for user, as opening it in Mattermost does, and
+// waits until Mattermost records it: it may apply a view after answering the
+// request, so a post written at once could otherwise come before it, and a
+// channel read at once could still read as never opened.
+func viewed(t *testing.T, client *model.Client4, user *model.User, channelID string) {
+	t.Helper()
+	before, _, err := client.GetChannelMember(t.Context(), channelID, user.Id, "")
+	check(t, err)
+	_, _, err = client.ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: channelID})
+	check(t, err)
+	eventually(t, 10*time.Second, func() (bool, string) {
+		member, _, err := client.GetChannelMember(t.Context(), channelID, user.Id, "")
+		if err != nil {
+			return false, err.Error()
+		}
+		return member.LastViewedAt > before.LastViewedAt, fmt.Sprintf("last viewed at %d, %d before", member.LastViewedAt, before.LastViewedAt)
+	})
+}
