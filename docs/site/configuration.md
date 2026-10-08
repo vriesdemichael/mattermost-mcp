@@ -111,8 +111,10 @@ setting left empty, counts as unset.
 `MM_MCP_CA_FILE`
 :   Optional. A PEM file of certificate authorities to trust beside your
     system's own, for a Mattermost whose certificate your organisation signed
-    itself. A file that cannot be read, or holds no certificate, stops the
-    server at start and says so.
+    itself. `mm-mcp serve`, `login`, `logout` and `doctor` all trust it; set it
+    in your terminal for `mm-mcp login` as in your MCP client for the server. A
+    file that cannot be read, or holds no certificate, stops `serve`, `login`
+    and `logout` at start and says so, and `doctor` reports it.
 
 `MM_MCP_BLOCK_EXTERNAL_NETWORK`
 :   For mm-mcp's own tests. While it is `1`, mm-mcp refuses to reach any address

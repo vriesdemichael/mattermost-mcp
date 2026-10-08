@@ -128,6 +128,23 @@ func TestAPromptWithNothingToReadSaysWhereToRunTheLogin(t *testing.T) {
 	}
 }
 
+func TestLoginAndLogoutStopOnACertificateFileTheyCannotUse(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "no-such-authority.pem")
+	env := map[string]string{config.EnvURL: "https://chat.example.com", config.EnvCAFile: missing}
+	who := &person{}
+	store := memoryStore{"https://chat.example.com": "a-token"}
+	for _, command := range []string{"login", "logout"} {
+		got := runWith(t, env, store, who, command)
+		if got.code != cli.ExitConfig || !strings.Contains(got.stderr, config.EnvCAFile) {
+			t.Errorf("%s: %+v", command, got)
+		}
+	}
+	if len(who.tried) != 0 || store["https://chat.example.com"] != "a-token" {
+		t.Errorf("tried %v, stored %v", who.tried, store)
+	}
+}
+
 func TestLoginStoresNothingMattermostDidNotAccept(t *testing.T) {
 	t.Parallel()
 	store := memoryStore{}
