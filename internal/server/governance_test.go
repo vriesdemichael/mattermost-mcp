@@ -214,6 +214,37 @@ func TestEveryToolIsCalledByALiveTest(t *testing.T) {
 
 var documentedTool = regexp.MustCompile("(?m)^`([a-z_]+)`: ")
 
+var askRule = regexp.MustCompile(`"mcp__mattermost__([a-z_]+)"`)
+
+// TestTheConfigurationPageAsksForEveryToolThatWouldAsk holds the Claude Code
+// ask rules the configuration page gives, for a server that leaves the asking
+// to the client, to the tools that ask (ADR-033): one left out would post with
+// nobody asked.
+func TestTheConfigurationPageAsksForEveryToolThatWouldAsk(t *testing.T) {
+	t.Parallel()
+	page, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "site", "configuration.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed, asking []string
+	for _, match := range askRule.FindAllStringSubmatch(string(page), -1) {
+		listed = append(listed, match[1])
+	}
+	if len(listed) == 0 {
+		t.Fatal("found no ask rule on the configuration page; the scan has stopped matching")
+	}
+	for _, spec := range server.AllSpecs() {
+		if spec.Asks() {
+			asking = append(asking, spec.Tool.Name)
+		}
+	}
+	slices.Sort(listed)
+	slices.Sort(asking)
+	if !slices.Equal(listed, asking) {
+		t.Fatalf("the configuration page asks for %s; the tools that ask are %s", strings.Join(listed, ", "), strings.Join(asking, ", "))
+	}
+}
+
 func TestTheToolsPageDocumentsEveryToolAndOnlyThose(t *testing.T) {
 	t.Parallel()
 	page, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "site", "tools.md"))
