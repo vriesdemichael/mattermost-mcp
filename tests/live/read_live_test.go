@@ -141,8 +141,7 @@ func TestGetUserChannelsFiltersByTeamAndByWhatIsUnread(t *testing.T) {
 	away := seedChannel(t, admin, elsewhere, user)
 	postAs(t, clientAs(t, other), busy.Id, "", "news")
 	reader := clientAs(t, user)
-	_, _, err := reader.ViewChannel(t.Context(), user.Id, &model.ChannelView{ChannelId: quiet.Id})
-	check(t, err)
+	viewed(t, reader, user, quiet.Id)
 	session := sessionFor(t, admin, user)
 
 	inTeam := getUserChannels(t, session, map[string]any{"team_id": team.Id})
