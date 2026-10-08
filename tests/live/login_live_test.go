@@ -150,18 +150,21 @@ type loginRun struct {
 	t           *testing.T
 	stored      map[string]string
 	clients     map[string]string
+	origins     map[string]string
 	login       *cli.Login
 	credentials *cli.Credentials
 }
 
 func newLoginRun(t *testing.T, who *cli.Login) *loginRun {
-	r := &loginRun{t: t, stored: map[string]string{}, clients: map[string]string{}, login: who}
+	r := &loginRun{t: t, stored: map[string]string{}, clients: map[string]string{}, origins: map[string]string{}, login: who}
 	r.credentials = &cli.Credentials{
 		Load:        func(address string) (string, bool, error) { token, ok := r.stored[address]; return token, ok, nil },
 		Store:       func(address, token string) error { r.stored[address] = token; return nil },
 		Delete:      func(address string) error { delete(r.stored, address); return nil },
 		LoadClient:  func(address string) (string, bool, error) { c, ok := r.clients[address]; return c, ok, nil },
 		StoreClient: func(address, client string) error { r.clients[address] = client; return nil },
+		StoreOrigin: func(address, origin string) error { r.origins[address] = origin; return nil },
+		LoadOrigin:  func(address string) (string, error) { return r.origins[address], nil },
 		Where:       "the test's memory",
 	}
 	return r
@@ -272,6 +275,20 @@ func TestLoginWithAPasswordOrAPastedToken(t *testing.T) {
 	pasted := newLoginRun(t, &cli.Login{Secret: func(string) (string, error) { return " " + pat + "\n", nil }, Line: noTerminal})
 	if code, stdout, stderr := pasted.run("login", "--with", "paste"); code != cli.ExitOK || pasted.stored[liveURL] != pat {
 		t.Fatalf("paste: exit %d\n%s%s", code, stdout, stderr)
+	}
+
+	// A token the person pasted is theirs to end: logging out only forgets it,
+	// as ending a cookie copied from their browser would log the browser out.
+	browser := clientAs(t, user).AuthToken
+	cookie := newLoginRun(t, &cli.Login{Secret: func(string) (string, error) { return browser, nil }, Line: noTerminal})
+	if code, stdout, stderr := cookie.run("login", "--with", "paste"); code != cli.ExitOK {
+		t.Fatalf("paste a session: exit %d\n%s%s", code, stdout, stderr)
+	}
+	if code, stdout, stderr := cookie.run("logout"); code != cli.ExitOK || len(cookie.stored) != 0 || !strings.Contains(stdout, "still works") {
+		t.Fatalf("logout of a pasted session: exit %d, stored %v\n%s%s", code, cookie.stored, stdout, stderr)
+	}
+	if _, _, err := mattermost.New(liveURL, browser, network.NewSafeTransport()).Check(t.Context()); err != nil {
+		t.Fatalf("logging out of mm-mcp ended the browser's own session: %v", err)
 	}
 }
 

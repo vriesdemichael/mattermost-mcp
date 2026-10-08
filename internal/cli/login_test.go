@@ -128,6 +128,25 @@ func TestAPromptWithNothingToReadSaysWhereToRunTheLogin(t *testing.T) {
 	}
 }
 
+func TestLogoutOnlyForgetsATokenThePersonPasted(t *testing.T) {
+	t.Parallel()
+	address := "https://chat.example.com"
+	origins := map[string]string{address: cli.WithPaste}
+	store := memoryStore{address: "a-pasted-token"}
+	credentials := store.credentials()
+	credentials.LoadOrigin = func(address string) (string, error) { return origins[address], nil }
+	credentials.StoreOrigin = func(address, origin string) error { origins[address] = origin; return nil }
+	var stdout, stderr bytes.Buffer
+	// Mattermost cannot be reached here: a logout that tried to end the
+	// session there would warn that it did not.
+	code := cli.Run(t.Context(), []string{"logout", "--url", address}, cli.Deps{
+		Getenv: testsupport.Env(nil), Stdout: &stdout, Stderr: &stderr, Credentials: credentials,
+	})
+	if code != cli.ExitOK || len(store) != 0 || origins[address] != "" || stderr.Len() != 0 || !strings.Contains(stdout.String(), "still works") {
+		t.Errorf("exit %d, stored %v, origins %v\n%s%s", code, store, origins, stdout.String(), stderr.String())
+	}
+}
+
 func TestLoginAndLogoutStopOnACertificateFileTheyCannotUse(t *testing.T) {
 	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "no-such-authority.pem")

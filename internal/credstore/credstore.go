@@ -103,3 +103,37 @@ func LoadClient(address string) (string, bool, error) {
 	}
 	return client, true, nil
 }
+
+// originService is the name how a stored token was obtained is stored under:
+// the way `mm-mcp login` logged in, so `mm-mcp logout` ends at Mattermost only
+// a session mm-mcp made, never a token the person pasted, which may be their
+// browser's own session.
+const originService = "mm-mcp-origin"
+
+// StoreOrigin keeps how the token for the server at address was obtained, or
+// forgets it when origin is empty.
+func StoreOrigin(address, origin string) error {
+	if origin == "" {
+		if err := keyring.Delete(originService, key(address)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			return fmt.Errorf("removing from the system's credential store: %w", err)
+		}
+		return nil
+	}
+	if err := keyring.Set(originService, key(address), origin); err != nil {
+		return fmt.Errorf("storing in the system's credential store: %w", err)
+	}
+	return nil
+}
+
+// LoadOrigin is how the token for the server at address was obtained, or empty
+// when that is not known, as for a token stored before it was kept.
+func LoadOrigin(address string) (string, error) {
+	origin, err := keyring.Get(originService, key(address))
+	switch {
+	case errors.Is(err, keyring.ErrNotFound):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("reading the system's credential store: %w", err)
+	}
+	return origin, nil
+}

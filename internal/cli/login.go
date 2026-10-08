@@ -197,6 +197,11 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 				_ = deps.Credentials.StoreClient(address, string(encoded))
 			}
 		}
+		if deps.Credentials.StoreOrigin != nil {
+			if err := deps.Credentials.StoreOrigin(address, route); err != nil {
+				fmt.Fprintf(deps.Stderr, "mm-mcp: warning: how this login was made could not be kept, so mm-mcp logout will end it at Mattermost: %v\n", err)
+			}
+		}
 		fmt.Fprintf(deps.Stdout, "Logged in to %s as @%s. The session is kept in %s.\n"+
 			"mm-mcp serve uses it whenever MM_URL is %s and MM_TOKEN is not set. When Mattermost ends the session, run mm-mcp login again.\n",
 			address, user.Username, deps.Credentials.Where, address)
@@ -421,19 +426,34 @@ func logOut(ctx context.Context, args []string, deps Deps) int {
 		fmt.Fprintf(deps.Stdout, "No login is stored for %s.\n", address)
 		return ExitOK
 	}
-	transport, err := loginTransport(deps)
-	if err != nil {
-		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
-		return ExitConfig
+	origin := ""
+	if deps.Credentials.LoadOrigin != nil {
+		origin, _ = deps.Credentials.LoadOrigin(address)
 	}
-	// Ending the session at Mattermost is best done, not required: one that
-	// expired already is gone there too.
-	if err := mattermost.New(address, token, transport).Logout(ctx); err != nil {
-		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: Mattermost did not end the session: %v\n", err)
+	// A token the person pasted is theirs: a personal access token, a bot's, or
+	// their browser's own session, which ending it would log them out of.
+	if origin != WithPaste {
+		transport, err := loginTransport(deps)
+		if err != nil {
+			fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
+			return ExitConfig
+		}
+		// Ending the session at Mattermost is best done, not required: one
+		// that expired already is gone there too.
+		if err := mattermost.New(address, token, transport).Logout(ctx); err != nil {
+			fmt.Fprintf(deps.Stderr, "mm-mcp: warning: Mattermost did not end the session: %v\n", err)
+		}
 	}
 	if err := deps.Credentials.Delete(address); err != nil {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
 		return ExitFailure
+	}
+	if deps.Credentials.StoreOrigin != nil {
+		_ = deps.Credentials.StoreOrigin(address, "")
+	}
+	if origin == WithPaste {
+		fmt.Fprintf(deps.Stdout, "Forgot the token you pasted for %s. It still works at Mattermost: revoke a personal access token under Profile > Security, or log out of the browser a cookie came from.\n", address)
+		return ExitOK
 	}
 	fmt.Fprintf(deps.Stdout, "Logged out of %s, and the session is forgotten.\n", address)
 	return ExitOK
