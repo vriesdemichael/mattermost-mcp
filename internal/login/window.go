@@ -64,6 +64,17 @@ type Window interface {
 type Options struct {
 	// Headless starts it without a window, for a test that logs in itself.
 	Headless bool
+	// StartTimeout is how long a browser may take to open its remote port
+	// before it counts as blocked; 20 seconds when not given. A test on a
+	// loaded machine gives more.
+	StartTimeout time.Duration
+}
+
+func (o Options) patience() time.Duration {
+	if o.StartTimeout > 0 {
+		return o.StartTimeout
+	}
+	return startTimeout
 }
 
 // Start starts browser with a profile of its own, open at address.

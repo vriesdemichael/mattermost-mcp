@@ -110,7 +110,7 @@ func TestEveryBrowserIsDrivenAsALoginDrivesIt(t *testing.T) {
 		t.Run(browser.Name+" "+browser.Path, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 			defer cancel()
-			window, err := Start(ctx, browser, server.URL+"/", Options{Headless: true})
+			window, err := Start(ctx, browser, server.URL+"/", Options{Headless: true, StartTimeout: time.Minute})
 			if err != nil {
 				t.Fatalf("starting it: %v", err)
 			}

@@ -74,7 +74,7 @@ func loginScript(username string) string {
 // windowLogsIn is mm-mcp's own Login.Window, its browsers headless, logging
 // in as username from the login page, as the person would in the window.
 func windowLogsIn(username string) func(context.Context, string, string, string, io.Writer) (string, error) {
-	return cli.WindowLogin(login.Options{Headless: true}, func(ctx context.Context, window login.Window) error {
+	return cli.WindowLogin(patient, func(ctx context.Context, window login.Window) error {
 		return retry(ctx, window, loginScript(username))
 	})
 }
@@ -90,7 +90,7 @@ type approver struct {
 func loggedInBrowser(t *testing.T, username string) *approver {
 	t.Helper()
 	// Not t.Context(), which ends before the cleanup closes the browser.
-	window, err := login.Start(context.Background(), browsers(t)[0], liveURL+"/login", login.Options{Headless: true})
+	window, err := login.Start(context.Background(), browsers(t)[0], liveURL+"/login", patient)
 	check(t, err)
 	t.Cleanup(window.Close)
 	check(t, retry(t.Context(), window, loginScript(username)))
@@ -189,6 +189,7 @@ func noTerminal(string) (string, error) { return "", errors.New("the test types 
 
 func TestLoginThroughOAuthRegistersOnceAndAsksInThePersonsBrowser(t *testing.T) {
 	t.Parallel()
+	takeBrowserTurn(t)
 	user := seedUser(t, admin(t))
 	browser := loggedInBrowser(t, user.Username)
 	r := newLoginRun(t, &cli.Login{Open: browser.open, Window: nil, Line: noTerminal, Secret: noTerminal})
@@ -213,6 +214,7 @@ func TestLoginThroughOAuthRegistersOnceAndAsksInThePersonsBrowser(t *testing.T) 
 
 func TestLoginThroughOAuthAsTheAppAnAdministratorRegistered(t *testing.T) {
 	t.Parallel()
+	takeBrowserTurn(t)
 	admin := admin(t)
 	user := seedUser(t, admin)
 	// A free port, which the app's callback names and the login listens on.
@@ -234,6 +236,7 @@ func TestLoginThroughOAuthAsTheAppAnAdministratorRegistered(t *testing.T) {
 
 func TestLoginThroughAWindowWithEveryBrowserOnThisMachine(t *testing.T) {
 	t.Parallel()
+	takeBrowserTurn(t)
 	user := seedUser(t, admin(t))
 	for _, browser := range browsers(t) {
 		r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username), Line: noTerminal, Secret: noTerminal})
@@ -274,6 +277,7 @@ func TestLoginWithAPasswordOrAPastedToken(t *testing.T) {
 
 func TestServeUsesTheStoredLoginAndLogoutEndsIt(t *testing.T) {
 	t.Parallel()
+	takeBrowserTurn(t)
 	user := seedUser(t, admin(t))
 	r := newLoginRun(t, &cli.Login{Window: windowLogsIn(user.Username), Line: noTerminal, Secret: noTerminal})
 	if code, stdout, stderr := r.run("login", "--with", "window"); code != cli.ExitOK {
@@ -320,4 +324,18 @@ func publicApp(t *testing.T, admin *model.Client4, callback string) *model.OAuth
 		t.Fatalf("registering a public app: %s, %+v", response.Status, app)
 	}
 	return &app
+}
+
+// patient starts a browser headless, and gives it a minute to open its remote
+// port: the live suite loads the machine more than a person's login does.
+var patient = login.Options{Headless: true, StartTimeout: time.Minute}
+
+// browserTurn lets one live test at a time start browsers, which on a loaded
+// runner otherwise start slowly enough to count as blocked.
+var browserTurn sync.Mutex
+
+func takeBrowserTurn(t *testing.T) {
+	t.Helper()
+	browserTurn.Lock()
+	t.Cleanup(browserTurn.Unlock)
 }

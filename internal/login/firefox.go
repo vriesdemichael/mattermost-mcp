@@ -35,9 +35,11 @@ type firefoxWindow struct {
 	browser Browser
 	process *exec.Cmd
 	output  *tail
-	profile string
-	conn    *websocket.Conn
-	context string // the browsing context of the window's tab
+	// patience is how long it may take to open its remote port.
+	patience time.Duration
+	profile  string
+	conn     *websocket.Conn
+	context  string // the browsing context of the window's tab
 
 	mu      sync.Mutex
 	nextID  int
@@ -79,7 +81,7 @@ func startFirefox(ctx context.Context, browser Browser, profile, address string,
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("starting %s: %w", browser, err)
 	}
-	w := &firefoxWindow{browser: browser, process: process, output: output, profile: profile, waiting: map[int]chan bidiReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
+	w := &firefoxWindow{browser: browser, process: process, output: output, profile: profile, patience: options.patience(), waiting: map[int]chan bidiReply{}, closed: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		_ = process.Wait()
 		close(w.exited)
@@ -238,7 +240,7 @@ func (w *firefoxWindow) Close() {
 // profile; the program started may exit at once and leave the browser to a
 // process of its own, so only the deadline ends the wait.
 func (w *firefoxWindow) agentEndpoint(ctx context.Context) (string, error) {
-	deadline := time.Now().Add(startTimeout)
+	deadline := time.Now().Add(w.patience)
 	file := filepath.Join(w.profile, "WebDriverBiDiServer.json")
 	for {
 		if raw, err := os.ReadFile(file); err == nil { //nolint:gosec // a file in the profile mm-mcp made
@@ -252,7 +254,7 @@ func (w *firefoxWindow) agentEndpoint(ctx context.Context) (string, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 		if time.Now().After(deadline) {
-			reason := fmt.Sprintf("started no remote agent within %s; a company policy that forbids remote control does that", startTimeout)
+			reason := fmt.Sprintf("started no remote agent within %s; a company policy that forbids remote control does that", w.patience)
 			select {
 			case <-w.exited:
 				reason = "exited as it started, without starting its remote agent" + w.output.said()
