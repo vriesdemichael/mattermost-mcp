@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
+	"github.com/vriesdemichael/mm-mcp/internal/doctor"
 	"github.com/vriesdemichael/mm-mcp/internal/login"
 	"github.com/vriesdemichael/mm-mcp/internal/mattermost"
 	"github.com/vriesdemichael/mm-mcp/internal/network"
@@ -152,9 +153,14 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 		fmt.Fprintln(deps.Stderr, "mm-mcp: this build cannot log in")
 		return ExitFailure
 	}
+	transport, err := loginTransport(deps)
+	if err != nil {
+		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
+		return ExitConfig
+	}
 	waiting, cancel := context.WithTimeout(ctx, LoginTimeout)
 	defer cancel()
-	httpClient := &http.Client{Transport: network.NewSafeTransport(), Timeout: mattermost.RequestTimeout, CheckRedirect: network.SameOriginRedirects}
+	httpClient := &http.Client{Transport: transport, Timeout: mattermost.RequestTimeout, CheckRedirect: network.SameOriginRedirects}
 
 	signIn, err := login.Discover(waiting, httpClient, address)
 	if err != nil {
@@ -176,7 +182,7 @@ func logIn(ctx context.Context, args []string, deps Deps) int {
 			}
 			continue
 		}
-		user, _, err := mattermost.New(address, token, network.NewSafeTransport()).Check(ctx)
+		user, _, err := mattermost.New(address, token, transport).Check(ctx)
 		if err != nil {
 			fmt.Fprintf(deps.Stderr, "mm-mcp: %s: the token does not work: %v\n", routeNames[route], err)
 			failed = append(failed, routeNames[route]+": the token does not work: "+err.Error())
@@ -280,7 +286,7 @@ func runRoute(ctx context.Context, deps Deps, route, address string, signIn logi
 		}
 		return token, login.Client{}, nil
 	case WithPassword:
-		token, err := passwordRoute(ctx, deps, address)
+		token, err := passwordRoute(ctx, deps, address, httpClient.Transport)
 		if err != nil {
 			return "", login.Client{}, err
 		}
@@ -303,7 +309,7 @@ func runRoute(ctx context.Context, deps Deps, route, address string, signIn logi
 
 // passwordRoute asks for the login, the password and, when the account has
 // one, its second factor's code.
-func passwordRoute(ctx context.Context, deps Deps, address string) (string, error) {
+func passwordRoute(ctx context.Context, deps Deps, address string, transport http.RoundTripper) (string, error) {
 	id, err := deps.Login.Line("Email address or username: ")
 	switch {
 	case err != nil:
@@ -315,13 +321,13 @@ func passwordRoute(ctx context.Context, deps Deps, address string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	token, err := mattermost.PasswordLogin(ctx, address, network.NewSafeTransport(), id, password, "")
+	token, err := mattermost.PasswordLogin(ctx, address, transport, id, password, "")
 	if errors.Is(err, mattermost.ErrMFARequired) {
 		code, codeErr := deps.Login.Line("Code from your authenticator app: ")
 		if codeErr != nil {
 			return "", codeErr
 		}
-		token, err = mattermost.PasswordLogin(ctx, address, network.NewSafeTransport(), id, password, code)
+		token, err = mattermost.PasswordLogin(ctx, address, transport, id, password, code)
 	}
 	return token, err
 }
@@ -415,9 +421,14 @@ func logOut(ctx context.Context, args []string, deps Deps) int {
 		fmt.Fprintf(deps.Stdout, "No login is stored for %s.\n", address)
 		return ExitOK
 	}
+	transport, err := loginTransport(deps)
+	if err != nil {
+		fmt.Fprintf(deps.Stderr, "mm-mcp: %v\n", err)
+		return ExitConfig
+	}
 	// Ending the session at Mattermost is best done, not required: one that
 	// expired already is gone there too.
-	if err := mattermost.New(address, token, network.NewSafeTransport()).Logout(ctx); err != nil {
+	if err := mattermost.New(address, token, transport).Logout(ctx); err != nil {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: Mattermost did not end the session: %v\n", err)
 	}
 	if err := deps.Credentials.Delete(address); err != nil {
@@ -426,4 +437,15 @@ func logOut(ctx context.Context, args []string, deps Deps) int {
 	}
 	fmt.Fprintf(deps.Stdout, "Logged out of %s, and the session is forgotten.\n", address)
 	return ExitOK
+}
+
+// loginTransport is the transport a login and a logout reach the server with:
+// the one mm-mcp serve and doctor use, trusting the certificate authorities in
+// MM_MCP_CA_FILE beside the system's when it is set.
+func loginTransport(deps Deps) (http.RoundTripper, error) {
+	caFile := strings.TrimSpace(deps.Getenv(config.EnvCAFile))
+	if config.Placeholder(caFile) {
+		caFile = ""
+	}
+	return doctor.Transport(config.Config{CAFile: caFile})
 }
