@@ -179,7 +179,7 @@ func (o OAuth) register(ctx context.Context, callback string) (Client, error) {
 		"redirect_uris":              []string{callback},
 		"token_endpoint_auth_method": "none",
 	})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, o.Address+"/api/v4/oauth/apps/register", bytes.NewReader(body))
+	request, err := newRequest(ctx, http.MethodPost, o.Address+"/api/v4/oauth/apps/register", bytes.NewReader(body))
 	if err != nil {
 		return Client{}, err
 	}
@@ -202,7 +202,7 @@ func (o OAuth) exchange(ctx context.Context, client Client, code, verifier strin
 		"redirect_uri":  {client.Callback},
 		"code_verifier": {verifier},
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, o.Address+"/oauth/access_token", strings.NewReader(form.Encode()))
+	request, err := newRequest(ctx, http.MethodPost, o.Address+"/oauth/access_token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return Token{}, err
 	}

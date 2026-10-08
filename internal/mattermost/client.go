@@ -53,7 +53,7 @@ func New(address, token string, transport http.RoundTripper) *Client {
 func client4(address, token string, transport http.RoundTripper, timeout time.Duration) *model.Client4 {
 	api := model.NewAPIv4Client(address)
 	api.HTTPClient = &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: network.SameOriginRedirects}
-	api.HTTPHeader["User-Agent"] = "mm-mcp/" + version.Version
+	api.HTTPHeader["User-Agent"] = version.UserAgent()
 	api.SetToken(token)
 	return api
 }

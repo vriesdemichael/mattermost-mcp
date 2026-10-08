@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+
+	"github.com/vriesdemichael/mm-mcp/internal/version"
 )
 
 // SignIn is how a server lets people sign in, as it tells anyone who asks
@@ -68,7 +71,7 @@ func Discover(ctx context.Context, client *http.Client, address string) (SignIn,
 }
 
 func getJSON(ctx context.Context, client *http.Client, address string, out any) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	request, err := newRequest(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return err
 	}
@@ -81,4 +84,16 @@ func getJSON(ctx context.Context, client *http.Client, address string, out any) 
 		return fmt.Errorf("%s answered %s", address, response.Status)
 	}
 	return json.NewDecoder(response.Body).Decode(out)
+}
+
+// newRequest is a request to the server at address that names mm-mcp, as every
+// request the Mattermost client sends does, so a login's requests can be told
+// apart in the server's logs as well.
+func newRequest(ctx context.Context, method, address string, body io.Reader) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, method, address, body)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("User-Agent", version.UserAgent())
+	return request, nil
 }
