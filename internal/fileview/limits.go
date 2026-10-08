@@ -73,6 +73,15 @@ const documentXMLBytes = 128 << 20
 // time; the header says when there are more.
 const ArchiveEntries = 100_000
 
+// ArchiveListingBytes is the most text an archive's listing holds, whatever
+// its count of entries. A name in a tar can be a megabyte long, and a small
+// compressed tar can hold thousands of them, so the count alone would let a
+// listing grow to gigabytes in memory.
+const ArchiveListingBytes = 8 << 20
+
+// archiveNameRunes is the most of one entry's name a listing shows.
+const archiveNameRunes = 1024
+
 // archiveExpandBytes is the most a gzip-compressed tar is expanded to list it.
 // A tar has no index, so listing one means reading all of it, and a small
 // compressed file can expand without end; this bounds the work of one read.

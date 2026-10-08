@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+	"unicode/utf8"
 )
 
 // readArchive views a zip or tar file, when content is one: a Word, PowerPoint
@@ -79,16 +80,19 @@ func readZip(ctx context.Context, request Request, content []byte) (View, error)
 	}
 
 	var listing strings.Builder
+	more := ""
 	for index, file := range archive.File {
 		if index == ArchiveEntries {
+			more = fmt.Sprintf("The listing stops at %d entries, of the %d in the archive.", ArchiveEntries, len(archive.File))
+
 			break
 		}
-		listing.WriteString(zipEntry(file) + "\n")
-	}
+		if !fits(&listing, zipEntry(file)) {
+			more = fmt.Sprintf("The listing stops after %s, of the %d in the archive, at %s of listing.",
+				plural(index, "entry"), len(archive.File), formatSize(ArchiveListingBytes))
 
-	more := ""
-	if len(archive.File) > ArchiveEntries {
-		more = fmt.Sprintf("The listing stops at %d entries, of the %d in the archive.", ArchiveEntries, len(archive.File))
+			break
+		}
 	}
 
 	return listArchive(request, "application/zip", "a zip archive", size, listing.String(), more)
@@ -199,7 +203,12 @@ func readTar(ctx context.Context, request Request, content []byte, compression t
 
 			break
 		}
-		listing.WriteString(tarEntry(header) + "\n")
+		if !fits(&listing, tarEntry(header)) {
+			more = fmt.Sprintf("The listing stops after %s, at %s of listing; the archive has more.",
+				plural(count, "entry"), formatSize(ArchiveListingBytes))
+
+			break
+		}
 		count++
 	}
 
@@ -226,9 +235,28 @@ func tarEntry(header *tar.Header) string {
 	return name + "\tspecial file"
 }
 
+// fits adds line to listing when the listing stays within ArchiveListingBytes,
+// and reports whether it did.
+func fits(listing *strings.Builder, line string) bool {
+	if listing.Len()+len(line)+1 > ArchiveListingBytes {
+		return false
+	}
+	listing.WriteString(line)
+	listing.WriteByte('\n')
+
+	return true
+}
+
 // entryName keeps a name an archive gives on its own line: a control character
 // in it -- a newline, a tab -- would start a line or a column that is not there.
+// A name longer than archiveNameRunes is cut there, and says so.
 func entryName(name string) string {
+	if len(name) > archiveNameRunes {
+		if count := utf8.RuneCountInString(name); count > archiveNameRunes {
+			name = string([]rune(name)[:archiveNameRunes]) + fmt.Sprintf("… (%d characters)", count)
+		}
+	}
+
 	return strings.Map(func(character rune) rune {
 		if character < 0x20 || character == 0x7F {
 			return '?'
