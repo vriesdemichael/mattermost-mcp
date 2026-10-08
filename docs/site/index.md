@@ -16,7 +16,7 @@ agent read and search your Mattermost, and, when you allow it, post and reply,
 as you or as a bot. By default, each post others will see waits for your yes.</p>
 
 [Install mm-mcp](installation.md){ .md-button .md-button--primary }
-[Log in](login.md){ .md-button }
+[Connect your account](login.md){ .md-button }
 
 </div>
 
@@ -84,31 +84,28 @@ it is posted
 
     ---
 
-    The tools that post or change anything are not even offered until
-    `MM_MCP_ALLOW_WRITES` is true. Then each change others see asks you first;
+    The tools that post or change anything are not even offered until you
+    allow writes. Then each post others will see asks you first, by default;
     following a thread, saving a post, a reminder, a draft only you see and the
-    typing indicator do not
-    ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md)).
-    `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to your MCP client's own
-    approval, for a client that does not show mm-mcp's question
-    ([ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)).
+    typing indicator do not. Where your AI app does not show mm-mcp's question,
+    its own approval can be the check instead
+    ([Configuration](configuration.md)).
 
--   :material-account-key-outline:{ .lg .middle } **One server, one identity**
+-   :material-account-key-outline:{ .lg .middle } **One account, yours or a bot's**
 
     ---
 
     It acts as whoever owns the token it is given: a personal access token, a
-    bot's token, or the session of your own login through
-    [`mm-mcp login`](login.md), single sign-on included
-    ([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+    bot's token, or your own login through [`mm-mcp login`](login.md), single
+    sign-on included. It can do what that account can, and no more.
 
--   :material-lan-connect:{ .lg .middle } **stdio or HTTP**
+-   :material-laptop:{ .lg .middle } **On your own machine**
 
     ---
 
-    A desktop or IDE client starts it as a local process; over Streamable HTTP
-    it serves a loopback address for now
-    ([ADR-020](adr/020-stdio-and-streamable-http-single-tenant-first.md)).
+    Your AI app starts mm-mcp on your computer and talks to it directly.
+    Nothing is hosted, and mm-mcp talks to nothing but your Mattermost
+    ([Security](security.md)).
 
 -   :material-test-tube:{ .lg .middle } **Tested against a real Mattermost**
 
@@ -116,30 +113,30 @@ it is posted
 
     Every tool is exercised against Team Edition, on the current Extended
     Support Release and the newest release
-    ([ADR-004](adr/004-live-tests-against-a-real-mattermost.md)).
+    ([Supported releases](mattermost-releases.md)).
 
 </div>
 
-## Next to Mattermost's own MCP server
+## What it does well
 
-Mattermost publishes an MCP server of its own, inside its Agents plugin. mm-mcp
-differs on purpose:
+- **Nothing to install on the server.** mm-mcp talks to Mattermost's API as its
+  own apps do, so it needs no plugin, and works with the free Team Edition too.
+- **Shows what it will post before it posts.** The question says what, where and
+  as whom, how many people an `@channel` reaches, and who of those mentioned is
+  deactivated, before you say yes.
+- **Answers shaped for an agent.** A post comes with its author, channel, team,
+  files and reactions; channels, teams and people are found by the names you use,
+  and a name that matches nothing comes back with the closest ones.
+- **Reads as Mattermost does.** Unread posts from where you stopped, without
+  marking them read; mentions as your notification settings define them; threads
+  as its threads view lists them.
+- **Reads your files.** Word, PowerPoint and Excel as their text, archives as a
+  listing, images upright and scaled, and text in windows of numbered lines.
+- **Logs in where tokens are off.** Through your own browser, single sign-on and
+  second factor included ([Logging in](login.md)).
 
-- **Any edition, no plugin.** mm-mcp talks to Mattermost's REST API as a client
-  does, so it runs against Team Edition as well; the other's write tools need an
-  Enterprise licence, and it runs inside a plugin on the server.
-- **As you.** It acts with your own token or a bot's, and by default every post
-  says it was written with AI.
-- **Asks before every write others see**, by default, through your MCP client,
-  showing what will be posted, where and as whom.
-- **Tools shaped for an agent** rather than one per endpoint: a post comes with
-  its author, channel, team, files and reactions, and names are found as a
-  person writes them ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
-
-!!! note "Young"
-    mm-mcp is young: its [tools](tools.md) read, search, post and handle files,
-    and are tested against a real Mattermost on every change. The
-    [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
+Why it works the way it does, one decision at a time, is in the
+[decision records](adr/index.md).
 
 mm-mcp is an independent project. It is not affiliated with, endorsed by or
 supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.

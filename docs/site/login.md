@@ -4,19 +4,41 @@ Where your Mattermost lets you make a personal access token, that token is the
 simplest way in: `mm-mcp login --with paste` keeps it in your system's
 credential store ([Installation](installation.md#get-a-token)). Many
 organisations switch those tokens off, often to keep programs and agents out;
-[that no longer works](#why-letting-agents-in-is-the-safer-choice), and an
-administrator can open a proper way in instead. Until then, log in once with
-your own account:
+[that no longer works](administrators.md#why-letting-agents-in-is-the-safer-choice),
+and an administrator can open a proper way in instead. Until then, log in once
+with your own account.
 
-```bash
-mm-mcp login --url https://chat.example.com
-```
+## Step by step
 
-and set only `MM_URL` for the server, without `MM_TOKEN`. mm-mcp keeps the
-session in your system's credential store: the Windows Credential Manager, your
-macOS keychain, or your Linux desktop's Secret Service. When Mattermost ends the
-session, run `mm-mcp login` again; `mm-mcp logout` ends it yourself
-([ADR-019](adr/019-credentials-are-supplied-not-acquired.md)).
+1. **Install mm-mcp** with a package manager ([Installation](installation.md)).
+2. **In a terminal, run**
+
+    ```bash
+    mm-mcp login --url https://chat.example.com
+    ```
+
+    with the address you open Mattermost at. One of two things happens:
+
+    - **Your browser asks you to approve mm-mcp.** Approve it, and close the tab.
+    - **A browser window opens at your sign-in page.** Log in as you always do,
+      second factor included. The window closes by itself.
+
+    Where your server keeps passwords, mm-mcp may ask for yours in the terminal
+    instead.
+3. **It says `Logged in to https://chat.example.com as @you`.** mm-mcp keeps
+   the session in your system's credential store: the Windows Credential
+   Manager, your macOS keychain, or your Linux desktop's Secret Service.
+4. **In your AI app, set only the address**, `MM_URL`, and leave the token
+   empty. Restart the app, so it starts mm-mcp again.
+5. **Ask it who you are in Mattermost.** It answers with your username.
+
+When step 2 fails, mm-mcp ends with what it tried and why each failed, and what
+to do: most often, [install Playwright's Chromium](#when-the-window-will-not-open),
+or [ask your administrator](#what-to-ask-your-administrator) for a change that
+lets everyone in through their own browser.
+`mm-mcp doctor --url https://chat.example.com` checks the login at any time
+([below](#when-the-tools-still-do-not-work)). When Mattermost ends the session,
+run `mm-mcp login` again; `mm-mcp logout` ends it yourself.
 
 ## How mm-mcp logs you in
 
@@ -80,7 +102,10 @@ gave one with `--client-id`, or an earlier login remembered one. `--with oauth`,
    everyday profile. You are usually logged in there already, so you only
    approve mm-mcp. Mattermost sends your browser back to a page mm-mcp serves on
    `127.0.0.1` with a one-time code, which mm-mcp exchanges for a session.
-   Nothing reads your browser's cookies ([below](#oauth-step-by-step)).
+   Nothing reads your browser's cookies ([below](#oauth-step-by-step)). This is
+   Mattermost's own OAuth service, Mattermost granting mm-mcp access, not the
+   sign-on your organisation logs in with, such as Okta or Entra ID; it works
+   beside it.
 2. **A browser window of mm-mcp's own**, for single sign-on: SAML, Entra ID,
    OpenID Connect, GitLab, Google. mm-mcp starts a Chrome, Edge, Chromium or
    Firefox installed on your machine, or the Chromium Playwright downloads, with
@@ -173,7 +198,7 @@ and says so. The window shows only your login page and closes once you have
 logged in.
 
 Playwright's Chromium is a browser of your own, in your user folder, which those
-policies do not reach. Install it once, with Node:
+policies do not reach. Install it once, with [Node.js](https://nodejs.org/):
 
 ```bash
 npx playwright install chromium
@@ -217,7 +242,10 @@ the next login uses it again.
 `mm-mcp serve` uses the stored session whenever `MM_URL` names that server and
 `MM_TOKEN` is not set; a token in `MM_TOKEN` always goes first. A session ends
 when Mattermost expires it, or when it is revoked, by you under Profile >
-Security or by an administrator. `mm-mcp serve` then stops at start with
+Security or by an administrator. How long a session lasts is your server's to
+say: an administrator sets it under System Console > Environment > Session
+Lengths, often to days or weeks. A personal access token or a bot's token you
+pasted lasts until it is revoked. Once it ends, `mm-mcp serve` stops at start with
 `refused the session mm-mcp login stored`; run `mm-mcp login` again, and restart
 the MCP server. `mm-mcp logout` ends the session at Mattermost and forgets it.
 
@@ -247,56 +275,15 @@ inside the client, ask the model to call the `diagnose` tool: it makes the same
 checks with the client's own configuration, and says whether the client can
 show the question mm-mcp asks before each write.
 
-## Why letting agents in is the safer choice
-
-This part is for administrators, and for whoever writes the policy they follow.
-
-An AI agent no longer needs mm-mcp, or any token, to reach Mattermost. Ask a
-coding agent today to do something in Mattermost, and without an integration it
-drives a browser: through computer use or a browser extension, it opens
-Mattermost where the person is already logged in, and reads and types as them.
-Switching personal access tokens off, forbidding remote debugging, or requiring
-a managed device stops none of that. As long as an agent can drive the
-browser a person is logged in to, Mattermost is open to it.
-
-What a policy does decide is the way the agent comes in:
-
-| | Through the person's browser | Through mm-mcp |
-|---|---|---|
-| What it reads | Whatever is on the screen, Mattermost or not | Mattermost, through its API, nothing else |
-| Posting | As the person, unmarked | Not offered until writes are allowed |
-| Before a post others see | Nobody is asked | A person is asked by default ([ADR-021](adr/021-read-only-by-default-and-every-write-asks.md), [ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)) |
-| Telling its posts apart | Impossible | Marked as written with AI, as Mattermost shows it, by default |
-| Telling its requests apart | Impossible | `User-Agent: mm-mcp/<version>` |
-| Ending it | Ending the session the person works in | Ending the one session mm-mcp keeps |
-
-So the safer choice is to make the agent visible and give it a proper way in,
-rather than to try to keep it out: one of the two changes below. mm-mcp then
-logs in through the person's own browser, in one click, and the browser window
-of its own, Playwright's Chromium and the pasted token are not needed.
-
-This will not satisfy every security policy, and it is not meant to. It is the
-honest trade: a policy that closes the proper ways in does not keep agents
-out. It moves them to the way nobody can see. Large organisations may take
-years to come to that; the sooner they do, the less of their Mattermost is used
-unseen.
-
 ## What to ask your administrator
 
 One change on the server lets everyone log in through their own browser, in
-one click:
-
-- **Turn on dynamic client registration**: System Console > Integrations >
-  Integration Management > Enable OAuth 2.0 Service Provider, and Enable Dynamic
-  Client Registration. mm-mcp then registers itself once per person and server.
-  Any program that reaches the server can then register an OAuth app, as the
-  standard intends; an app gets nothing until a person logged in to Mattermost
-  approves it.
-- **Or register one OAuth app for mm-mcp**: a public client, without a secret,
-  with the callback `http://127.0.0.1:8766/callback`, and share its client id.
-  Everyone then runs `mm-mcp login --client-id <id>` once; mm-mcp remembers it
-  for the server. `--callback-port` uses another port, when the app's callback
-  names one.
+one click: turning on dynamic client registration, or registering one OAuth app
+for mm-mcp. Send your administrator [For administrators](administrators.md),
+which has the steps, and why letting agents in this way is the safer choice.
+With a registered app, run `mm-mcp login --client-id <id>` once, with the id
+your administrator gives you; mm-mcp remembers it for the server.
+`--callback-port` uses another port, when the app's callback names one.
 
 To see what your server offers, open
 `https://chat.example.com/.well-known/oauth-authorization-server`: an error page
