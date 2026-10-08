@@ -428,7 +428,9 @@ Each of these asks you first, showing exactly what will happen
   posts are all in one channel names the channel and team once.
 - **A list cuts a long message short.** A message longer than 4,000 characters
   is cut, with its whole length said; `read_post` reads it whole.
-- **Times are in UTC.**
+- **Times are your own.** A time in an answer is in the timezone you set in
+  Mattermost, with its offset, such as `2026-10-09T09:30:00+02:00`, and a time
+  you give without an offset is read in it too. With no timezone set, UTC.
 
 ### How a write is asked
 

@@ -295,7 +295,7 @@ func searchFilesSpec() Spec {
 				for _, file := range files {
 					posted = append(posted, &model.Post{ChannelId: file.ChannelId, UserId: file.CreatorId})
 				}
-				described, err := describePosts(ctx, client, posted)
+				described, zone, err := describe(ctx, client, posted)
 				if err != nil {
 					return nil, FileResults{}, err
 				}
@@ -308,7 +308,7 @@ func searchFilesSpec() Spec {
 						Channel:    described[i].Channel,
 						Team:       described[i].Team,
 						Author:     described[i].Author,
-						CreatedAt:  timestamp(file.CreateAt),
+						CreatedAt:  timestamp(file.CreateAt, zone),
 					})
 				}
 				return nil, out, nil

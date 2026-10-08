@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -104,13 +105,13 @@ func listThreadsSpec() Spec {
 				for _, thread := range kept {
 					started = append(started, thread.Post)
 				}
-				posts, err := describePosts(ctx, client, started)
+				posts, zone, err := describe(ctx, client, started)
 				if err != nil {
 					return nil, Threads{}, err
 				}
 				out := Threads{Threads: make([]ThreadSummary, 0, len(kept)), pageInfo: pageInfo{NextCursor: next}}
 				for i, thread := range kept {
-					out.Threads = append(out.Threads, toThreadSummary(thread, posts[i]))
+					out.Threads = append(out.Threads, toThreadSummary(thread, posts[i], zone))
 				}
 				return nil, out, nil
 			}
@@ -185,7 +186,7 @@ func followedThreads(ctx context.Context, client *mattermost.Client, teamID stri
 
 // toThreadSummary is a followed thread as list_threads returns it. Mattermost's
 // extended answer carries each participant whole.
-func toThreadSummary(thread *model.ThreadResponse, started Post) ThreadSummary {
+func toThreadSummary(thread *model.ThreadResponse, started Post, zone *time.Location) ThreadSummary {
 	participants := []string{}
 	for _, user := range thread.Participants {
 		if user != nil {
@@ -193,12 +194,12 @@ func toThreadSummary(thread *model.ThreadResponse, started Post) ThreadSummary {
 		}
 	}
 	// The post the threads view carries counts no replies; the thread does.
-	started.ReplyCount, started.LastReplyAt = thread.ReplyCount, timestamp(thread.LastReplyAt)
+	started.ReplyCount, started.LastReplyAt = thread.ReplyCount, timestamp(thread.LastReplyAt, zone)
 	return ThreadSummary{
 		RootID:         thread.PostId,
 		Started:        clip([]Post{started})[0],
 		ReplyCount:     thread.ReplyCount,
-		LastReplyAt:    timestamp(thread.LastReplyAt),
+		LastReplyAt:    timestamp(thread.LastReplyAt, zone),
 		Participants:   participants,
 		UnreadReplies:  thread.UnreadReplies,
 		UnreadMentions: thread.UnreadMentions,
