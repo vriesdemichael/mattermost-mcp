@@ -49,7 +49,7 @@
     "allow_writes": {
       "type": "boolean",
       "title": "Allow posting",
-      "description": "Offer the tools that post and change things. Each change others see asks you before it acts; following a thread, saving a post or a draft, reminders and typing do not.",
+      "description": "Offer the tools that post and change things. Each change others see asks you before it acts, which needs a client that shows MCP elicitation questions; following a thread, saving a post or a draft, reminders and typing do not ask.",
       "default": false,
       "required": false
     },

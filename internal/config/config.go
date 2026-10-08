@@ -8,6 +8,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
 
@@ -83,9 +84,15 @@ func FromEnv(lookup func(string) string) (Config, error) {
 			return Config{}, err
 		}
 	}
+	downloadDir := strings.TrimSpace(lookup(EnvDownloadDir))
+	if downloadDir != "" && !filepath.IsAbs(downloadDir) {
+		// A relative directory would be the MCP client's working directory,
+		// which nobody chose and few could name.
+		return Config{}, errorf("%s must be a full path, not %q.", EnvDownloadDir, downloadDir)
+	}
 	return Config{
 		URL: address, Token: token, AllowWrites: allowWrites, MarkAIGenerated: markAI,
-		DownloadDir: strings.TrimSpace(lookup(EnvDownloadDir)),
+		DownloadDir: downloadDir,
 		CAFile:      strings.TrimSpace(lookup(EnvCAFile)),
 	}, nil
 }

@@ -150,8 +150,13 @@ true. What a tool changes decides whether it asks you first
 ### What others see: asked every time
 
 Each call asks you through your MCP client: it shows what will change, where,
-and under whose name, and acts only when you tick the box and accept. A client
-that cannot show the question gets an error, and nothing is written.
+and under whose name, and acts only when you tick the box and accept. The
+question is an MCP elicitation, a form the client shows, so these tools need a
+client that shows one, such as Claude Code. A client that declares it cannot
+gets an error that says so, and nothing is written; `save_draft`, which does
+not ask, still puts a message in your message box for you to send. Some
+clients declare that they can and never show the form, and the call waits
+until the client gives up on it; Claude Desktop has been reported to.
 
 Every message is checked before you are asked
 ([ADR-031](adr/031-a-message-is-checked-before-anyone-is-asked-to-post-it.md)):
@@ -175,9 +180,14 @@ as Mattermost shows it, unless `MM_MCP_MARK_AI_GENERATED` is false.
     `files` attaches up to ten files: text the model writes, given a `name` and
     `content`, or, when the server runs on your machine over stdio, a file by
     its full `path`. The question lists each file with its size, type and the
-    path it was read from. The files are uploaded only once you accept, and a
-    file changed after you were asked is refused. `dm` and `group_message` take
-    `files` too.
+    path it was read from, and the box you tick names every file read from
+    your disk by its path. The files are uploaded only once you accept, and a
+    file changed after you were asked is refused. A file where credentials are
+    kept is never attached: anything under `.ssh`, `.gnupg`, `.aws`, `.kube`
+    and the like, an MCP client's configuration, a `.env` file, a key store,
+    and any file holding a private key or the token mm-mcp runs with. Attach
+    such a file in Mattermost yourself if you mean to. `dm` and
+    `group_message` take `files` too.
 
 `dm`: Send direct message
 :   Sends a direct message to one person, by username or email address, or to
@@ -253,7 +263,11 @@ not to Mattermost
 :   Saves a file attached to a post into your download directory, set with
     `MM_MCP_DOWNLOAD_DIR` and your Downloads directory by default, under its own
     name, and answers with the path. An existing file is never overwritten: a
-    number is added to the name instead. Files up to 100 MiB.
+    number is added to the name instead, and saving the same file again
+    answers with the copy already saved. The file is marked as downloaded from
+    the internet, as a browser marks it: on Windows, SmartScreen checks a
+    program and Office opens a document in Protected View; on macOS,
+    Gatekeeper checks it. Files up to 100 MiB.
 
 ## Not offered
 

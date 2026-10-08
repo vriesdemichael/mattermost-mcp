@@ -286,8 +286,9 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 			bound := func(files []attachment, where destination) string {
 				return fingerprint(files) + "\n" + where.key
 			}
-			prepare := func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mattermost.Client, []attachment, destination, error) {
-				files, err := loadAttachments(cfg, input.attached())
+			// keep holds the files' bytes, which only the read that uploads needs.
+			prepare := func(ctx context.Context, request *mcp.CallToolRequest, input In, keep bool) (*mattermost.Client, []attachment, destination, error) {
+				files, err := loadAttachments(cfg, input.attached(), keep)
 				if err != nil {
 					return nil, nil, destination{}, err
 				}
@@ -300,15 +301,20 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 			}
 			ask := askingBound(tool.Name,
 				func(ctx context.Context, request *mcp.CallToolRequest, input In) (string, error) {
-					_, files, where, err := prepare(ctx, request, input)
+					_, files, where, err := prepare(ctx, request, input, false)
 					if err != nil {
 						return "", err
 					}
 					return bound(files, where), nil
 				},
 				func(ctx context.Context, request *mcp.CallToolRequest, input In) (confirmation, error) {
-					client, files, where, err := prepare(ctx, request, input)
+					client, files, where, err := prepare(ctx, request, input, false)
 					if err != nil {
+						return confirmation{}, err
+					}
+					// The question shows what was fingerprinted, not a file
+					// changed in between.
+					if err := stillAsAsked(ctx, tool.Name, bound(files, where)); err != nil {
 						return confirmation{}, err
 					}
 					checked, err := checkMessage(ctx, client, input.text(), where.label, where.size)
@@ -320,7 +326,7 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 				func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Post, error) {
 					// Read once more, checked against what the person accepted, and
 					// these very bytes are what is uploaded.
-					client, files, where, err := prepare(ctx, request, input)
+					client, files, where, err := prepare(ctx, request, input, true)
 					if err != nil {
 						return nil, Post{}, err
 					}
@@ -378,16 +384,13 @@ func postingSpec[In posting](tool *mcp.Tool, own []Use, channel, root Coverage, 
 // mentions do, every file it carries, and then the message as it will be
 // sent. What the person must not miss comes before the message, which may be
 // long.
-func postQuestion(ctx context.Context, client *mattermost.Client, where destination, message string, files []attachment, checked checkedMessage, marked bool) (confirmation, error) {
-	carrying := ""
-	if len(files) > 0 {
-		carrying = fmt.Sprintf(" with %d %s", len(files), plural(int64(len(files)), "file", "files"))
-	}
-	summary := describeAttachments(files) + checked.note() + aiNote(marked)
+func postQuestion(ctx context.Context, client *mattermost.Client, where destination, message string, attached []attachment, checked checkedMessage, marked bool) (confirmation, error) {
+	files := carrying(attached)
+	summary := describeAttachments(attached) + checked.note() + aiNote(marked)
 	if where.root == nil {
 		return confirmation{
 			Message: fmt.Sprintf("Post as @%s in %s.%s\n\nThe message:\n\n%s", where.self.Username, where.label, summary, message),
-			Label:   "Post this message" + carrying + " in " + where.label,
+			Label:   "Post this message" + files + " in " + where.label,
 		}, nil
 	}
 	names, err := usernames(ctx, client, []string{where.root.UserId})
@@ -401,7 +404,7 @@ func postQuestion(ctx context.Context, client *mattermost.Client, where destinat
 	return confirmation{
 		Message: fmt.Sprintf("Reply as @%s in %s, in the thread @%s started with:\n“%s”%s\n\nThe reply:\n\n%s",
 			where.self.Username, where.label, author, excerpt(where.root.Message), summary, message),
-		Label: "Post this reply" + carrying + " in @" + author + "'s thread",
+		Label: "Post this reply" + files + " in @" + author + "'s thread",
 	}, nil
 }
 
