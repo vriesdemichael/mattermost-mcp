@@ -52,16 +52,19 @@ type Deps struct {
 	Serve  func(context.Context, *mcp.Server, ServeOptions) error
 	// Credentials keeps the tokens `mm-mcp login` obtains; nil keeps none.
 	Credentials *Credentials
-	// Login opens a browser at the server's login page and answers with the
-	// session token once the person has logged in.
-	Login func(ctx context.Context, browser, address string) (string, error)
+	// Login is how `mm-mcp login` reaches the person: their browser, a
+	// browser window of its own, and the terminal.
+	Login *Login
 }
 
-// Credentials is where `mm-mcp login` keeps a token per server.
+// Credentials is where `mm-mcp login` keeps a token per server, and the OAuth
+// client it logged in as.
 type Credentials struct {
-	Load   config.Stored
-	Store  func(address, token string) error
-	Delete func(address string) error
+	Load        config.Stored
+	Store       func(address, token string) error
+	Delete      func(address string) error
+	LoadClient  func(address string) (string, bool, error)
+	StoreClient func(address, client string) error
 	// Where names the store, for a person to find it.
 	Where string
 }
@@ -71,8 +74,11 @@ type Credentials struct {
 func ProcessDeps() Deps {
 	return Deps{
 		Getenv: os.Getenv, Stdout: os.Stdout, Stderr: os.Stderr, Serve: Serve,
-		Credentials: &Credentials{Load: credstore.Load, Store: credstore.Store, Delete: credstore.Delete, Where: credstore.Where()},
-		Login:       browserLogin,
+		Credentials: &Credentials{
+			Load: credstore.Load, Store: credstore.Store, Delete: credstore.Delete,
+			LoadClient: credstore.LoadClient, StoreClient: credstore.StoreClient, Where: credstore.Where(),
+		},
+		Login: ProcessLogin(os.Stdin, os.Stderr),
 	}
 }
 
@@ -80,15 +86,18 @@ const usage = `mm-mcp is an MCP server for Mattermost.
 
 Usage:
   mm-mcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8765]
-  mm-mcp login [--url https://chat.example.com] [--browser path]
+  mm-mcp login [--url https://chat.example.com] [--with oauth|window|password|paste]
+               [--browser path] [--client-id id] [--callback-port 8766]
   mm-mcp logout [--url https://chat.example.com]
   mm-mcp version
   mm-mcp help
 
 Credentials never come from a flag: set MM_URL and MM_TOKEN in the MCP
 client's env block, or set only MM_URL after logging in once with
-mm-mcp login, which opens your browser at Mattermost's login page and keeps
-the session in the system's credential store. MM_MCP_ALLOW_WRITES=true offers
+mm-mcp login, which logs you in the way your server allows: through your own
+browser where it offers OAuth, a browser window of its own for single sign-on,
+your password in the terminal, or a token you paste. It keeps the session in
+the system's credential store. MM_MCP_ALLOW_WRITES=true offers
 the tools that change Mattermost. A change others see asks before it acts;
 following a thread, saving a post, a draft and the typing indicator do not.
 `
