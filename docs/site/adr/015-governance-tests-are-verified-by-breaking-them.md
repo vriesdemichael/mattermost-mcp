@@ -18,6 +18,7 @@ A governance test asserts an invariant over everything of one kind the repositor
 - `TestOnlyALocalServerOffersTheToolsThatWriteItsFiles`: a tool that writes this machine's files is offered by a local server only, whether writes are allowed or not.
 - `TestEveryToolIsCalledByALiveTest`: every MCP tool is called by name in tests/live.
 - `TestTheToolsPageDocumentsEveryToolAndOnlyThose`: the tools page documents exactly the tools the server has.
+- `TestTheConfigurationPageAsksForEveryToolThatWouldAsk`: the Claude Code ask rules the configuration page gives name exactly the tools that ask (ADR-033).
 - `TestEveryToolDeclaresTheOperationsItCalls`: every tool declares the operations it calls, each in the newest specification and served by the newest router.
 - `TestAReadOnlyToolCallsOnlyOperationsThatRead`: a tool annotated read-only calls only operations that read: GET, HEAD, or a search or lookup that takes a POST.
 - `TestALocalToolOnlyReadsMattermost`: a tool that writes this machine's files calls only operations that read.
