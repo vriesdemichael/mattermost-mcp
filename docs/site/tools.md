@@ -23,6 +23,9 @@ every post. Times are in UTC. A tool that takes a name, of a channel, a team or 
 matches it in any case, whole or in part; an ambiguous name is refused with every
 candidate, and an unknown one with the closest names
 ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
+Every `channel_id` and `team_id` takes a name as well as an id, a channel's
+with `~` or `#` before it or not, and every `post_id` and `root_id` takes
+the address the post opens at.
 
 ## People
 

@@ -247,7 +247,7 @@ func searchFilesSpec() Spec {
 					"body.include_deleted_channels": Omitted("archived channels are left out of a search, as they are out of get_user_channels"),
 				},
 			},
-		}, channelLookupUses("in"), fromUses(), describeUses(true)),
+		}, channelLookupUses("in", SetBy("team_id")), fromUses(), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchFilesInput, FileResults] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchFilesInput) (*mcp.CallToolResult, FileResults, error) {
 				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)

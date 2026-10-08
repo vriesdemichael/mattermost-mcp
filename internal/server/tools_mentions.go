@@ -63,7 +63,7 @@ func listMentionsSpec() Spec {
 					"The tool calls it the same way on every supported release, and the live suite runs it on both.",
 			},
 			{Operation: "SearchPosts", Params: coverage(SetBy("team_id"))},
-		}, channelLookupUses("in"), fromUses(), describeUses(true)),
+		}, channelLookupUses("in", SetBy("team_id")), fromUses(), describeUses(true)),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[listMentionsInput, Mentions] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input listMentionsInput) (*mcp.CallToolResult, Mentions, error) {
 				limit, err := limitOf(input.Limit, defaultPostsPerSearch, maxPostsPerSearch)
