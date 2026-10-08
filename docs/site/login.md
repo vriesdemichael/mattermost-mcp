@@ -57,6 +57,11 @@ A browser can refuse to be watched:
 - **A snap or a Flatpak browser** on Linux, whose sandbox keeps it from using a
   profile of mm-mcp's.
 
+On Ubuntu 24.04, a Chromium without an AppArmor profile, Playwright's included, is
+refused its own sandbox; mm-mcp then starts it without one, as Playwright does,
+and says so. The window shows only your login page and closes once you have
+logged in.
+
 Playwright's Chromium is a browser of your own, in your user folder, which those
 policies do not reach. Install it once, with Node:
 

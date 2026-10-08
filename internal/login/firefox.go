@@ -282,3 +282,5 @@ func ParseBiDiServer(raw []byte) (string, error) {
 	}
 	return "ws://" + net.JoinHostPort(host, strconv.Itoa(server.Port)), nil
 }
+
+func (w *firefoxWindow) Unsandboxed() bool { return false }

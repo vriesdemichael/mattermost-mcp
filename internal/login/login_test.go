@@ -153,3 +153,24 @@ func TestTheSessionCookieIsTheServersOwn(t *testing.T) {
 		t.Error("a token was found where Mattermost set none")
 	}
 }
+
+func TestWhatABrowserSaidIsQuotedByTheLineThatSaysWhy(t *testing.T) {
+	t.Parallel()
+	crashed := &tail{}
+	_, _ = crashed.Write([]byte("[1:1:FATAL:zygote_host_impl_linux.cc:127] No usable sandbox! Ubuntu 24.04 restricts unprivileged user namespaces\n#0 0x55 base::debug::StackTrace\n  ip: 00007f efl: 0246\n[end of stack trace]\n"))
+	if said := crashed.said(); !strings.Contains(said, "No usable sandbox") || strings.Contains(said, "end of stack trace") {
+		t.Errorf("a crash is quoted as %q", said)
+	}
+	if !crashed.mentions("SANDBOX") {
+		t.Error("the sandbox is not found in what it said")
+	}
+	quiet := &tail{}
+	if said := quiet.said(); said != "" {
+		t.Errorf("a browser that said nothing is quoted as %q", said)
+	}
+	long := &tail{}
+	_, _ = long.Write([]byte(strings.Repeat("x", tailBytes*2) + "\nlast words"))
+	if len(long.kept) != tailBytes || !strings.HasSuffix(long.said(), "last words") {
+		t.Errorf("kept %d bytes, said %.40q", len(long.kept), long.said())
+	}
+}
