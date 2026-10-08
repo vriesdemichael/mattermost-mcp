@@ -176,6 +176,17 @@ jobs:
             dist/*.rpm
             dist/*.mcpb
 
+      # v0.1.0 went out with an empty body because GoReleaser skipped the notes
+      # it was given; a draft without them stays a draft.
+      - name: Check the draft carries its release notes
+        run: |
+          set -euo pipefail
+          body=$(gh release view "$VERSION" --json body --jq .body)
+          if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "::error::The draft release $VERSION has no notes; RELEASE_NOTES.md did not reach it."
+            exit 1
+          fi
+
       - name: Make the release public
         run: gh release edit "$VERSION" --draft=false --latest
 

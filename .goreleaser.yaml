@@ -112,9 +112,13 @@ release:
   mode: replace
   replace_existing_artifacts: true
 
-# tools/release writes the notes, from the same parse that decided the version.
+# tools/release writes the notes, from the same parse that decided the version,
+# and the workflow passes them with --release-notes. The changelog stays
+# enabled: GoReleaser reads a --release-notes file in its changelog step, so
+# disabling the changelog published every release with an empty body. Given a
+# file, that step uses it and generates nothing of its own.
 changelog:
-  disable: true
+  sort: asc
 
 snapshot:
   version_template: "0.0.0"
