@@ -318,3 +318,14 @@ func TestTheLoadedConfigurationSaysWhoAsksBeforeAWrite(t *testing.T) {
 		t.Errorf("forcing a human in the loop: %+v", got)
 	}
 }
+
+// A placeholder reads as unset, so a setting that is on by default is on.
+func TestAPlaceholderForASettingOnByDefaultReadsAsOn(t *testing.T) {
+	t.Parallel()
+	checks := Settings(testsupport.Env(map[string]string{
+		config.EnvURL: "https://chat.example.com", config.EnvMarkAIGenerated: "${user_config.mark_ai_generated}",
+	}), false)
+	if got := find(t, checks, config.EnvMarkAIGenerated); got.Status != OK || !strings.Contains(got.Detail, "are marked as written with AI") {
+		t.Fatalf("got %+v", got)
+	}
+}

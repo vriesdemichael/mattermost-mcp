@@ -32,10 +32,10 @@ func Settings(lookup func(string) string, urlGiven bool) []Check {
 	if askErr == nil && !ask {
 		writes = "writes are allowed: the tools that post and change Mattermost are offered, and the MCP client's own approval is the check before each change others see"
 	}
-	checks = append(checks, boolean(config.EnvAllowWrites, lookup(config.EnvAllowWrites), true,
+	checks = append(checks, boolean(config.EnvAllowWrites, lookup(config.EnvAllowWrites), false,
 		writes, "writes are not allowed: only the tools that read are offered"))
 	if askRaw != "" {
-		checks = append(checks, boolean(config.EnvAskBeforeWrites, askRaw, false,
+		checks = append(checks, boolean(config.EnvAskBeforeWrites, askRaw, true,
 			"mm-mcp asks you before each change others see",
 			"mm-mcp asks nothing before a change others see: the MCP client's own approval of each tool call is the only check, "+
 				"and a client that approves tools by itself posts as you with nobody seeing it first"))
@@ -44,7 +44,7 @@ func Settings(lookup func(string) string, urlGiven bool) []Check {
 		checks = append(checks, forced(forceRaw, ask))
 	}
 	if raw := lookup(config.EnvMarkAIGenerated); strings.TrimSpace(raw) != "" {
-		checks = append(checks, boolean(config.EnvMarkAIGenerated, raw, false,
+		checks = append(checks, boolean(config.EnvMarkAIGenerated, raw, true,
 			"posts and edits the model writes are marked as written with AI",
 			"posts and edits the model writes are not marked as written with AI"))
 	}
@@ -125,17 +125,23 @@ func token(raw string) Check {
 	}
 }
 
-func boolean(name, raw string, always bool, on, off string) Check {
+// boolean checks a true-or-false variable, which reads as unset, and so as
+// fallback, when it is empty or a placeholder.
+func boolean(name, raw string, fallback bool, on, off string) Check {
+	unset := off
+	if fallback {
+		unset = on
+	}
 	value, err := config.ParseBool(name, raw)
 	switch {
 	case config.Placeholder(raw):
-		return ok(name, "is %s, a placeholder the MCP client left unexpanded, which reads as unset: %s", strings.TrimSpace(raw), off)
+		return ok(name, "is %s, a placeholder the MCP client left unexpanded, which reads as unset: %s", strings.TrimSpace(raw), unset)
+	case strings.TrimSpace(raw) == "":
+		return ok(name, "is not set, so %s", unset)
 	case err != nil:
 		return Check{Name: name, Status: Failed, Detail: err.Error(), Next: "Use true or false."}
 	case value:
 		return ok(name, "%s", on)
-	case always && strings.TrimSpace(raw) == "":
-		return ok(name, "is not set, so %s", off)
 	default:
 		return ok(name, "%s", off)
 	}
