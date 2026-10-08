@@ -40,6 +40,7 @@ task test:unit
 task test:live
 task test:live STACK=esr
 task test:live RELEASE=11.9.2
+task test:browser
 task quality:verify
 task quality:format
 task docs:validate
@@ -47,7 +48,7 @@ task docs:adr-index
 task openapi:refresh
 ```
 
-`test:live` starts this checkout's Mattermost if needed. `quality:verify` is every
+`test:live` starts this checkout's Mattermost if needed. `test:browser` drives every browser on the machine, Playwright's Chromium included, which it installs with Node. `quality:verify` is every
 static gate but one, golangci-lint included; govulncheck (`quality:vulncheck`)
 runs in CI only, because its answer comes from a vulnerability database it
 fetches (ADR-014). Run `docs:adr-index` after adding or removing a record,
