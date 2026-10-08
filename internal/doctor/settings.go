@@ -23,7 +23,7 @@ func Terminal() Check {
 // whether anything can be written at all.
 func Settings(lookup func(string) string, urlGiven bool) []Check {
 	checks := []Check{address(lookup(config.EnvURL), urlGiven), token(lookup(config.EnvToken))}
-	askRaw, forceRaw := given(lookup(config.EnvAskBeforeWrites)), given(lookup(config.EnvForceHumanInTheLoop))
+	askRaw, forceRaw := given(lookup(config.EnvAskBeforeWrites)), given(lookup(config.EnvForceHumanInTheLoopInClaudeCode))
 	ask, askErr := true, error(nil)
 	if askRaw != "" {
 		ask, askErr = config.ParseBool(config.EnvAskBeforeWrites, askRaw)
@@ -73,17 +73,17 @@ func given(raw string) string {
 	return strings.TrimSpace(raw)
 }
 
-// forced checks MM_MCP_FORCE_HUMAN_IN_THE_LOOP, which mm-mcp refuses while
+// forced checks MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE, which mm-mcp refuses while
 // it asks before writes itself (ADR-033).
 func forced(raw string, ask bool) Check {
-	check := boolean(config.EnvForceHumanInTheLoop, raw, false,
+	check := boolean(config.EnvForceHumanInTheLoopInClaudeCode, raw, false,
 		"each tool that would ask is marked for the MCP client to ask a person on every call, whatever its permission rules allow",
 		"the MCP client's own permission rules decide whether it asks before a change others see")
-	if value, err := config.ParseBool(config.EnvForceHumanInTheLoop, raw); err == nil && value && ask {
+	if value, err := config.ParseBool(config.EnvForceHumanInTheLoopInClaudeCode, raw); err == nil && value && ask {
 		return Check{
-			Name: config.EnvForceHumanInTheLoop, Status: Failed,
+			Name: config.EnvForceHumanInTheLoopInClaudeCode, Status: Failed,
 			Detail: fmt.Sprintf("is true while %s is not false, so mm-mcp does not start: you would be asked twice for one write", config.EnvAskBeforeWrites),
-			Next:   fmt.Sprintf("Set %s=false, so that the MCP client asks instead of mm-mcp, or unset %s.", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop),
+			Next:   fmt.Sprintf("Set %s=false, so that the MCP client asks instead of mm-mcp, or unset %s.", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoopInClaudeCode),
 		}
 	}
 	return check
@@ -185,11 +185,11 @@ func Loaded(cfg config.Config, where string) []Check {
 		ok("credential source", "%s", credential),
 	}
 	switch {
-	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoopInClaudeCode:
 		checks = append(checks,
 			ok(config.EnvAllowWrites, "writes are allowed: the tools that post and change Mattermost are offered"),
 			ok(config.EnvAskBeforeWrites, "is false: mm-mcp asks nothing before a change others see"),
-			ok(config.EnvForceHumanInTheLoop, "is true: each tool that would ask is marked for the MCP client to ask a person on every call, whatever its permission rules allow"))
+			ok(config.EnvForceHumanInTheLoopInClaudeCode, "is true: each tool that would ask is marked for the MCP client to ask a person on every call, whatever its permission rules allow"))
 	case cfg.AllowWrites && cfg.SkipAsking:
 		checks = append(checks,
 			ok(config.EnvAllowWrites, "writes are allowed: the tools that post and change Mattermost are offered"),

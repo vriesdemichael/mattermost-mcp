@@ -14,21 +14,21 @@ import (
 
 // The variables mm-mcp reads.
 const (
-	EnvURL                  = "MM_URL"
-	EnvToken                = "MM_TOKEN"
-	EnvAllowWrites          = "MM_MCP_ALLOW_WRITES"
-	EnvAskBeforeWrites      = "MM_MCP_ASK_BEFORE_WRITES"
-	EnvForceHumanInTheLoop  = "MM_MCP_FORCE_HUMAN_IN_THE_LOOP"
-	EnvDownloadDir          = "MM_MCP_DOWNLOAD_DIR"
-	EnvMarkAIGenerated      = "MM_MCP_MARK_AI_GENERATED"
-	EnvBlockExternalNetwork = "MM_MCP_BLOCK_EXTERNAL_NETWORK"
-	EnvCAFile               = "MM_MCP_CA_FILE"
+	EnvURL                             = "MM_URL"
+	EnvToken                           = "MM_TOKEN"
+	EnvAllowWrites                     = "MM_MCP_ALLOW_WRITES"
+	EnvAskBeforeWrites                 = "MM_MCP_ASK_BEFORE_WRITES"
+	EnvForceHumanInTheLoopInClaudeCode = "MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE"
+	EnvDownloadDir                     = "MM_MCP_DOWNLOAD_DIR"
+	EnvMarkAIGenerated                 = "MM_MCP_MARK_AI_GENERATED"
+	EnvBlockExternalNetwork            = "MM_MCP_BLOCK_EXTERNAL_NETWORK"
+	EnvCAFile                          = "MM_MCP_CA_FILE"
 )
 
 // EnvironmentVariables is every variable mm-mcp reads. The unit-test seal
 // empties each of them, and a governance test fails when the source names one
 // that is not listed here (ADR-006).
-var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvAskBeforeWrites, EnvForceHumanInTheLoop, EnvDownloadDir, EnvMarkAIGenerated, EnvBlockExternalNetwork, EnvCAFile}
+var EnvironmentVariables = []string{EnvURL, EnvToken, EnvAllowWrites, EnvAskBeforeWrites, EnvForceHumanInTheLoopInClaudeCode, EnvDownloadDir, EnvMarkAIGenerated, EnvBlockExternalNetwork, EnvCAFile}
 
 // Config is a server's configuration.
 type Config struct {
@@ -45,10 +45,10 @@ type Config struct {
 	// leaves it to the MCP client's own approval of the tool call:
 	// MM_MCP_ASK_BEFORE_WRITES=false (ADR-033). Its zero value asks.
 	SkipAsking bool
-	// ForceHumanInTheLoop marks each tool that would ask so that the MCP client
+	// ForceHumanInTheLoopInClaudeCode marks each tool that would ask so that the MCP client
 	// asks a person on every call, whatever its permission rules allow:
-	// MM_MCP_FORCE_HUMAN_IN_THE_LOOP=true, only with SkipAsking (ADR-033).
-	ForceHumanInTheLoop bool
+	// MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE=true, only with SkipAsking (ADR-033).
+	ForceHumanInTheLoopInClaudeCode bool
 	// MarkAIGenerated marks every post and edit the model writes as written
 	// with AI, as Mattermost shows it. On unless turned off.
 	MarkAIGenerated bool
@@ -67,7 +67,7 @@ type Config struct {
 
 // String leaves the token out, so a Config can be logged or printed in an error.
 func (c Config) String() string {
-	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, SkipAsking: %t, ForceHumanInTheLoop: %t, MarkAIGenerated: %t, DownloadDir: %q, CAFile: %q, Local: %t}", c.URL, c.AllowWrites, c.SkipAsking, c.ForceHumanInTheLoop, c.MarkAIGenerated, c.DownloadDir, c.CAFile, c.Local)
+	return fmt.Sprintf("Config{URL: %q, AllowWrites: %t, SkipAsking: %t, ForceHumanInTheLoopInClaudeCode: %t, MarkAIGenerated: %t, DownloadDir: %q, CAFile: %q, Local: %t}", c.URL, c.AllowWrites, c.SkipAsking, c.ForceHumanInTheLoopInClaudeCode, c.MarkAIGenerated, c.DownloadDir, c.CAFile, c.Local)
 }
 
 // GoString is String, so %#v leaves the token out too.
@@ -122,7 +122,7 @@ func Load(lookup func(string) string, stored Stored) (Config, error) {
 			return Config{}, err
 		}
 	}
-	force, err := ParseBool(EnvForceHumanInTheLoop, lookup(EnvForceHumanInTheLoop))
+	force, err := ParseBool(EnvForceHumanInTheLoopInClaudeCode, lookup(EnvForceHumanInTheLoopInClaudeCode))
 	if err != nil {
 		return Config{}, err
 	}
@@ -130,7 +130,7 @@ func Load(lookup func(string) string, stored Stored) (Config, error) {
 		// mm-mcp's question and the client's prompt would both come for one write.
 		return Config{}, errorf("%s=true needs %s=false. While mm-mcp asks you before each write itself, a client that "+
 			"prompts as well would ask twice; %s is for when your MCP client does the asking.",
-			EnvForceHumanInTheLoop, EnvAskBeforeWrites, EnvForceHumanInTheLoop)
+			EnvForceHumanInTheLoopInClaudeCode, EnvAskBeforeWrites, EnvForceHumanInTheLoopInClaudeCode)
 	}
 	markAI := true
 	if raw := lookup(EnvMarkAIGenerated); strings.TrimSpace(raw) != "" {
@@ -145,7 +145,7 @@ func Load(lookup func(string) string, stored Stored) (Config, error) {
 		return Config{}, errorf("%s must be a full path, not %q.", EnvDownloadDir, downloadDir)
 	}
 	return Config{
-		URL: address, Token: token, TokenStored: fromStore, Stored: stored, AllowWrites: allowWrites, SkipAsking: !ask, ForceHumanInTheLoop: force, MarkAIGenerated: markAI,
+		URL: address, Token: token, TokenStored: fromStore, Stored: stored, AllowWrites: allowWrites, SkipAsking: !ask, ForceHumanInTheLoopInClaudeCode: force, MarkAIGenerated: markAI,
 		DownloadDir: downloadDir,
 		CAFile:      strings.TrimSpace(lookup(EnvCAFile)),
 	}, nil

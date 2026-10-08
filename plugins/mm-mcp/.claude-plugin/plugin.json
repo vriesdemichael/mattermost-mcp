@@ -35,9 +35,9 @@
       "required": false,
       "default": true
     },
-    "force_human_in_the_loop": {
+    "force_human_in_the_loop_in_claude_code": {
       "type": "boolean",
-      "title": "Force a human in the loop",
+      "title": "Force a human in the loop in Claude Code",
       "description": "Only with Ask before posting off: Claude Code asks you before every change others see, in every permission mode, whatever its rules allow. An agent cannot post on its own while it is on.",
       "required": false,
       "default": false
@@ -52,7 +52,7 @@
         "MM_TOKEN": "${user_config.mm_token}",
         "MM_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
         "MM_MCP_ASK_BEFORE_WRITES": "${user_config.ask_before_writes}",
-        "MM_MCP_FORCE_HUMAN_IN_THE_LOOP": "${user_config.force_human_in_the_loop}"
+        "MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE": "${user_config.force_human_in_the_loop_in_claude_code}"
       }
     }
   }

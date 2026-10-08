@@ -162,7 +162,7 @@ func TestAServerThatWritesWithoutAskingSaysSoAtStart(t *testing.T) {
 	} {
 		got := runCLI(t, map[string]string{
 			config.EnvURL: "https://chat.example.com", config.EnvToken: "token-value",
-			config.EnvAllowWrites: c.allow, config.EnvAskBeforeWrites: c.ask, config.EnvForceHumanInTheLoop: c.force,
+			config.EnvAllowWrites: c.allow, config.EnvAskBeforeWrites: c.ask, config.EnvForceHumanInTheLoopInClaudeCode: c.force,
 		}, "serve")
 		said := strings.Contains(got.stderr, "does not ask")
 		if got.code != cli.ExitOK || said != (c.said != "") || !strings.Contains(got.stderr, c.said) {
@@ -175,7 +175,7 @@ func TestForcingAHumanInTheLoopWhileMmMcpAsksStopsTheServer(t *testing.T) {
 	t.Parallel()
 	got := runCLI(t, map[string]string{
 		config.EnvURL: "https://chat.example.com", config.EnvToken: "token-value",
-		config.EnvAllowWrites: "true", config.EnvForceHumanInTheLoop: "true",
+		config.EnvAllowWrites: "true", config.EnvForceHumanInTheLoopInClaudeCode: "true",
 	}, "serve")
 	if got.code != cli.ExitConfig || got.servers != 0 || !strings.Contains(got.stderr, config.EnvAskBeforeWrites+"=false") {
 		t.Fatalf("got %+v", got)

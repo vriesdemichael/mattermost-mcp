@@ -233,13 +233,13 @@ const skippingNote = "This server is configured not to ask: mm-mcp asks nothing,
 	"if it asks at all, so make the call only when asked for exactly this."
 
 // forcedNote is skippingNote when the client is made to ask a person on every
-// call (MM_MCP_FORCE_HUMAN_IN_THE_LOOP).
+// call (MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE).
 const forcedNote = "This server is configured not to ask: mm-mcp asks nothing, and the MCP client asks the person to " +
 	"approve each call instead; if they deny it, do not call it again unless they ask."
 
 // RequiresUserInteraction is the _meta key with which Claude Code shows its
 // own approval of a tool on every call, in every permission mode, and lets no
-// allow rule or "don't ask again" skip it. MM_MCP_FORCE_HUMAN_IN_THE_LOOP sets
+// allow rule or "don't ask again" skip it. MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE sets
 // it on each tool that would ask, where mm-mcp does not; nothing else does,
 // so that an agent can be allowed to write unattended (ADR-033).
 const RequiresUserInteraction = "anthropic/requiresUserInteraction"
@@ -260,7 +260,7 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 			// AllSpecs builds each tool afresh, so this changes only this server's.
 			asks = false
 			note := skippingNote
-			if cfg.ForceHumanInTheLoop {
+			if cfg.ForceHumanInTheLoopInClaudeCode {
 				note = forcedNote
 				if spec.Tool.Meta == nil {
 					spec.Tool.Meta = mcp.Meta{}

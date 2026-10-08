@@ -271,14 +271,14 @@ func TestSettingsSayWhoAsksBeforeAWrite(t *testing.T) {
 	settings := func(ask, force string) []Check {
 		return Settings(testsupport.Env(map[string]string{
 			config.EnvURL: "https://chat.example.com", config.EnvAllowWrites: "true",
-			config.EnvAskBeforeWrites: ask, config.EnvForceHumanInTheLoop: force,
+			config.EnvAskBeforeWrites: ask, config.EnvForceHumanInTheLoopInClaudeCode: force,
 		}), false)
 	}
 	checks := settings("", "")
 	if got := find(t, checks, config.EnvAllowWrites); !strings.Contains(got.Detail, "asks first") {
 		t.Errorf("asking by default: %+v", got)
 	}
-	for _, name := range []string{config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop} {
+	for _, name := range []string{config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoopInClaudeCode} {
 		for _, check := range checks {
 			if check.Name == name {
 				t.Errorf("unset, and still reported: %+v", check)
@@ -292,11 +292,11 @@ func TestSettingsSayWhoAsksBeforeAWrite(t *testing.T) {
 	if got := find(t, checks, config.EnvAskBeforeWrites); got.Status != OK || !strings.Contains(got.Detail, "asks nothing") {
 		t.Errorf("not asking: %+v", got)
 	}
-	if got := find(t, settings("false", "true"), config.EnvForceHumanInTheLoop); got.Status != OK || !strings.Contains(got.Detail, "on every call") {
+	if got := find(t, settings("false", "true"), config.EnvForceHumanInTheLoopInClaudeCode); got.Status != OK || !strings.Contains(got.Detail, "on every call") {
 		t.Errorf("forcing a human in the loop: %+v", got)
 	}
 	for _, ask := range []string{"", "true"} {
-		got := find(t, settings(ask, "true"), config.EnvForceHumanInTheLoop)
+		got := find(t, settings(ask, "true"), config.EnvForceHumanInTheLoopInClaudeCode)
 		if got.Status != Failed || !strings.Contains(got.Next, config.EnvAskBeforeWrites+"=false") {
 			t.Errorf("forcing while asking %q: %+v", ask, got)
 		}
@@ -306,7 +306,7 @@ func TestSettingsSayWhoAsksBeforeAWrite(t *testing.T) {
 func TestTheLoadedConfigurationSaysWhoAsksBeforeAWrite(t *testing.T) {
 	t.Parallel()
 	loaded := func(skip, force bool) []Check {
-		return Loaded(config.Config{URL: "https://chat.example.com", AllowWrites: true, SkipAsking: skip, ForceHumanInTheLoop: force}, "")
+		return Loaded(config.Config{URL: "https://chat.example.com", AllowWrites: true, SkipAsking: skip, ForceHumanInTheLoopInClaudeCode: force}, "")
 	}
 	if got := find(t, loaded(false, false), config.EnvAllowWrites); !strings.Contains(got.Detail, "asks first") {
 		t.Errorf("asking: %+v", got)
@@ -314,7 +314,7 @@ func TestTheLoadedConfigurationSaysWhoAsksBeforeAWrite(t *testing.T) {
 	if got := find(t, loaded(true, false), config.EnvAskBeforeWrites); !strings.Contains(got.Detail, "the only check") {
 		t.Errorf("not asking: %+v", got)
 	}
-	if got := find(t, loaded(true, true), config.EnvForceHumanInTheLoop); !strings.Contains(got.Detail, "on every call") {
+	if got := find(t, loaded(true, true), config.EnvForceHumanInTheLoopInClaudeCode); !strings.Contains(got.Detail, "on every call") {
 		t.Errorf("forcing a human in the loop: %+v", got)
 	}
 }
