@@ -287,7 +287,7 @@ func TestEveryToolThatWritesAsksFirst(t *testing.T) {
 // leaves asking to the client does with each tool that would ask (ADR-033): it
 // lets a client that cannot be asked through to Mattermost, which the unit
 // tests block, and tells the model that nobody is asked. Only
-// MM_MCP_FORCE_HUMAN_IN_THE_LOOP marks those tools for Claude Code to ask on
+// MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE marks those tools for Claude Code to ask on
 // every call, whatever its rules allow. Without it, the client's rules decide,
 // so an agent may be allowed to write with nobody watching; with mm-mcp asking,
 // nothing is marked, or the person would be asked twice.
@@ -302,7 +302,7 @@ func TestAServerThatDoesNotAskLeavesTheCallToTheClient(t *testing.T) {
 		skip, force bool
 	}{{"mm-mcp asking", false, false}, {"not asking", true, false}, {"forcing a human in the loop", true, true}} {
 		cfg := writingConfig
-		cfg.SkipAsking, cfg.ForceHumanInTheLoop = mode.skip, mode.force
+		cfg.SkipAsking, cfg.ForceHumanInTheLoopInClaudeCode = mode.skip, mode.force
 		if mode.skip {
 			callEveryAskingTool(t, cfg, func(tool *mcp.Tool, err error) {
 				var refused *jsonrpc.Error

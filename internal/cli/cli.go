@@ -177,9 +177,9 @@ func serve(ctx context.Context, args []string, deps Deps) int {
 		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s is plain http, so the token in %s crosses the network unencrypted; use the https address if the server has one\n", cfg.URL, config.EnvToken)
 	}
 	switch {
-	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoopInClaudeCode:
 		fmt.Fprintf(deps.Stderr, "mm-mcp: %s=false and %s=true, so mm-mcp does not ask before a post or another change others see; "+
-			"it has the MCP client ask a person on every call, where the client honours that\n", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop)
+			"it has the MCP client ask a person on every call, where the client honours that\n", config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoopInClaudeCode)
 	case cfg.AllowWrites && cfg.SkipAsking:
 		fmt.Fprintf(deps.Stderr, "mm-mcp: warning: %s=false, so mm-mcp does not ask before a post or another change others see; "+
 			"the MCP client's own approval of each tool call is the only check\n", config.EnvAskBeforeWrites)

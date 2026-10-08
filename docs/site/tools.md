@@ -187,7 +187,7 @@ declined at once, as in the Claude desktop app's Code tab.
 [ADR-033](adr/033-who-asks-before-a-write-is-a-setting.md)). Everything in this
 section is how mm-mcp asks, its default. Set to `false`, mm-mcp asks nothing,
 and your MCP client's own approval of each tool call, if it asks, is the only
-check; `MM_MCP_FORCE_HUMAN_IN_THE_LOOP` then has Claude Code ask on every
+check; `MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE` then has Claude Code ask on every
 call. The checks on a message below hold either way.
 
 Every message is checked before you are asked

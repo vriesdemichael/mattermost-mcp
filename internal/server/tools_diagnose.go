@@ -105,19 +105,19 @@ func clientChecks(request *mcp.CallToolRequest, cfg config.Config, asked bool) [
 	}}
 	const name = "confirmations"
 	switch {
-	case cfg.AllowWrites && cfg.ForceHumanInTheLoop:
+	case cfg.AllowWrites && cfg.ForceHumanInTheLoopInClaudeCode:
 		checks = append(checks, doctor.Check{
 			Name: name, Status: doctor.OK,
 			Detail: fmt.Sprintf("%s is false, so mm-mcp asks nothing before a change others see, and %s marks each such tool for the MCP "+
 				"client to ask the person on every call, whatever its permission rules allow; a client that does not read the mark asks as its rules say",
-				config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoop),
+				config.EnvAskBeforeWrites, config.EnvForceHumanInTheLoopInClaudeCode),
 		})
 	case cfg.AllowWrites && cfg.SkipAsking:
 		checks = append(checks, doctor.Check{
 			Name: name, Status: doctor.OK,
 			Detail: fmt.Sprintf("%s is false, so mm-mcp asks nothing before a change others see: the MCP client's own approval of each tool "+
 				"call is the only check, and a client that approves tools by itself posts with nobody seeing it first", config.EnvAskBeforeWrites),
-			Next: fmt.Sprintf("Make sure the client asks the person before these tools, or set %s=true to have it ask on every call.", config.EnvForceHumanInTheLoop),
+			Next: fmt.Sprintf("Make sure the client asks the person before these tools, or set %s=true to have it ask on every call.", config.EnvForceHumanInTheLoopInClaudeCode),
 		})
 	case !canConfirm(request) && cfg.AllowWrites:
 		checks = append(checks, doctor.Check{

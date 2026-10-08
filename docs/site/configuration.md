@@ -51,12 +51,12 @@ setting left empty, counts as unset.
         such as Claude Code in auto mode, after "don't ask again", or under a
         rule that allows the tool, posts under your name with nobody seeing it
         first. In Claude Code, an `ask` rule or
-        `MM_MCP_FORCE_HUMAN_IN_THE_LOOP` keeps a person on every post.
+        `MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE` keeps a person on every post.
 
     Claude Code's prompt shows a tool's input, so a channel or post named by its
     id shows as that id, and a direct message to yourself names nobody.
 
-`MM_MCP_FORCE_HUMAN_IN_THE_LOOP`
+`MM_MCP_FORCE_HUMAN_IN_THE_LOOP_IN_CLAUDE_CODE`
 :   Optional, `false` by default, and only with `MM_MCP_ASK_BEFORE_WRITES=false`;
     with mm-mcp asking too, you would be asked twice for one write, so mm-mcp
     does not start. `true` marks each tool that would ask so that Claude Code
@@ -68,7 +68,8 @@ setting left empty, counts as unset.
     Claude Code 2.1.214 or later. An application built on Claude Code's SDK,
     such as the Claude desktop app, is handed each such call to approve and is
     expected to show it to a person; check that yours does before you rely on
-    it. A client that does not read the mark asks as its own rules say.
+    it. The mark is Claude Code's own: any other MCP client ignores it and asks
+    as its own rules say.
 
     Without it, Claude Code's own rules can keep a person on these tools, in
     `.claude/settings.json`. An `ask` rule prompts in every permission mode,

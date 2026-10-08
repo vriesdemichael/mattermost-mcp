@@ -248,7 +248,7 @@ func TestDiagnoseSaysWhoAsksWhenMmMcpDoesNot(t *testing.T) {
 		status doctor.Status
 		says   string
 	}{{false, doctor.OK, "the only check"}, {true, doctor.OK, "on every call"}} {
-		session := mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true, SkipAsking: true, ForceHumanInTheLoop: c.force}, nil)
+		session := mcpWith(t, config.Config{URL: liveURL, Token: token, AllowWrites: true, SkipAsking: true, ForceHumanInTheLoopInClaudeCode: c.force}, nil)
 
 		result := diagnosed(t, session, token, false)
 

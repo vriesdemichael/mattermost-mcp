@@ -129,7 +129,7 @@ func TestWritesAreAskedAboutUnlessAskBeforeWritesIsFalse(t *testing.T) {
 		"false": true, "0": true, "OFF": true,
 	} {
 		cfg, err := config.FromEnv(testsupport.Env(with(config.EnvAskBeforeWrites, value)))
-		if err != nil || cfg.SkipAsking != skip || cfg.ForceHumanInTheLoop {
+		if err != nil || cfg.SkipAsking != skip || cfg.ForceHumanInTheLoopInClaudeCode {
 			t.Errorf("%q: got %v, %v; want SkipAsking %v", value, cfg, err, skip)
 		}
 	}
@@ -144,15 +144,15 @@ func TestWritesAreAskedAboutUnlessAskBeforeWritesIsFalse(t *testing.T) {
 func TestAHumanInTheLoopIsForcedOnlyWhenMmMcpDoesNotAsk(t *testing.T) {
 	t.Parallel()
 	env := with(config.EnvAskBeforeWrites, "false")
-	env[config.EnvForceHumanInTheLoop] = "true"
+	env[config.EnvForceHumanInTheLoopInClaudeCode] = "true"
 	cfg, err := config.FromEnv(testsupport.Env(env))
-	if err != nil || !cfg.SkipAsking || !cfg.ForceHumanInTheLoop {
+	if err != nil || !cfg.SkipAsking || !cfg.ForceHumanInTheLoopInClaudeCode {
 		t.Fatalf("got %v, %v", cfg, err)
 	}
 	for _, ask := range []string{"", "true"} {
 		env[config.EnvAskBeforeWrites] = ask
 		_, err := config.FromEnv(testsupport.Env(env))
-		if err == nil || !strings.Contains(err.Error(), config.EnvForceHumanInTheLoop+"=true needs "+config.EnvAskBeforeWrites+"=false") {
+		if err == nil || !strings.Contains(err.Error(), config.EnvForceHumanInTheLoopInClaudeCode+"=true needs "+config.EnvAskBeforeWrites+"=false") {
 			t.Errorf("asking %q: got %v", ask, err)
 		}
 	}
