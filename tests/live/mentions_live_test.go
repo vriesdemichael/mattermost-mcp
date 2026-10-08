@@ -61,6 +61,11 @@ func TestListMentionsFindsWhatMentionsThePersonAsMattermostWouldNotifyThem(t *te
 		}
 	}
 
+	// Across every team, with nothing to narrow it.
+	if all := listMentions(t, session, map[string]any{}); len(all.Posts) == 0 {
+		t.Error("across every team found no mention")
+	}
+
 	// By channel name, in one team, and from the person who wrote them.
 	inTeam := listMentions(t, session, map[string]any{"in": "~" + channel.Name, "team_id": team.Id, "from": other.Username})
 	if len(inTeam.Posts) != 3 {

@@ -1,0 +1,64 @@
+package server
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// Reading id arguments, where no request is involved (ADR-030).
+
+func TestAPostIsTakenByItsAddressAsByItsID(t *testing.T) {
+	t.Parallel()
+	const id = "abcdefghijklmnopqrstuvwxyz"
+	for given, want := range map[string]string{
+		id:             id,
+		" " + id + " ": id,
+		"https://chat.example.com/_redirect/pl/" + id:         id,
+		"https://chat.example.com/team/pl/" + id + "/":        id,
+		"https://chat.example.com/sub/team/pl/" + id + "?x=1": id,
+		"https://chat.example.com/team/channels/town-square":  "https://chat.example.com/team/channels/town-square",
+	} {
+		if got := postID(given); got != want {
+			t.Errorf("%q: got %q, want %q", given, got, want)
+		}
+	}
+}
+
+func TestAChannelsNameLosesTheSignWrittenBeforeIt(t *testing.T) {
+	t.Parallel()
+	for given, want := range map[string]string{"~town-square": "town-square", "#Town Square": "Town Square", " general ": "general"} {
+		if got := bareName(given); got != want {
+			t.Errorf("%q: got %q", given, got)
+		}
+	}
+}
+
+func TestTheIDArgumentsOfAnInputAreFoundInEmbeddedStructsToo(t *testing.T) {
+	t.Parallel()
+	type embedded struct {
+		TeamID string `json:"team_id,omitempty"`
+	}
+	type input struct {
+		ChannelID string `json:"channel_id"`
+		embedded
+		RootID string `json:"root_id"`
+		Count  int    `json:"post_id"`
+	}
+	got := idFields(reflect.TypeFor[input]())
+	want := map[string][]int{"channel_id": {0}, "team_id": {1, 0}, "root_id": {2}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestAnIDArgumentsDescriptionSaysANameWorksToo(t *testing.T) {
+	t.Parallel()
+	schema := inputSchema[readChannelInput]()
+	if description := schema.Properties["channel_id"].Description; !strings.Contains(description, "its name") {
+		t.Errorf("channel_id reads %q", description)
+	}
+	if description := inputSchema[readPostInput]().Properties["post_id"].Description; !strings.Contains(description, "address") {
+		t.Errorf("post_id reads %q", description)
+	}
+}

@@ -403,13 +403,13 @@ func toChannel(channel *model.Channel, self string, names map[string]string) Cha
 
 // channelLookupUses are the operations findChannel calls, for a channel given
 // by the argument arg.
-func channelLookupUses(arg string) []Use {
+func channelLookupUses(arg string, team Coverage) []Use {
 	return []Use{
 		{Operation: "GetChannel", Params: map[string]Coverage{"channel_id": SetBy(arg)}},
 		{
 			Operation: "SearchChannels",
 			Params: map[string]Coverage{
-				"team_id":   SetBy("team_id"),
+				"team_id":   team,
 				"body.term": SetBy(arg),
 			},
 		},
@@ -485,7 +485,7 @@ func channelCandidates(ctx context.Context, client *mattermost.Client, mine myCh
 
 // findChannel is the channel an id or a name means.
 func findChannel(ctx context.Context, client *mattermost.Client, name, teamID string) (Channel, error) {
-	name = strings.TrimPrefix(strings.TrimSpace(name), "~")
+	name = bareName(name)
 	if name == "" {
 		return Channel{}, fmt.Errorf("give the channel's id or name")
 	}
@@ -526,7 +526,7 @@ func getChannelInfoSpec() Spec {
 				"every channel it could mean, an unknown one with the closest names. Says whether the user belongs to the channel and whether it is archived.",
 			Annotations: readOnly("Get channel"),
 		},
-		channelLookupUses("channel"),
+		channelLookupUses("channel", SetBy("team_id")),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[getChannelInfoInput, Channel] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input getChannelInfoInput) (*mcp.CallToolResult, Channel, error) {
 				client, err := clientFor(ctx, request)
@@ -562,10 +562,10 @@ func searchChannelsSpec() Spec {
 				"team_id":   SetBy("team_id"),
 				"body.term": SetBy("term"),
 			},
-		}}, channelLookupUses("term")[2:]),
+		}}, channelLookupUses("term", SetBy("team_id"))[2:]),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchChannelsInput, Channels] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchChannelsInput) (*mcp.CallToolResult, Channels, error) {
-				term := strings.TrimPrefix(strings.TrimSpace(input.Term), "~")
+				term := bareName(input.Term)
 				if term == "" {
 					return nil, Channels{}, fmt.Errorf("give part of the channel's name")
 				}

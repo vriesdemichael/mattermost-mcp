@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -215,24 +216,31 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 // toolSpec binds a tool definition to a typed handler. The SDK derives the
 // input schema from In and the output schema from Out, and validates both, so
 // a handler cannot return a shape its schema does not describe.
-func toolSpec[In, Out any](tool *mcp.Tool, uses []Use, handler func(ClientFor) mcp.ToolHandlerFor[In, Out]) Spec {
+//
+// The tool's id arguments take names and addresses as well as ids, read into
+// ids before the handler runs (see resolving), and the operations that reading
+// may call are declared beside the tool's own.
+func toolSpec[In, Out any](tool *mcp.Tool, own []Use, handler func(ClientFor) mcp.ToolHandlerFor[In, Out]) Spec {
 	if tool.Annotations != nil && tool.Title == "" {
 		tool.Title = tool.Annotations.Title
 	}
+	if tool.InputSchema == nil {
+		tool.InputSchema = inputSchema[In]()
+	}
 	return Spec{
 		Tool: tool,
-		Uses: uses,
+		Uses: uses(own, nameUses(reflect.TypeFor[In]())),
 		Register: func(server *mcp.Server, clientFor ClientFor, _ config.Config) {
-			mcp.AddTool(server, tool, handler(clientFor))
+			mcp.AddTool(server, tool, resolving(handler(clientFor), clientFor))
 		},
 	}
 }
 
 // configuredToolSpec is toolSpec for a tool that needs the configuration too.
-func configuredToolSpec[In, Out any](tool *mcp.Tool, uses []Use, handler func(ClientFor, config.Config) mcp.ToolHandlerFor[In, Out]) Spec {
-	spec := toolSpec[In, Out](tool, uses, nil)
+func configuredToolSpec[In, Out any](tool *mcp.Tool, own []Use, handler func(ClientFor, config.Config) mcp.ToolHandlerFor[In, Out]) Spec {
+	spec := toolSpec[In, Out](tool, own, nil)
 	spec.Register = func(server *mcp.Server, clientFor ClientFor, cfg config.Config) {
-		mcp.AddTool(server, tool, handler(clientFor, cfg))
+		mcp.AddTool(server, tool, resolving(handler(clientFor, cfg), clientFor))
 	}
 	return spec
 }
