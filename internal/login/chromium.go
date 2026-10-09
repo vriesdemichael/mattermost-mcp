@@ -307,12 +307,75 @@ func (w *chromiumWindow) page(ctx context.Context) (string, error) {
 	}
 }
 
+// Navigate opens address in the window's page, and makes sure it went there
+// (navigation).
 func (w *chromiumWindow) Navigate(ctx context.Context, address string) error {
+	return navigation{
+		browser: w.browser.Name, address: address, attempts: navigateAttempts,
+		leaveWithin: leaveBlankWithin, answerWithin: answerWithin, poll: 100 * time.Millisecond, closed: w.closed,
+		settle: func(ctx context.Context) {
+			_ = w.onPage(ctx, func(session string) error { w.untilLoaded(ctx, session); return nil })
+		},
+		send: func(ctx context.Context) error {
+			return w.onPage(ctx, func(session string) error {
+				return w.call(ctx, session, "Page.navigate", map[string]any{"url": address}, nil)
+			})
+		},
+		where: func(ctx context.Context) (at string, err error) {
+			err = w.onPage(ctx, func(session string) error {
+				at, err = w.value(ctx, session, "location.href")
+				return err
+			})
+			return at, err
+		},
+		refresh: w.forgetPage,
+	}.run(ctx)
+}
+
+// forgetPage drops the session to the page, so the next command attaches to
+// the page the browser has open now.
+func (w *chromiumWindow) forgetPage() {
+	w.mu.Lock()
+	w.session = ""
+	w.mu.Unlock()
+}
+
+// untilLoaded waits, briefly, for the page's current document to finish
+// loading, so a navigation is not sent into the middle of it.
+func (w *chromiumWindow) untilLoaded(ctx context.Context, session string) {
+	deadline := time.Now().Add(leaveBlankWithin)
+	for time.Now().Before(deadline) {
+		state, err := w.value(ctx, session, "document.readyState")
+		if err != nil || state == "complete" {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+// onPage runs command on the window's page, attaching to it first when the
+// window holds no session to it.
+func (w *chromiumWindow) onPage(ctx context.Context, command func(session string) error) error {
 	session, err := w.page(ctx)
 	if err != nil {
 		return err
 	}
-	return w.call(ctx, session, "Page.navigate", map[string]any{"url": address}, nil)
+	return command(session)
+}
+
+// value is what expression evaluates to in the page, as a string.
+func (w *chromiumWindow) value(ctx context.Context, session, expression string) (string, error) {
+	var evaluated struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	err := w.call(ctx, session, "Runtime.evaluate", map[string]any{"expression": expression, "returnByValue": true}, &evaluated)
+	return evaluated.Result.Value, err
 }
 
 func (w *chromiumWindow) Evaluate(ctx context.Context, script string) error {
