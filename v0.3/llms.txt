@@ -1,0 +1,45 @@
+# mm-mcp
+
+> mm-mcp is an MCP server for Mattermost. It lets an AI agent read and search a person's Mattermost and, once they allow it, post and reply, as them or as a bot. It runs on the person's own machine, started by their MCP client over stdio, and talks to nothing but their Mattermost server.
+
+This file is for an AI agent asked to set mm-mcp up for a person. The pages below have the details.
+
+## Setting it up for a person
+
+1. Install mm-mcp with the package manager the machine has: `brew install vriesdemichael/tap/mm-mcp` (macOS, Linux), `winget install vriesdemichael.mm-mcp` or `scoop bucket add vriesdemichael https://github.com/vriesdemichael/scoop` then `scoop install vriesdemichael/mm-mcp` (Windows). A shell started before the install may not find `mm-mcp`; start a new one, and check with `mm-mcp version`.
+2. Get the address the person opens Mattermost at, such as `https://chat.example.com`.
+3. Keep a credential in the system's credential store, never in a file or the conversation:
+   - The person has a personal access token or a bot token: they run `mm-mcp login --with paste --url <address>` in a terminal they type in, and paste it at the prompt. Never ask for the token, and never pass it as an argument or an environment variable yourself.
+   - Otherwise: run `mm-mcp login --url <address>`. It may open the person's browser to approve mm-mcp, or a browser window at their sign-in page, where they log in themselves. It waits up to ten minutes: run it in the background, since a timeout of exactly ten minutes can end it as it finishes, and tell the person first what will open. A password or token prompt cannot be answered from your shell; mm-mcp then says to run it in a terminal the person types in.
+   - On success it prints `Logged in to <address> as @<username>` and exits 0. When nothing works it exits 1, after a summary of each way it tried and what to do next: read that to the person.
+4. Check: `mm-mcp doctor --url <address> --json` exits 1 when a check failed, and says what to fix.
+5. Add the server to the person's MCP client, with only `MM_URL` in its environment (below). Do not set `MM_TOKEN` when a login is stored.
+6. Restart the client, or reconnect the server, then call the `get_me` tool. It answers with the person's Mattermost user.
+
+Writes are off until the person allows them with `MM_MCP_ALLOW_WRITES=true`. Turn that on only when they ask. Each post others will see then asks the person first, through a form the client shows; in a client that does not show it, such as Claude Code in the Claude desktop app's Code tab, `MM_MCP_ASK_BEFORE_WRITES=false` leaves the asking to the client's own approval.
+
+## Adding the server to a client
+
+mm-mcp is a local MCP server over stdio:
+
+- command: `mm-mcp`
+- arguments: `serve`
+- environment: `MM_URL` set to the address; nothing else is needed once a login is stored
+
+Add it the way the person's MCP client adds a stdio server, as that client's own documentation says, under a name such as `mattermost`. Two Mattermost servers are two such servers, under two names, each with its own `MM_URL`.
+
+mm-mcp also ships, for the person to install themselves:
+
+- a Claude Code plugin: `/plugin marketplace add vriesdemichael/mm-mcp`, then `/plugin install mm-mcp@mm-mcp`. Use it or add the server yourself, not both.
+- a Claude Desktop bundle: the `.mcpb` file for their machine from https://github.com/vriesdemichael/mm-mcp/releases/latest, opened in Claude Desktop, with the token left empty. mm-mcp must still be installed with a package manager for `mm-mcp login`.
+
+The other settings, such as allowing writes, are environment variables too: https://vriesdemichael.github.io/mm-mcp/configuration/
+
+## Docs
+
+- [Installation](https://vriesdemichael.github.io/mm-mcp/installation/): installing, a credential, each client, first steps
+- [Logging in](https://vriesdemichael.github.io/mm-mcp/login/): `mm-mcp login`, every way it logs in, and what each failure means
+- [Configuration](https://vriesdemichael.github.io/mm-mcp/configuration/): every environment variable and command
+- [Tools](https://vriesdemichael.github.io/mm-mcp/tools/): every tool, and what it asks before it writes
+- [Security](https://vriesdemichael.github.io/mm-mcp/security/): what leaves the machine, credentials, and what an agent can do
+- [For administrators](https://vriesdemichael.github.io/mm-mcp/administrators/): letting mm-mcp in, and recognising it
