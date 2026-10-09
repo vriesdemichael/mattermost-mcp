@@ -193,8 +193,18 @@ func (w *firefoxWindow) Cookies(ctx context.Context) ([]Cookie, error) {
 	return cookies, nil
 }
 
+// firefoxLoadsWithin is how long Firefox has to make a page it is sent to
+// ready to use; a page that never gets there failed a test only at its own
+// deadline, with nothing to say which step it was stuck at.
+var firefoxLoadsWithin = 30 * time.Second
+
+// Navigate opens address in the window's tab, and returns once the page is
+// parsed, not when every resource it asks for has loaded, which a page may
+// never finish.
 func (w *firefoxWindow) Navigate(ctx context.Context, address string) error {
-	return w.call(ctx, "browsingContext.navigate", map[string]any{"context": w.context, "url": address, "wait": "complete"}, nil)
+	return opening(w.browser.Name, address, answered(ctx, firefoxLoadsWithin, func(ctx context.Context) error {
+		return w.call(ctx, "browsingContext.navigate", map[string]any{"context": w.context, "url": address, "wait": "interactive"}, nil)
+	}))
 }
 
 func (w *firefoxWindow) Evaluate(ctx context.Context, script string) error {
