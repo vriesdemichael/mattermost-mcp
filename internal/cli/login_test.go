@@ -147,6 +147,50 @@ func TestLogoutOnlyForgetsATokenThePersonPasted(t *testing.T) {
 	}
 }
 
+func TestACertificateFileLeftAsAPlaceholderIsReadAsUnset(t *testing.T) {
+	t.Parallel()
+	// The Claude Desktop bundle passes ${user_config.ca_file} when its field is
+	// left empty; read as a path, it would stop every login.
+	env := map[string]string{config.EnvURL: "https://chat.example.com", config.EnvCAFile: "${user_config.ca_file}"}
+	who := &person{}
+	got := runWith(t, env, memoryStore{}, who, "login")
+	if got.code != cli.ExitFailure || strings.Contains(got.stderr, config.EnvCAFile) || strings.Join(who.tried, ",") != "window,secret" {
+		t.Errorf("got %+v after trying %v", got, who.tried)
+	}
+}
+
+func TestThePasswordPromptSaysWhyNoLoginWasGiven(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		line func(string) (string, error)
+		want string
+	}{
+		"nothing typed":           {func(string) (string, error) { return "", nil }, "password: no login was given"},
+		"a shell nobody types in": {func(string) (string, error) { return "", cli.ErrNoInput }, "password: " + cli.ErrNoInput.Error()},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := cli.Run(t.Context(), []string{"login", "--url", "https://chat.example.com", "--with", "password"}, cli.Deps{
+			Getenv: testsupport.Env(nil), Stdout: &stdout, Stderr: &stderr, Credentials: memoryStore{}.credentials(),
+			Login: &cli.Login{Line: c.line, Secret: func(string) (string, error) { t.Error("asked for a password without a login"); return "", nil }},
+		})
+		if code != cli.ExitFailure || !strings.Contains(stderr.String(), c.want) {
+			t.Errorf("%s: exit %d\n%s", name, code, stderr.String())
+		}
+	}
+}
+
+func TestAWayThisBuildCannotReachIsSaidSo(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	code := cli.Run(t.Context(), []string{"login", "--url", "https://chat.example.com", "--with", "window"}, cli.Deps{
+		Getenv: testsupport.Env(nil), Stdout: &stdout, Stderr: &stderr, Credentials: memoryStore{}.credentials(),
+		Login: &cli.Login{Secret: func(string) (string, error) { return "", nil }},
+	})
+	if code != cli.ExitFailure || !strings.Contains(stderr.String(), "browser window: not available here") {
+		t.Errorf("exit %d\n%s", code, stderr.String())
+	}
+}
+
 func TestLoginAndLogoutStopOnACertificateFileTheyCannotUse(t *testing.T) {
 	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "no-such-authority.pem")

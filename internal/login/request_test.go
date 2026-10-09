@@ -22,6 +22,9 @@ func TestALoginsRequestsNameMmMcp(t *testing.T) {
 	if got := request.Header.Get("User-Agent"); got != version.UserAgent() || !strings.HasPrefix(got, "mm-mcp/") {
 		t.Errorf("User-Agent %q, want %q", got, version.UserAgent())
 	}
+	if _, err := newRequest(t.Context(), http.MethodGet, "https://[chat.example.com", nil); err == nil {
+		t.Error("an address that does not parse made a request")
+	}
 
 	// Every request this package makes is built by newRequest, so none leaves
 	// without the name.
