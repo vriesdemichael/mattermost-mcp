@@ -287,6 +287,14 @@ func TestLoginWithAPasswordOrAPastedToken(t *testing.T) {
 		t.Fatalf("paste: exit %d\n%s%s", code, stdout, stderr)
 	}
 
+	// A store that cannot keep how the login was made keeps the login all the
+	// same, and says what that means for logging out.
+	forgetful := newLoginRun(t, &cli.Login{Secret: func(string) (string, error) { return pat, nil }, Line: noTerminal})
+	forgetful.credentials.StoreOrigin = func(string, string) error { return errors.New("the store is locked") }
+	if code, stdout, stderr := forgetful.run("login", "--with", "paste"); code != cli.ExitOK || forgetful.stored[liveURL] != pat || !strings.Contains(stderr, "will end it at Mattermost") {
+		t.Fatalf("paste with a forgetful store: exit %d, stored %v\n%s%s", code, forgetful.stored, stdout, stderr)
+	}
+
 	// A token the person pasted is theirs to end: logging out only forgets it,
 	// as ending a cookie copied from their browser would log the browser out.
 	browser := clientAs(t, user).AuthToken
