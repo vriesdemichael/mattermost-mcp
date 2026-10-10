@@ -53,9 +53,10 @@ func personZone(ctx context.Context, client *mattermost.Client) (*time.Location,
 // Post is one message as a tool returns it.
 type Post struct {
 	ID         string `json:"id"`
-	URL        string `json:"url" jsonschema:"the post's address, which opens it in Mattermost; give it to the person to link the post"`
+	URL        string `json:"url" jsonschema:"the post's link, which opens it in Mattermost: to say where something was said, cite the post by this link, not its channel's"`
 	ChannelID  string `json:"channel_id,omitempty" jsonschema:"left out where the answer names its one channel for all its posts"`
 	Channel    string `json:"channel,omitempty" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
+	ChannelURL string `json:"channel_url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost"`
 	Team       string `json:"team,omitempty" jsonschema:"the team's display name; empty for a direct or group message, which belong to no team"`
 	Author     string `json:"author" jsonschema:"the author's username, or their id when it could not be read"`
 	AuthorName string `json:"author_name,omitempty" jsonschema:"the author's full name or nickname, as people know them"`
@@ -72,7 +73,7 @@ type Post struct {
 	Pinned      bool                `json:"pinned,omitempty" jsonschema:"whether the post is pinned to its channel"`
 	AIGenerated bool                `json:"ai_generated,omitempty" jsonschema:"whether the post is marked as written with AI, as Mattermost shows it"`
 	Reactions   map[string][]string `json:"reactions,omitempty" jsonschema:"each emoji name with the usernames of the people who reacted with it"`
-	Files       []Attachment        `json:"files,omitempty" jsonschema:"the files attached; read_file reads one"`
+	Files       []Attachment        `json:"files,omitempty" jsonschema:"the files attached; read_file reads one, by its id or its uri"`
 	Type        string              `json:"type,omitempty" jsonschema:"set for a message Mattermost wrote, such as someone joining the channel"`
 }
 
@@ -84,7 +85,9 @@ type surroundings struct {
 	zone     *time.Location
 	channels map[string]*model.Channel
 	teams    map[string]*model.Team
-	people   map[string]*model.User
+	// home is the team the links of direct and group messages open in.
+	home   *model.Team
+	people map[string]*model.User
 }
 
 // describePosts is posts as the tools return them.
@@ -119,6 +122,11 @@ func readSurroundings(ctx context.Context, client *mattermost.Client, posts []*m
 	}
 	around.self = self
 	around.zone = zoneOf(self)
+	mine, err := client.Teams(ctx)
+	if err != nil {
+		return surroundings{}, err
+	}
+	around.home = homeTeam(mine)
 	var wanted []string
 	for _, post := range posts {
 		wanted = append(wanted, post.UserId)
@@ -178,17 +186,24 @@ func (s surroundings) post(post *model.Post) Post {
 		LastReplyAt: timestamp(post.LastReplyAt, s.zone),
 		Pinned:      post.IsPinned,
 		AIGenerated: post.GetProp(model.PostPropsAIGeneratedByUserID) != nil,
-		Files:       attachments(post),
+		Files:       attachments(s.client, post),
 		Type:        post.Type,
 	}
 	if author := s.people[post.UserId]; author != nil {
 		out.Author, out.AuthorName = author.Username, displayName(author)
 	}
 	if channel := s.channels[post.ChannelId]; channel != nil && s.self != nil {
-		out.Channel = toChannel(channel, s.self.Id, s.usernames(), s.zone).DisplayName
-		if team := s.teams[channel.TeamId]; team != nil {
+		names := s.usernames()
+		out.Channel = toChannel(channel, s.self.Id, names, s.zone).DisplayName
+		team := s.teams[channel.TeamId]
+		if team != nil {
 			out.Team = team.DisplayName
 		}
+		out.ChannelURL = channelLink(s.client, channel, team, s.home, names[otherInDirect(channel, s.self.Id)])
+		if channel.TeamId == "" {
+			team = s.home
+		}
+		out.URL = postLink(s.client, post.Id, team)
 	}
 	if post.Metadata != nil && len(post.Metadata.Reactions) > 0 {
 		out.Reactions = map[string][]string{}
@@ -203,25 +218,32 @@ func (s surroundings) post(post *model.Post) Post {
 	return out
 }
 
+// onePlace names, once, the channel every post of an answer is in.
+type onePlace struct {
+	Channel    string `json:"channel,omitempty" jsonschema:"the channel's display name, which every post here is in"`
+	ChannelURL string `json:"channel_url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost"`
+	Team       string `json:"team,omitempty" jsonschema:"the channel's team; empty for a direct or group message"`
+}
+
 // inOneChannel names the channel and team the posts are all in once, and
 // leaves them out of each post, which would otherwise repeat them on every
 // one. Posts from more than one channel are left as they are.
-func inOneChannel(posts []Post) (channel, team string, out []Post) {
+func inOneChannel(posts []Post) (onePlace, []Post) {
 	if len(posts) == 0 {
-		return "", "", posts
+		return onePlace{}, posts
 	}
 	for _, post := range posts[1:] {
 		if post.ChannelID != posts[0].ChannelID {
-			return "", "", posts
+			return onePlace{}, posts
 		}
 	}
-	channel, team = posts[0].Channel, posts[0].Team
-	out = make([]Post, len(posts))
+	place := onePlace{Channel: posts[0].Channel, ChannelURL: posts[0].ChannelURL, Team: posts[0].Team}
+	out := make([]Post, len(posts))
 	for i, post := range posts {
-		post.ChannelID, post.Channel, post.Team = "", "", ""
+		post.ChannelID, post.Channel, post.ChannelURL, post.Team = "", "", "", ""
 		out[i] = post
 	}
-	return channel, team, clip(out)
+	return place, clip(out)
 }
 
 // listedMessageRunes is the most of a post's message a list shows. A post can
@@ -299,6 +321,10 @@ func describeUses(inTeams bool) []Use {
 			Params:    map[string]Coverage{"channel_id": Fixed("each post's channel", "a post names its channel")},
 		},
 		{
+			Operation: "GetTeamsForUser",
+			Params:    map[string]Coverage{"user_id": Fixed("me", "the links of direct and group messages, and of their posts, open in the first of the person's teams")},
+		},
+		{
 			Operation: "GetUsersByIds",
 			Params:    map[string]Coverage{"since": Omitted("the tool reads each author and reactor, whenever they changed")},
 		},
@@ -331,6 +357,7 @@ func uses(lists ...[]Use) []Use {
 // Attachment is a file attached to a post.
 type Attachment struct {
 	ID       string `json:"id" jsonschema:"the file's id, which read_file and save_file take"`
+	URI      string `json:"uri" jsonschema:"the file as an MCP resource, which a client can read; read_file and save_file take it as well as the id"`
 	Name     string `json:"name"`
 	Size     int64  `json:"size" jsonschema:"in bytes"`
 	MIMEType string `json:"mime_type"`
@@ -338,21 +365,21 @@ type Attachment struct {
 
 // attachments are a post's files, from the metadata Mattermost answers a post
 // with, or by id alone when it left that out.
-func attachments(post *model.Post) []Attachment {
+func attachments(client *mattermost.Client, post *model.Post) []Attachment {
 	if post.Metadata != nil && len(post.Metadata.Files) > 0 {
 		out := make([]Attachment, 0, len(post.Metadata.Files))
 		for _, file := range post.Metadata.Files {
-			out = append(out, toAttachment(file))
+			out = append(out, toAttachment(client, file))
 		}
 		return out
 	}
 	out := make([]Attachment, 0, len(post.FileIds))
 	for _, id := range post.FileIds {
-		out = append(out, Attachment{ID: id})
+		out = append(out, Attachment{ID: id, URI: fileURI(client, id)})
 	}
 	return out
 }
 
-func toAttachment(file *model.FileInfo) Attachment {
-	return Attachment{ID: file.Id, Name: file.Name, Size: file.Size, MIMEType: file.MimeType}
+func toAttachment(client *mattermost.Client, file *model.FileInfo) Attachment {
+	return Attachment{ID: file.Id, URI: fileURI(client, file.Id), Name: file.Name, Size: file.Size, MIMEType: file.MimeType}
 }

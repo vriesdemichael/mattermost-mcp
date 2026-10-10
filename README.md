@@ -12,8 +12,10 @@ supported by Mattermost, Inc.; Mattermost is a trademark of Mattermost, Inc.
 The tools read channels, threads, unread posts, mentions and files, search
 posts, files, people and channels, and, once you allow writes, post, reply,
 edit, react, pin, keep drafts, join, leave and create channels, and set your
-status. The [tools page](docs/site/tools.md) lists every one. Views in the chat
-for clients that render MCP Apps are planned; the
+status. A link pasted from Mattermost works wherever a tool wants an id, every
+answer links each post, channel and team it names, and attached files are MCP
+resources your client can read too. The [tools page](docs/site/tools.md) lists
+every tool. Views in the chat for clients that render MCP Apps are planned; the
 [issues](https://github.com/vriesdemichael/mm-mcp/issues) are the plan.
 
 ## Why it works the way it does

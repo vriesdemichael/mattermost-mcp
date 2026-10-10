@@ -18,13 +18,14 @@ import (
 
 // Draft is a draft in the user's message box.
 type Draft struct {
-	ChannelID string   `json:"channel_id"`
-	Channel   string   `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
-	Team      string   `json:"team,omitempty"`
-	RootID    string   `json:"root_id,omitempty" jsonschema:"the thread the draft replies in, if it does"`
-	Message   string   `json:"message"`
-	UpdatedAt string   `json:"updated_at,omitempty"`
-	Notes     []string `json:"notes,omitempty" jsonschema:"what the message's mentions will do once sent"`
+	ChannelID  string   `json:"channel_id"`
+	Channel    string   `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
+	ChannelURL string   `json:"channel_url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost"`
+	Team       string   `json:"team,omitempty"`
+	RootID     string   `json:"root_id,omitempty" jsonschema:"the thread the draft replies in, if it does"`
+	Message    string   `json:"message"`
+	UpdatedAt  string   `json:"updated_at,omitempty"`
+	Notes      []string `json:"notes,omitempty" jsonschema:"what the message's mentions will do once sent"`
 }
 
 // draftTarget is where a draft goes: a channel, or a thread in it.
@@ -225,7 +226,7 @@ func describeDrafts(ctx context.Context, client *mattermost.Client, drafts []*mo
 	out := make([]Draft, 0, len(drafts))
 	for i, draft := range drafts {
 		out = append(out, Draft{
-			ChannelID: draft.ChannelId, Channel: described[i].Channel, Team: described[i].Team,
+			ChannelID: draft.ChannelId, Channel: described[i].Channel, ChannelURL: described[i].ChannelURL, Team: described[i].Team,
 			RootID: draft.RootId, Message: draft.Message, UpdatedAt: timestamp(draft.UpdateAt, zone),
 		})
 	}

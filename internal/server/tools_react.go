@@ -21,6 +21,7 @@ import (
 // Reaction is a reaction the user added or removed.
 type Reaction struct {
 	PostID    string `json:"post_id"`
+	URL       string `json:"url" jsonschema:"the post's link"`
 	EmojiName string `json:"emoji_name"`
 }
 
@@ -234,7 +235,7 @@ func addReactionSpec() Spec {
 					if err != nil {
 						return nil, Reaction{}, err
 					}
-					return nil, Reaction{PostID: reaction.PostId, EmojiName: reaction.EmojiName}, nil
+					return nil, Reaction{PostID: reaction.PostId, URL: client.Permalink(reaction.PostId), EmojiName: reaction.EmojiName}, nil
 				})
 		},
 	)
@@ -288,7 +289,7 @@ func removeReactionSpec() Spec {
 					if err := client.Unreact(ctx, p.self.Id, input.PostID, made); err != nil {
 						return nil, Reaction{}, err
 					}
-					return nil, Reaction{PostID: input.PostID, EmojiName: made}, nil
+					return nil, Reaction{PostID: input.PostID, URL: client.Permalink(input.PostID), EmojiName: made}, nil
 				})
 		},
 	)

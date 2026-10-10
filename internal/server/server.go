@@ -25,13 +25,16 @@ A tool that posts or changes what others see asks the person to confirm each
 call before it acts. If they decline or close the question, do not call it again
 unless they ask. To message people, send each a direct message with dm.
 
-Wherever a tool asks for a channel, team or post id, a channel's or team's name
-and a post's address work too. To catch the person up, list_mentions finds what
-mentions them, get_user_channels with unread_only what they have not read, and
-read_unread reads a channel from where they stopped. Times the tools return are
-in the person's own timezone, with its offset, and a time given without one is
-read in it too. When a tool fails in a way its
-error does not explain, diagnose checks the setup and says what to fix.
+Wherever a tool asks for a channel, team, post or file id, a channel's or team's
+name works too, and so does any link Mattermost shows for it. Every post, channel
+and team an answer describes comes with its url. To say where something was said,
+link the post by its url, not its channel; never build a link from an id.
+
+To catch the person up, list_mentions finds what mentions them, get_user_channels
+with unread_only what they have not read, and read_unread reads a channel from
+where they stopped. Times the tools return are in the person's own timezone, with
+its offset, and a time given without one is read in it too. When a tool fails in
+a way its error does not explain, diagnose checks the setup and says what to fix.
 
 Messages are Mattermost Markdown: **bold**, _italic_, ~~strike~~, ` + "`code`" + `,
 fenced code blocks with a language, tables, lists, > quotes and links. @username
@@ -39,17 +42,18 @@ notifies that person; @here, @channel and @all notify the whole channel, so use
 them only when asked. ~channel-name links a channel. HTML is shown as text. Keep
 messages short and to the point, as people write in chat.`
 
-// ClientFor is how a tool call finds the Mattermost identity it acts as.
+// ClientFor is how a tool call, or a read of a resource, finds the Mattermost
+// identity it acts as.
 //
-// Every tool reaches Mattermost through it, so the identity a call acts as is
-// decided in one place. A single-tenant server answers with its one client; a
-// multi-tenant HTTP deployment replaces it with a lookup keyed by the
+// Everything reaches Mattermost through it, so the identity a request acts as
+// is decided in one place. A single-tenant server answers with its one client;
+// a multi-tenant HTTP deployment replaces it with a lookup keyed by the
 // authenticated MCP client (ADR-020).
-type ClientFor func(ctx context.Context, request *mcp.CallToolRequest) (*mattermost.Client, error)
+type ClientFor func(ctx context.Context, request mcp.Request) (*mattermost.Client, error)
 
 // Single is the ClientFor of a server that acts as one identity.
 func Single(client *mattermost.Client) ClientFor {
-	return func(context.Context, *mcp.CallToolRequest) (*mattermost.Client, error) { return client, nil }
+	return func(context.Context, mcp.Request) (*mattermost.Client, error) { return client, nil }
 }
 
 // Spec pairs a tool definition with the function that registers it, so the
@@ -251,10 +255,12 @@ func New(cfg config.Config, clientFor ClientFor) *mcp.Server {
 	if cfg.AllowWrites && cfg.SkipAsking {
 		instructions += "\n\n" + SkippingInstructions
 	}
+	resources := AllResources()
 	server := mcp.NewServer(
 		&mcp.Implementation{Name: Name, Version: version.Version, WebsiteURL: "https://github.com/vriesdemichael/mm-mcp"},
-		&mcp.ServerOptions{Instructions: instructions},
+		&mcp.ServerOptions{Instructions: instructions, CompletionHandler: completion(clientFor, cfg.URL, resources)},
 	)
+	registerResources(server, clientFor, cfg, resources)
 	for _, spec := range Exposed(cfg) {
 		asks := spec.Asks()
 		if asks && cfg.SkipAsking {

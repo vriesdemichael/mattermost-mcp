@@ -849,6 +849,7 @@ func plural(n int64, one, many string) string {
 // Pinned is a post's pinned state after pin_post.
 type Pinned struct {
 	PostID string `json:"post_id"`
+	URL    string `json:"url" jsonschema:"the post's link"`
 	Pinned bool   `json:"pinned"`
 }
 
@@ -897,7 +898,7 @@ func pinPostSpec() Spec {
 					if err := client.Pin(ctx, input.PostID, pinning(input.Pinned)); err != nil {
 						return nil, Pinned{}, err
 					}
-					return nil, Pinned{PostID: input.PostID, Pinned: pinning(input.Pinned)}, nil
+					return nil, Pinned{PostID: input.PostID, URL: client.Permalink(input.PostID), Pinned: pinning(input.Pinned)}, nil
 				})
 		},
 	), map[string]string{"pinned": "chooses between PinPost and UnpinPost"})

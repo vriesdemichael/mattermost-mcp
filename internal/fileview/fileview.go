@@ -80,6 +80,11 @@ type View struct {
 	Text string
 	// Window is the window of lines, for a kind read as lines.
 	Window *Window
+	// Whole is the whole text the window was cut from, for a kind read as
+	// lines: a text file's text, the text extracted from a document, an
+	// archive's listing. A caller that returns a file whole, as a resource is
+	// read, takes it rather than a window.
+	Whole string
 	// Image is the image returned, for an image.
 	Image *Image
 	// Media is the audio or video returned, when it is within MediaBytes.

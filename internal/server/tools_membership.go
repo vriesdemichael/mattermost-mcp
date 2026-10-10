@@ -49,11 +49,12 @@ func teamChannel(ctx context.Context, client *mattermost.Client, channelID strin
 
 // Membership is the user's place in a channel after a tool changed it.
 type Membership struct {
-	ChannelID string   `json:"channel_id"`
-	Channel   string   `json:"channel" jsonschema:"the channel's display name"`
-	Team      string   `json:"team,omitempty"`
-	Member    bool     `json:"member" jsonschema:"whether the user belongs to the channel now"`
-	Added     []string `json:"added,omitempty" jsonschema:"the usernames of the people added"`
+	ChannelID  string   `json:"channel_id"`
+	Channel    string   `json:"channel" jsonschema:"the channel's display name"`
+	ChannelURL string   `json:"channel_url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost"`
+	Team       string   `json:"team,omitempty"`
+	Member     bool     `json:"member" jsonschema:"whether the user belongs to the channel now"`
+	Added      []string `json:"added,omitempty" jsonschema:"the usernames of the people added"`
 }
 
 type channelInput struct {
@@ -126,7 +127,7 @@ func joinChannelSpec() Spec {
 func membership(ctx context.Context, client *mattermost.Client, channelID string, member bool, added []string) Membership {
 	out := Membership{ChannelID: channelID, Member: member, Added: added}
 	if channel, err := findChannel(ctx, client, channelID, ""); err == nil {
-		out.Channel, out.Team = channel.DisplayName, channel.Team
+		out.Channel, out.ChannelURL, out.Team = channel.DisplayName, channel.URL, channel.Team
 	}
 	return out
 }
@@ -393,6 +394,7 @@ func createChannelSpec() Spec {
 					out.Member = &member
 					if team, err := client.Team(ctx, created.TeamId); err == nil {
 						out.Team = team.DisplayName
+						out.URL = channelLink(client, created, team, nil, "")
 					}
 					return nil, out, nil
 				})

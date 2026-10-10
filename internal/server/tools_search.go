@@ -40,7 +40,7 @@ type SearchResults struct {
 // search syntax for them. search_posts and search_files share them.
 type searchFilters struct {
 	From   string `json:"from,omitempty" jsonschema:"only what this username wrote or posted"`
-	In     string `json:"in,omitempty" jsonschema:"only in this channel, which must be one the user belongs to, as Mattermost searches only those: its id, or its name, such as town-square"`
+	In     string `json:"in,omitempty" jsonschema:"only in this channel, which must be one the user belongs to, as Mattermost searches only those: its id, its name, such as town-square, or its link"`
 	Before string `json:"before,omitempty" jsonschema:"only before this day, as YYYY-MM-DD"`
 	After  string `json:"after,omitempty" jsonschema:"only after this day, as YYYY-MM-DD"`
 	On     string `json:"on,omitempty" jsonschema:"only on this day, as YYYY-MM-DD"`

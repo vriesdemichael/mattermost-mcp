@@ -78,20 +78,44 @@ func registered(t *testing.T) []server.Spec {
 	return specs
 }
 
+// caller is what calls Mattermost: a tool, the reading of a resource
+// template's resources, or the completing of its argument.
+type caller struct {
+	name string
+	uses []server.Use
+}
+
+// callers is every tool and resource template, with the operations each
+// calls, as a server offering every tool registers them.
+func callers(t *testing.T) []caller {
+	t.Helper()
+	var out []caller
+	for _, spec := range registered(t) {
+		out = append(out, caller{spec.Tool.Name, spec.Uses})
+	}
+	for _, resource := range server.AllResources() {
+		out = append(out, caller{"reading the " + resource.Name + " resource", resource.Uses})
+		if resource.Complete != nil {
+			out = append(out, caller{"completing the " + resource.Name + " resource", resource.CompletionUses})
+		}
+	}
+	return out
+}
+
 func TestEveryToolDeclaresTheOperationsItCalls(t *testing.T) {
 	t.Parallel()
 	s := loadSurface(t)
-	for _, spec := range registered(t) {
-		if len(spec.Uses) == 0 {
-			t.Errorf("%s declares no operation it calls", spec.Tool.Name)
+	for _, spec := range callers(t) {
+		if len(spec.uses) == 0 {
+			t.Errorf("%s declares no operation it calls", spec.name)
 		}
-		for _, use := range spec.Uses {
+		for _, use := range spec.uses {
 			op, ok := s.latest.Operation(use.Operation)
 			switch {
 			case !ok:
-				t.Errorf("%s calls %s, which the %s specification does not have", spec.Tool.Name, use.Operation, s.latest.Release)
+				t.Errorf("%s calls %s, which the %s specification does not have", spec.name, use.Operation, s.latest.Release)
 			case !s.latestRoutes.Serves(op.Method, op.Path):
-				t.Errorf("%s calls %s, %s %s, which %s does not serve", spec.Tool.Name, use.Operation, op.Method, op.Path, s.latestRoutes.Release)
+				t.Errorf("%s calls %s, %s %s, which %s does not serve", spec.name, use.Operation, op.Method, op.Path, s.latestRoutes.Release)
 			}
 		}
 	}
@@ -100,8 +124,8 @@ func TestEveryToolDeclaresTheOperationsItCalls(t *testing.T) {
 func TestEveryParameterOfACalledOperationIsAccountedFor(t *testing.T) {
 	t.Parallel()
 	s := loadSurface(t)
-	for _, spec := range registered(t) {
-		for _, use := range spec.Uses {
+	for _, caller := range callers(t) {
+		for _, use := range caller.uses {
 			op, ok := s.latest.Operation(use.Operation)
 			if !ok {
 				continue // TestEveryToolDeclaresTheOperationsItCalls names it
@@ -115,34 +139,34 @@ func TestEveryParameterOfACalledOperationIsAccountedFor(t *testing.T) {
 			}
 			for name := range want {
 				if _, ok := use.Params[name]; !ok {
-					t.Errorf("%s says nothing about %s's parameter %s; expose it, fix it or omit it with a reason", spec.Tool.Name, use.Operation, name)
+					t.Errorf("%s says nothing about %s's parameter %s; expose it, fix it or omit it with a reason", caller.name, use.Operation, name)
 				}
 			}
 			for name, coverage := range use.Params {
 				switch {
 				case coverage.How == "undocumented" && want[name]:
-					t.Errorf("%s calls %s's %s undocumented, which the specification documents; expose it, fix it or omit it", spec.Tool.Name, use.Operation, name)
+					t.Errorf("%s calls %s's %s undocumented, which the specification documents; expose it, fix it or omit it", caller.name, use.Operation, name)
 				case coverage.How != "undocumented" && !want[name]:
-					t.Errorf("%s accounts for %s, which %s does not have", spec.Tool.Name, name, use.Operation)
+					t.Errorf("%s accounts for %s, which %s does not have", caller.name, name, use.Operation)
 				}
 				switch coverage.How {
 				case "undocumented":
 					if strings.TrimSpace(coverage.Reason) == "" {
-						t.Errorf("%s sends %s.%s, which the specification leaves out, without saying where the server reads it", spec.Tool.Name, use.Operation, name)
+						t.Errorf("%s sends %s.%s, which the specification leaves out, without saying where the server reads it", caller.name, use.Operation, name)
 					}
 				case "exposed":
 					if coverage.Arg == "" {
-						t.Errorf("%s exposes %s.%s through no argument", spec.Tool.Name, use.Operation, name)
+						t.Errorf("%s exposes %s.%s through no argument", caller.name, use.Operation, name)
 					}
 				case "fixed", "omitted":
 					if strings.TrimSpace(coverage.Reason) == "" {
-						t.Errorf("%s %s %s.%s without a reason", spec.Tool.Name, coverage.How, use.Operation, name)
+						t.Errorf("%s %s %s.%s without a reason", caller.name, coverage.How, use.Operation, name)
 					}
 					if coverage.How == "fixed" && strings.TrimSpace(coverage.Value) == "" {
-						t.Errorf("%s fixes %s.%s without saying to what", spec.Tool.Name, use.Operation, name)
+						t.Errorf("%s fixes %s.%s without saying to what", caller.name, use.Operation, name)
 					}
 				default:
-					t.Errorf("%s: %s.%s is neither exposed, fixed nor omitted", spec.Tool.Name, use.Operation, name)
+					t.Errorf("%s: %s.%s is neither exposed, fixed nor omitted", caller.name, use.Operation, name)
 				}
 			}
 		}
@@ -205,8 +229,8 @@ func TestEveryDifferenceBetweenSupportedReleasesIsHandled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, spec := range registered(t) {
-		for _, use := range spec.Uses {
+	for _, spec := range callers(t) {
+		for _, use := range spec.uses {
 			op, ok := s.latest.Operation(use.Operation)
 			if !ok {
 				continue
@@ -216,9 +240,9 @@ func TestEveryDifferenceBetweenSupportedReleasesIsHandled(t *testing.T) {
 			switch {
 			case len(differences) > 0 && !handled:
 				t.Errorf("%s calls %s, which differs on %s, and says nothing of how it handles that:\n  %s",
-					spec.Tool.Name, use.Operation, s.esr.Release, strings.Join(differences, "\n  "))
+					spec.name, use.Operation, s.esr.Release, strings.Join(differences, "\n  "))
 			case len(differences) == 0 && handled:
-				t.Errorf("%s says how it handles %s on %s, where nothing differs", spec.Tool.Name, use.Operation, s.esr.Release)
+				t.Errorf("%s says how it handles %s on %s, where nothing differs", spec.name, use.Operation, s.esr.Release)
 			case len(differences) > 0 && !strings.Contains(string(page), "`"+use.Operation+"`"):
 				t.Errorf("the supported releases page does not list how %s differs on %s", use.Operation, s.esr.Release)
 			}
@@ -260,15 +284,22 @@ func TestAReadOnlyToolCallsOnlyOperationsThatRead(t *testing.T) {
 	t.Parallel()
 	s := loadSurface(t)
 	checked := 0
+	var reading []caller
 	for _, spec := range server.AllSpecs() {
-		if !spec.ReadOnly() {
-			continue
+		if spec.ReadOnly() {
+			reading = append(reading, caller{spec.Tool.Name, spec.Uses})
 		}
+	}
+	// A resource is read, and offered, whatever the server may write.
+	for _, resource := range server.AllResources() {
+		reading = append(reading, caller{resource.Name + " resource", append(slices.Clone(resource.Uses), resource.CompletionUses...)})
+	}
+	for _, spec := range reading {
 		checked++
-		for _, use := range spec.Uses {
+		for _, use := range spec.uses {
 			op, ok := s.latest.Operation(use.Operation)
 			if ok && op.Method != "GET" && op.Method != "HEAD" && !readingPosts[use.Operation] {
-				t.Errorf("%s is read-only, and calls %s, %s %s", spec.Tool.Name, use.Operation, op.Method, op.Path)
+				t.Errorf("%s is read-only, and calls %s, %s %s", spec.name, use.Operation, op.Method, op.Path)
 			}
 		}
 	}

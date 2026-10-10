@@ -189,6 +189,7 @@ func lines(request Request, kind Kind, mimeType string, size int64, form linedTe
 		MIMEType: mimeType,
 		Size:     size,
 		Text:     header.String() + "\n" + cut.view,
+		Whole:    text,
 		Window: &Window{
 			Content:       cut.content,
 			StartLine:     cut.start,
