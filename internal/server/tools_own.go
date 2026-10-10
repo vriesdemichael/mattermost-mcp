@@ -179,6 +179,7 @@ func typingSpec() Spec {
 // Following is whether the user follows a thread.
 type Following struct {
 	RootID    string `json:"root_id"`
+	URL       string `json:"url" jsonschema:"the link of the post that started the thread"`
 	Following bool   `json:"following"`
 }
 
@@ -256,7 +257,7 @@ func followThreadSpec() Spec {
 				if err := client.Follow(ctx, self.Id, teamID, rootID, following(input.Following)); err != nil {
 					return nil, Following{}, err
 				}
-				return nil, Following{RootID: rootID, Following: following(input.Following)}, nil
+				return nil, Following{RootID: rootID, URL: client.Permalink(rootID), Following: following(input.Following)}, nil
 			}
 		},
 	), "only the user sees which threads they follow"),
@@ -287,6 +288,7 @@ func teamOf(ctx context.Context, client *mattermost.Client, channelID string) (s
 // Saved is whether the user saved a post.
 type Saved struct {
 	PostID string `json:"post_id"`
+	URL    string `json:"url" jsonschema:"the post's link"`
 	Saved  bool   `json:"saved"`
 }
 
@@ -343,7 +345,7 @@ func savePostSpec() Spec {
 				if err := client.Save(ctx, self.Id, input.PostID, saved); err != nil {
 					return nil, Saved{}, err
 				}
-				return nil, Saved{PostID: input.PostID, Saved: saved}, nil
+				return nil, Saved{PostID: input.PostID, URL: client.Permalink(input.PostID), Saved: saved}, nil
 			}
 		},
 	), "only the user sees what they saved"),
@@ -377,6 +379,7 @@ func threadOf(ctx context.Context, client *mattermost.Client, channelID, postID 
 // Reminder is when Mattermost will remind the user of a post.
 type Reminder struct {
 	PostID   string `json:"post_id"`
+	URL      string `json:"url" jsonschema:"the post's link"`
 	RemindAt string `json:"remind_at" jsonschema:"when the reminder comes, in the person's own timezone"`
 	Timezone string `json:"timezone" jsonschema:"the timezone remind_at is in, as the person set it in Mattermost"`
 }
@@ -435,7 +438,7 @@ func setPostReminderSpec() Spec {
 				if err := client.Remind(ctx, self.Id, input.PostID, at); err != nil {
 					return nil, Reminder{}, err
 				}
-				return nil, Reminder{PostID: input.PostID, RemindAt: at.In(zone).Format(time.RFC3339), Timezone: zone.String()}, nil
+				return nil, Reminder{PostID: input.PostID, URL: client.Permalink(input.PostID), RemindAt: at.In(zone).Format(time.RFC3339), Timezone: zone.String()}, nil
 			}
 		},
 	), "only the user is reminded"), nil)

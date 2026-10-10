@@ -55,6 +55,22 @@ func TestAWindowFromTheMiddleHoldsThoseLinesAndSaysWhereTheNextStarts(t *testing
 	}
 }
 
+// A window is cut from the whole text, which comes back too, for a caller
+// that returns a file whole, as a resource is read.
+func TestTheWholeTextComesBackBesideItsWindow(t *testing.T) {
+	t.Parallel()
+
+	text := numberedText(3000) + strings.Repeat("x", 2*WindowBytes)
+	view, err := Read(t.Context(), Request{Name: "long.txt", StartLine: 10, LineCount: 5}, []byte(text))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if view.Whole != text || view.Window.StartLine != 10 || view.Window.EndLine != 14 {
+		t.Errorf("got %d bytes of the whole and lines %d-%d; want all %d and lines 10-14",
+			len(view.Whole), view.Window.StartLine, view.Window.EndLine, len(text))
+	}
+}
+
 func TestAWindowSaysWhenItHoldsTheWholeFileOrItsEnd(t *testing.T) {
 	t.Parallel()
 

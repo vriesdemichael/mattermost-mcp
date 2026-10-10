@@ -1,8 +1,10 @@
 package server_test
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vriesdemichael/mm-mcp/internal/config"
@@ -75,4 +77,64 @@ func TestGetMeIsOfferedWithAnOutputSchema(t *testing.T) {
 		}
 	}
 	t.Fatal("get_me is not offered")
+}
+
+// A file is offered as a resource on every server, read-only or not, under
+// an address of its own scheme that names the server (ADR-029).
+func TestAFileIsOfferedAsAResourceOfItsServer(t *testing.T) {
+	t.Parallel()
+	for _, cfg := range []config.Config{readOnlyConfig, writingConfig, {URL: "http://Localhost:8065/mm/", Token: "t"}} {
+		session := connect(t, cfg)
+		if session.InitializeResult().Capabilities.Completions == nil {
+			t.Errorf("%s: no completions offered", cfg.URL)
+		}
+		result, err := session.ListResourceTemplates(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]string{
+			readOnlyConfig.URL:          "mattermost://chat.example.com/files/{file_id}",
+			"http://Localhost:8065/mm/": "mattermost://localhost:8065/mm/files/{file_id}",
+		}[cfg.URL]
+		if len(result.ResourceTemplates) != 1 || result.ResourceTemplates[0].URITemplate != want {
+			t.Errorf("%s: got %+v, want %s", cfg.URL, result.ResourceTemplates, want)
+		}
+	}
+}
+
+// What is not a file of this server is not found, and nothing asks
+// Mattermost: the unit tests block the network, which would fail otherwise.
+func TestAResourceThatIsNoFileOfThisServerIsNotFound(t *testing.T) {
+	t.Parallel()
+	session := connect(t, readOnlyConfig)
+	for _, uri := range []string{
+		"mattermost://chat.example.com/files/not-an-id",
+		"mattermost://other.example.com/files/abcdefghijklmnopqrstuvwxyz",
+		"mattermost://chat.example.com/posts/abcdefghijklmnopqrstuvwxyz",
+	} {
+		_, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: uri})
+		var refused *jsonrpc.Error
+		if !errors.As(err, &refused) || refused.Code != jsonrpc.CodeInvalidParams || refused.Message != "Resource not found" {
+			t.Errorf("%s: got %v; want resource not found", uri, err)
+		}
+	}
+}
+
+// Only the file template's argument is completed; anything else gets no
+// suggestion, without asking Mattermost.
+func TestOnlyAFilesArgumentIsCompleted(t *testing.T) {
+	t.Parallel()
+	session := connect(t, readOnlyConfig)
+	for _, params := range []*mcp.CompleteParams{
+		{Ref: &mcp.CompleteReference{Type: "ref/resource", URI: "mattermost://other.example.com/files/{file_id}"}, Argument: mcp.CompleteParamsArgument{Name: "file_id", Value: "report"}},
+		{Ref: &mcp.CompleteReference{Type: "ref/resource", URI: "mattermost://chat.example.com/files/{file_id}"}, Argument: mcp.CompleteParamsArgument{Name: "other", Value: "report"}},
+		{Ref: &mcp.CompleteReference{Type: "ref/resource", URI: "mattermost://chat.example.com/files/{file_id}"}, Argument: mcp.CompleteParamsArgument{Name: "file_id", Value: " "}},
+		{Ref: &mcp.CompleteReference{Type: "ref/resource", URI: "mattermost://chat.example.com/files/{file_id}"}, Argument: mcp.CompleteParamsArgument{Name: "file_id", Value: "abcdefghijklmnopqrstuvwxyz"}},
+		{Ref: &mcp.CompleteReference{Type: "ref/prompt", Name: "anything"}, Argument: mcp.CompleteParamsArgument{Name: "file_id", Value: "report"}},
+	} {
+		result, err := session.Complete(t.Context(), params)
+		if err != nil || len(result.Completion.Values) != 0 {
+			t.Errorf("%+v %+v: got %+v, %v", params.Ref, params.Argument, result, err)
+		}
+	}
 }

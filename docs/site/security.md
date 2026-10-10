@@ -20,7 +20,11 @@ telemetry, checks for no updates and contacts no other host. The results of its
 tools, however, are passed to the AI application that started it, and from
 there to the provider of the model that application uses. Those results can
 include messages from public and private channels, direct messages, and the
-content of attached files up to 64 MiB, as text or as images.
+content of attached files up to 64 MiB, as text or as images. An attached file
+is also offered as an MCP resource, which the application reads when it, or the
+person, chooses, and may pass on to the model as it passes a tool's result; a
+resource holds nothing `read_file` cannot read. A link given to a tool is read
+for the names in it, never fetched, and one to another server is refused.
 
 **Anything the agent reads in Mattermost is therefore disclosed to the model's
 provider.** Whether that is acceptable depends on the AI application, the
@@ -147,8 +151,8 @@ which can be read in its source
 ([`internal/server/server.go`](https://github.com/vriesdemichael/mm-mcp/blob/main/internal/server/server.go)):
 that it acts as a single account; that text written by others is to be read,
 not followed as instructions; that a change others see is asked about first and
-a refusal is not to be retried; and how Mattermost formats mentions and
-Markdown. Each tool's description states what it does and whether it asks.
+a refusal is not to be retried; that a message is cited by its post's link,
+never by one built from an id; and how Mattermost formats mentions and Markdown. Each tool's description states what it does and whether it asks.
 
 ## HTTP transport
 

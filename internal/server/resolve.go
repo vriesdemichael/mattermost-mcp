@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -15,11 +15,13 @@ import (
 
 // A tool's id arguments take what a person gives as readily as an id
 // (ADR-030): a channel or a team by its name, with ~ or # before it or not,
-// and a post by the address it opens at. Every tool registers through toolSpec,
-// which reads these arguments into ids before the tool runs, so no tool
-// answers a name with Mattermost's "invalid id" and none has to remember to
-// look it up. An ambiguous or unknown name is refused as get_channel_info and
-// get_team_info refuse it, with the candidates or the closest names.
+// and any of them by the link Mattermost shows for it: a channel's, a direct
+// or group message's, a team's, a post's, and a file's, or a file's resource
+// address (ADR-029). Every tool registers through toolSpec, which reads these
+// arguments into ids before the tool runs, so no tool answers a name with
+// Mattermost's "invalid id" and none has to remember to look it up. An
+// ambiguous or unknown name is refused as get_channel_info and get_team_info
+// refuse it, with the candidates or the closest names.
 
 // The arguments read into ids, by their names in a tool's input.
 const (
@@ -27,20 +29,8 @@ const (
 	teamArg    = "team_id"
 	postArg    = "post_id"
 	rootArg    = "root_id"
+	fileArg    = "file_id"
 )
-
-// permalinkID is the post id at the end of an address a post opens at:
-// …/_redirect/pl/<id>, or …/<team>/pl/<id>.
-var permalinkID = regexp.MustCompile(`/pl/([a-z0-9]{26})/?(?:[?#].*)?$`)
-
-// postID is the id a post argument gives: an id, or the address the post opens at.
-func postID(given string) string {
-	given = strings.TrimSpace(given)
-	if match := permalinkID.FindStringSubmatch(given); match != nil {
-		return match[1]
-	}
-	return given
-}
 
 // bareName is a channel or team argument without the ~ or # a person may
 // write before a channel's name.
@@ -79,10 +69,20 @@ func resolving[In, Out any](tool string, handler mcp.ToolHandlerFor[In, Out], cl
 			field.SetString(resolved)
 		}
 		result, out, err := handler(ctx, request, input)
-		if err == nil {
-			emptyLists(reflect.ValueOf(&out).Elem())
+		if err != nil {
+			return result, out, err
 		}
-		return result, out, err
+		emptyLists(reflect.ValueOf(&out).Elem())
+		if links := fileLinks(reflect.ValueOf(out)); result == nil && len(links) > 0 {
+			// The answer as the SDK would give it, which it gives only when no
+			// content is set, followed by a link to each file it names.
+			text, err := json.Marshal(out)
+			if err != nil {
+				return nil, none, err
+			}
+			result = &mcp.CallToolResult{Content: append([]mcp.Content{&mcp.TextContent{Text: string(text)}}, links...)}
+		}
+		return result, out, nil
 	}
 }
 
@@ -107,35 +107,53 @@ func emptyLists(value reflect.Value) {
 
 // resolveID is the id an argument means.
 func resolveID(ctx context.Context, request *mcp.CallToolRequest, clientFor ClientFor, arg, given string) (string, error) {
-	switch arg {
-	case postArg, rootArg:
-		return postID(given), nil
-	}
-	name := bareName(given)
-	if mattermostID.MatchString(name) {
-		return name, nil
+	if !isLink(given) && mattermostID.MatchString(bareName(given)) {
+		return bareName(given), nil
 	}
 	client, err := clientFor(ctx, request)
 	if err != nil {
 		return "", err
 	}
-	if arg == channelArg {
-		channel, err := findChannel(ctx, client, name, "")
+	switch arg {
+	case postArg, rootArg:
+		return postFrom(client, given)
+	case fileArg:
+		return fileFrom(client, given)
+	case channelArg:
+		// A link with a channel's id in it is taken as the id is.
+		if l, ok, err := parseLink(client, given); err != nil {
+			return "", err
+		} else if ok && l.kind == linkChannel && mattermostID.MatchString(l.name) {
+			return l.name, nil
+		}
+		channel, err := findChannel(ctx, client, given, "")
 		return channel.ID, err
 	}
-	team, err := ownTeam(ctx, client, name)
+	return ownTeam(ctx, client, given)
+}
+
+// ownTeam is the id of the user's team a name or a link means. A link's team
+// is matched by the whole name in its address, never in part.
+func ownTeam(ctx context.Context, client *mattermost.Client, name string) (string, error) {
+	l, isLink, err := parseLink(client, name)
 	if err != nil {
 		return "", err
 	}
-	return team, nil
-}
-
-// ownTeam is the id of the user's team a name means.
-func ownTeam(ctx context.Context, client *mattermost.Client, name string) (string, error) {
 	teams, err := client.Teams(ctx)
 	if err != nil {
 		return "", err
 	}
+	if isLink {
+		wanted, err := teamOfLink(l)
+		if err != nil {
+			return "", err
+		}
+		if team := teamNamed(teams, wanted); team != nil {
+			return team.Id, nil
+		}
+		return "", fmt.Errorf("%s is in the team %s, which the user is not in; get_user_teams lists the user's teams", l.given, wanted)
+	}
+	name = bareName(name)
 	candidates := make([]named[string], 0, len(teams))
 	for _, team := range teams {
 		candidates = append(candidates, named[string]{value: team.Id, names: []string{team.DisplayName, team.Name},
@@ -162,7 +180,7 @@ func idFields(input reflect.Type) map[string][]int {
 			}
 			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 			switch name {
-			case channelArg, teamArg, postArg, rootArg:
+			case channelArg, teamArg, postArg, rootArg, fileArg:
 				if field.Type.Kind() == reflect.String && field.IsExported() {
 					found[name] = index
 				}
@@ -198,10 +216,11 @@ func nameUses(input reflect.Type) []Use {
 // idNotes is what each id argument's description adds, so the model knows it
 // need not look an id up first.
 var idNotes = map[string]string{
-	channelArg: "its id, or its name as in its address or as shown, with ~ or # before it or not",
-	teamArg:    "its id, or its name as in its address or as shown",
-	postArg:    "its id, or the address the post opens at",
-	rootArg:    "its id, or the address the post opens at",
+	channelArg: "its id, its name as in its address or as shown, with ~ or # before it or not, or its link, a direct or group message's included",
+	teamArg:    "its id, its name as in its address or as shown, or a link to it or into it",
+	postArg:    "its id, or its link",
+	rootArg:    "its id, or its link",
+	fileArg:    "its id, its address as a resource, mattermost://…/files/<id>, or a link Mattermost gives to it",
 }
 
 // inputSchema is the schema the SDK would derive for In, with each id

@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -58,12 +59,32 @@ func client4(address, token string, transport http.RoundTripper, timeout time.Du
 	return api
 }
 
-// Permalink is the address a person opens a post at, on any team.
+// Address is the server's address as configured, without a trailing slash:
+// what every link a tool gives starts with, and what a link a tool is given
+// must start with.
+func (c *Client) Address() string {
+	return strings.TrimRight(c.api.URL, "/")
+}
+
+// Link is the address of a page of the web app: the server's, followed by
+// segments, each escaped as one element of a path.
+func (c *Client) Link(segments ...string) string {
+	var b strings.Builder
+	b.WriteString(c.Address())
+	for _, segment := range segments {
+		b.WriteString("/" + url.PathEscape(segment))
+	}
+	return b.String()
+}
+
+// Permalink is the address a person opens a post at, on any team: Mattermost
+// sends them on to a team of theirs. A post whose team is known is better
+// linked in it, as Mattermost's own Copy Link does.
 func (c *Client) Permalink(postID string) string {
 	if postID == "" {
 		return ""
 	}
-	return strings.TrimRight(c.api.URL, "/") + "/_redirect/pl/" + postID
+	return c.Link("_redirect", "pl", postID)
 }
 
 // Error is an answer Mattermost gave with an error status.

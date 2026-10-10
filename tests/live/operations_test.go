@@ -126,44 +126,121 @@ var backgroundOperations = map[string]string{"PublishUserTyping": "typing"}
 // for a capability the client lacks; it returns that failure.
 func tryTool(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 	t.Helper()
-	value, ok := recorders.Load(session)
-	if !ok {
-		t.Fatal("the session was not made by mcpAs, so its requests are not recorded")
-	}
-	rec := value.(*recorder)
+	rec := recorderOf(t, session)
 	rec.take()
 	result, err := session.CallTool(t.Context(), params)
-	uses := declaredUses(params.Name)
+	account(t, rec, params.Name, declaredUses(params.Name))
+	return result, err
+}
+
+// account checks the requests a caller sent since the recorder was last
+// emptied against the operations it declares, and records which it reached.
+func account(t *testing.T, rec *recorder, caller string, uses map[string]server.Use) {
+	t.Helper()
 	var reached []string
 	for _, request := range rec.take() {
 		op, ok := newest.Match(request.method, request.path)
 		if !ok {
-			t.Errorf("%s sent %s, which no operation of the %s specification matches", params.Name, request, newest.Release)
+			t.Errorf("%s sent %s, which no operation of the %s specification matches", caller, request, newest.Release)
 			continue
 		}
-		if starter, background := backgroundOperations[op.ID]; background && starter != params.Name {
+		if starter, background := backgroundOperations[op.ID]; background && starter != caller {
 			continue
 		}
 		reached = append(reached, op.ID)
 		use, declared := uses[op.ID]
 		if !declared {
-			t.Errorf("%s sent %s, operation %s, which it does not declare in its Uses (ADR-028)", params.Name, request, op.ID)
+			t.Errorf("%s sent %s, operation %s, which it does not declare in its Uses (ADR-028)", caller, request, op.ID)
 			continue
 		}
 		for _, problem := range unaccounted(use, op, request) {
-			t.Errorf("%s sent %s %s (ADR-028)", params.Name, request, problem)
+			t.Errorf("%s sent %s %s (ADR-028)", caller, request, problem)
 		}
 		observedMu.Lock()
-		if observed[params.Name] == nil {
-			observed[params.Name] = map[string]bool{}
+		if observed[caller] == nil {
+			observed[caller] = map[string]bool{}
 		}
-		observed[params.Name][op.ID] = true
+		observed[caller][op.ID] = true
 		observedMu.Unlock()
 	}
 	rec.mu.Lock()
 	rec.last = reached
 	rec.mu.Unlock()
+}
+
+// readingResource and completingResource name what reads a resource template's
+// resources and completes its argument, as the suite records what each reached.
+func readingResource(name string) string    { return "reading the " + name + " resource" }
+func completingResource(name string) string { return "completing the " + name + " resource" }
+
+// readResource reads a resource of the named template through its session,
+// and fails the test when reading it reached Mattermost through an operation,
+// or with a parameter, the template does not account for (ADR-028).
+func readResource(t *testing.T, session *mcp.ClientSession, template, uri string) (*mcp.ReadResourceResult, error) {
+	t.Helper()
+	rec := recorderOf(t, session)
+	rec.take()
+	result, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: uri})
+	account(t, rec, readingResource(template), byOperation(resourceSpec(t, template).Uses))
 	return result, err
+}
+
+// complete asks for values of a resource template's argument through its
+// session, checked as readResource checks a read.
+func complete(t *testing.T, session *mcp.ClientSession, template, argument, typed string) *mcp.CompleteResult {
+	t.Helper()
+	rec := recorderOf(t, session)
+	rec.take()
+	spec := resourceSpec(t, template)
+	uri := ""
+	for _, listed := range listedTemplates(t, session) {
+		if listed.Name == template {
+			uri = listed.URITemplate
+		}
+	}
+	result, err := session.Complete(t.Context(), &mcp.CompleteParams{
+		Ref:      &mcp.CompleteReference{Type: "ref/resource", URI: uri},
+		Argument: mcp.CompleteParamsArgument{Name: argument, Value: typed},
+	})
+	account(t, rec, completingResource(template), byOperation(spec.CompletionUses))
+	check(t, err)
+	return result
+}
+
+// listedTemplates is the resource templates the session's server lists.
+func listedTemplates(t *testing.T, session *mcp.ClientSession) []*mcp.ResourceTemplate {
+	t.Helper()
+	listed, err := session.ListResourceTemplates(t.Context(), nil)
+	check(t, err)
+	return listed.ResourceTemplates
+}
+
+func recorderOf(t *testing.T, session *mcp.ClientSession) *recorder {
+	t.Helper()
+	value, ok := recorders.Load(session)
+	if !ok {
+		t.Fatal("the session was not made by mcpAs, so its requests are not recorded")
+	}
+	return value.(*recorder)
+}
+
+func resourceSpec(t *testing.T, name string) server.ResourceSpec {
+	t.Helper()
+	for _, resource := range server.AllResources() {
+		if resource.Name == name {
+			return resource
+		}
+	}
+	t.Fatalf("no resource template %s", name)
+	return server.ResourceSpec{}
+}
+
+func byOperation(uses []server.Use) map[string]server.Use {
+	out := map[string]server.Use{}
+	for _, use := range uses {
+		out[use.Operation] = use
+	}
+	return out
 }
 
 // unaccounted is what a request sent that its tool does not account for: a
@@ -197,15 +274,12 @@ func unaccounted(use server.Use, op apisurface.Operation, request sent) []string
 
 // declaredUses is a tool's Uses by operation.
 func declaredUses(tool string) map[string]server.Use {
-	uses := map[string]server.Use{}
 	for _, spec := range server.AllSpecs() {
 		if spec.Tool.Name == tool {
-			for _, use := range spec.Uses {
-				uses[use.Operation] = use
-			}
+			return byOperation(spec.Uses)
 		}
 	}
-	return uses
+	return map[string]server.Use{}
 }
 
 // wholeSuite reports whether every live test ran, which is when an operation
@@ -230,6 +304,16 @@ func declaredButNeverCalled() []string {
 			}
 		}
 	}
+	for _, resource := range server.AllResources() {
+		for caller, uses := range map[string][]server.Use{readingResource(resource.Name): resource.Uses, completingResource(resource.Name): resource.CompletionUses} {
+			for _, use := range uses {
+				if !observed[caller][use.Operation] {
+					missing = append(missing, caller+" declares "+use.Operation)
+				}
+			}
+		}
+	}
+	slices.Sort(missing)
 	return missing
 }
 
@@ -237,11 +321,7 @@ func declaredButNeverCalled() []string {
 // operation, for a test of how a tool pages through Mattermost.
 func reachedLast(t *testing.T, session *mcp.ClientSession, operation string) int {
 	t.Helper()
-	value, ok := recorders.Load(session)
-	if !ok {
-		t.Fatal("the session was not made by mcpAs, so its requests are not recorded")
-	}
-	rec := value.(*recorder)
+	rec := recorderOf(t, session)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	count := 0

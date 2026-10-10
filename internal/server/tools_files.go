@@ -44,12 +44,13 @@ type FileImage struct {
 // FileContent is what read_file found a file to be, and what came back of it.
 type FileContent struct {
 	FileID   string `json:"file_id"`
+	URI      string `json:"uri" jsonschema:"the file as an MCP resource, which a client can read whole"`
 	Name     string `json:"name"`
 	PostID   string `json:"post_id,omitempty" jsonschema:"the post the file is attached to"`
 	Kind     string `json:"kind" jsonschema:"what the file is, which decides what came back: text, a window of its lines; document, a window of the text extracted from a Word, PowerPoint or Excel file; archive, a window of the listing of a zip or tar archive's entries; image, the image, in the content beside this; audio and video, the file itself beside its description when it is small enough (see media_returned); binary, a description of its type and size only; too_large, over the most this tool reads, so not read"`
 	MIMEType string `json:"mime_type,omitempty" jsonschema:"the file's type, read from its bytes"`
 	Size     int64  `json:"size" jsonschema:"in bytes"`
-	WebURL   string `json:"web_url,omitempty" jsonschema:"the post the file is attached to, for a person to open"`
+	WebURL   string `json:"web_url,omitempty" jsonschema:"the link of the post the file is attached to, for a person to open"`
 	// The window's fields are pointers, so they are there, zero or not, for a
 	// file read as lines, and absent for one that is not.
 	Content       *string    `json:"content,omitempty" jsonschema:"the window's lines without their numbers"`
@@ -129,7 +130,7 @@ func readFileSpec() Spec {
 						pdf = data
 					}
 				}
-				result, out := fileResult(input.FileID, info.PostId, view, read, pdf)
+				result, out := fileResult(input.FileID, fileURI(client, input.FileID), info.PostId, view, read, pdf)
 				return result, out, nil
 			}
 		},
@@ -142,9 +143,10 @@ func readFileSpec() Spec {
 // fileResult puts a view of a file into a tool result. The text is what the
 // model reads, so it is the content itself, an image follows it, and the
 // structured answer carries the same facts for a client that parses them.
-func fileResult(fileID, postID string, request fileview.Request, view fileview.View, pdf []byte) (*mcp.CallToolResult, FileContent) {
+func fileResult(fileID, uri, postID string, request fileview.Request, view fileview.View, pdf []byte) (*mcp.CallToolResult, FileContent) {
 	out := FileContent{
 		FileID:   fileID,
+		URI:      uri,
 		Name:     request.Name,
 		PostID:   postID,
 		Kind:     string(view.Kind),
@@ -177,7 +179,7 @@ func fileResult(fileID, postID string, request fileview.Request, view fileview.V
 		// Converting a PDF is the client's to do: one that reads PDFs reads it
 		// from the resource, and one that does not still has the description.
 		content = append(content, &mcp.EmbeddedResource{Resource: &mcp.ResourceContents{
-			URI: "mm-mcp://files/" + fileID, MIMEType: pdfType, Blob: pdf,
+			URI: uri, MIMEType: pdfType, Blob: pdf,
 		}})
 		returned := true
 		out.DocumentReturned = &returned
@@ -185,10 +187,9 @@ func fileResult(fileID, postID string, request fileview.Request, view fileview.V
 	if media := view.Media; media != nil {
 		if view.Kind == fileview.KindVideo {
 			// MCP has no video content; an embedded resource carries any bytes
-			// with their type. Its address names the file without being one a
-			// client could fetch, which would need the credential.
+			// with their type, under the file's resource address.
 			content = append(content, &mcp.EmbeddedResource{Resource: &mcp.ResourceContents{
-				URI: "mm-mcp://files/" + fileID, MIMEType: media.MIMEType, Blob: media.Data,
+				URI: uri, MIMEType: media.MIMEType, Blob: media.Data,
 			}})
 		} else {
 			content = append(content, &mcp.AudioContent{Data: media.Data, MIMEType: media.MIMEType})
@@ -200,12 +201,14 @@ func fileResult(fileID, postID string, request fileview.Request, view fileview.V
 // FoundFile is a file a search found, with where it was posted.
 type FoundFile struct {
 	Attachment
-	PostID    string `json:"post_id"`
-	ChannelID string `json:"channel_id"`
-	Channel   string `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
-	Team      string `json:"team,omitempty"`
-	Author    string `json:"author" jsonschema:"the username of whoever posted it"`
-	CreatedAt string `json:"created_at"`
+	PostID     string `json:"post_id"`
+	PostURL    string `json:"post_url" jsonschema:"the link of the post the file is attached to, which opens it in Mattermost"`
+	ChannelID  string `json:"channel_id"`
+	Channel    string `json:"channel" jsonschema:"the channel's display name; a direct message is named after the person on the other side"`
+	ChannelURL string `json:"channel_url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost"`
+	Team       string `json:"team,omitempty"`
+	Author     string `json:"author" jsonschema:"the username of whoever posted it"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // FileResults is a page of files a search found.
@@ -293,7 +296,7 @@ func searchFilesSpec() Spec {
 				// team and author, read once for all of them.
 				posted := make([]*model.Post, 0, len(files))
 				for _, file := range files {
-					posted = append(posted, &model.Post{ChannelId: file.ChannelId, UserId: file.CreatorId})
+					posted = append(posted, &model.Post{Id: file.PostId, ChannelId: file.ChannelId, UserId: file.CreatorId})
 				}
 				described, zone, err := describe(ctx, client, posted)
 				if err != nil {
@@ -302,10 +305,12 @@ func searchFilesSpec() Spec {
 				out := FileResults{Files: make([]FoundFile, 0, len(files)), capped: capped{len(all) >= searchReach}, pageInfo: pageInfo{NextCursor: next}}
 				for i, file := range files {
 					out.Files = append(out.Files, FoundFile{
-						Attachment: toAttachment(file),
+						Attachment: toAttachment(client, file),
 						PostID:     file.PostId,
+						PostURL:    described[i].URL,
 						ChannelID:  file.ChannelId,
 						Channel:    described[i].Channel,
+						ChannelURL: described[i].ChannelURL,
 						Team:       described[i].Team,
 						Author:     described[i].Author,
 						CreatedAt:  timestamp(file.CreateAt, zone),

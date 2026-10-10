@@ -8,23 +8,6 @@ import (
 
 // Reading id arguments, where no request is involved (ADR-030).
 
-func TestAPostIsTakenByItsAddressAsByItsID(t *testing.T) {
-	t.Parallel()
-	const id = "abcdefghijklmnopqrstuvwxyz"
-	for given, want := range map[string]string{
-		id:             id,
-		" " + id + " ": id,
-		"https://chat.example.com/_redirect/pl/" + id:         id,
-		"https://chat.example.com/team/pl/" + id + "/":        id,
-		"https://chat.example.com/sub/team/pl/" + id + "?x=1": id,
-		"https://chat.example.com/team/channels/town-square":  "https://chat.example.com/team/channels/town-square",
-	} {
-		if got := postID(given); got != want {
-			t.Errorf("%q: got %q, want %q", given, got, want)
-		}
-	}
-}
-
 func TestAChannelsNameLosesTheSignWrittenBeforeIt(t *testing.T) {
 	t.Parallel()
 	for given, want := range map[string]string{"~town-square": "town-square", "#Town Square": "Town Square", " general ": "general"} {
@@ -58,7 +41,7 @@ func TestAnIDArgumentsDescriptionSaysANameWorksToo(t *testing.T) {
 	if description := schema.Properties["channel_id"].Description; !strings.Contains(description, "its name") {
 		t.Errorf("channel_id reads %q", description)
 	}
-	if description := inputSchema[readPostInput]().Properties["post_id"].Description; !strings.Contains(description, "address") {
+	if description := inputSchema[readPostInput]().Properties["post_id"].Description; !strings.Contains(description, "link") {
 		t.Errorf("post_id reads %q", description)
 	}
 }
@@ -92,12 +75,26 @@ func TestAnIDArgumentWithoutADescriptionIsGivenOne(t *testing.T) {
 
 func TestPostsFromSeveralChannelsKeepTheirChannels(t *testing.T) {
 	t.Parallel()
-	posts := []Post{{ID: "a", ChannelID: "c1", Channel: "One"}, {ID: "b", ChannelID: "c2", Channel: "Two"}}
-	channel, team, out := inOneChannel(posts)
-	if channel != "" || team != "" || out[0].Channel != "One" || out[1].ChannelID != "c2" {
-		t.Errorf("got %q %q %+v", channel, team, out)
+	posts := []Post{{ID: "a", ChannelID: "c1", Channel: "One", ChannelURL: "u1"}, {ID: "b", ChannelID: "c2", Channel: "Two", ChannelURL: "u2"}}
+	place, out := inOneChannel(posts)
+	if place != (onePlace{}) || out[0].Channel != "One" || out[0].ChannelURL != "u1" || out[1].ChannelID != "c2" {
+		t.Errorf("got %+v %+v", place, out)
 	}
-	if channel, _, out := inOneChannel(nil); channel != "" || len(out) != 0 {
-		t.Errorf("no posts: %q %+v", channel, out)
+	if place, out := inOneChannel(nil); place != (onePlace{}) || len(out) != 0 {
+		t.Errorf("no posts: %+v %+v", place, out)
+	}
+}
+
+func TestPostsInOneChannelNameItAndItsLinkOnce(t *testing.T) {
+	t.Parallel()
+	posts := []Post{{ID: "a", ChannelID: "c", Channel: "One", ChannelURL: "u", Team: "T"}, {ID: "b", ChannelID: "c", Channel: "One", ChannelURL: "u", Team: "T"}}
+	place, out := inOneChannel(posts)
+	if place != (onePlace{Channel: "One", ChannelURL: "u", Team: "T"}) {
+		t.Errorf("got %+v", place)
+	}
+	for _, post := range out {
+		if post.ChannelID != "" || post.Channel != "" || post.ChannelURL != "" || post.Team != "" {
+			t.Errorf("a post repeats its channel: %+v", post)
+		}
 	}
 }

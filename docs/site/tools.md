@@ -172,7 +172,9 @@ The tools that write are offered only once you allow writes, with
 `search_files`: Search files { #search_files }
 :   Files attached to posts you can read, by name, by type with `ext:pdf`, and by
     `from`, `in`, `before`, `after` and `on`, each with the post and channel it
-    is in. Like `search_posts`, it finds the 100 most recent matches at most.
+    is in and their links, and the file's address as a
+    [resource](#files-as-resources). Like `search_posts`, it finds the 100 most
+    recent matches at most.
 
 `search_users`: Search users { #search_users }
 :   Users whose username, name, nickname or email address contains a term,
@@ -308,12 +310,13 @@ Each of these asks you first, showing exactly what will happen
 :   The teams you belong to.
 
 `get_team_info`: Get team { #get_team_info }
-:   A team by id or name. An open team you are not in is found by the exact name
-    in its address.
+:   A team by id, name or link. An open team you are not in is found by the
+    exact name in its address.
 
 `get_channel_info`: Get channel { #get_channel_info }
-:   A channel by id or name, among your own channels and the public channels of
-    your teams, saying whether you belong to it and whether it is archived.
+:   A channel by id, name or link, among your own channels and the public
+    channels of your teams, saying whether you belong to it and whether it is
+    archived.
 
 `list_team_channels`: List a team's channels { #list_team_channels }
 :   A team's public channels, by name.
@@ -410,27 +413,51 @@ Each of these asks you first, showing exactly what will happen
 
 ### Works the same everywhere
 
-- **Names work where ids do.** Every `channel_id` and `team_id` takes a name as
-  well as an id, a channel's with `~` or `#` before it or not, and every
-  `post_id` and `root_id` takes the address the post opens at. A name of a
+- **Names and links work where ids do.** Every `channel_id` and `team_id`
+  takes a name as well as an id, a channel's with `~` or `#` before it or not.
+  Every id argument takes the link Mattermost shows you: a channel's, a direct
+  or group message's, a team's, a post's, Copy Link's or the one a thread opens
+  at, and a file's, or its [resource](#files-as-resources) address. A name of a
   channel, a team or a person matches in any case, whole or in part; an
   ambiguous one is refused with every candidate, and an unknown one with the
-  closest names
+  closest names. A link is never fetched, and one to another server is refused
   ([ADR-030](adr/030-names-are-matched-leniently-and-a-refusal-names-the-next-step.md)).
+- **Every place comes with its link.** Each post, channel and team an answer
+  describes carries the link it opens at, made from names: a channel's in its
+  team, a direct or group message's in your first team, as
+  `/<team>/messages/@<username>`, and a post's in its channel's team, as
+  Copy Link gives it. Asked where something was said, the agent links the post,
+  not the conversation.
 - **Every list pages the same way.** Give `limit`, and pass the `next_cursor` an
   answer ends with back as `cursor`, with the same other arguments, for the next
   page, until an answer has none
   ([ADR-032](adr/032-every-list-pages-by-an-opaque-cursor.md)).
-- **Every post comes back in one shape:** its address, which opens it in
-  Mattermost, its author's username and name, its channel and team by name, its
-  files with their ids, reactions with who reacted, whether it is pinned or
-  marked as written with AI, its thread, and when it was edited. An answer whose
-  posts are all in one channel names the channel and team once.
+- **Every post comes back in one shape:** its link, its author's username and
+  name, its channel by name and link and its team by name, its files with their
+  ids and resource addresses, reactions with who reacted, whether it is pinned
+  or marked as written with AI, its thread, and when it was edited. An answer
+  whose posts are all in one channel names the channel and team once.
 - **A list cuts a long message short.** A message longer than 4,000 characters
   is cut, with its whole length said; `read_post` reads it whole.
 - **Times are your own.** A time in an answer is in the timezone you set in
   Mattermost, with its offset, such as `2026-10-09T09:30:00+02:00`, and a time
   you give without an offset is read in it too. With no timezone set, UTC.
+
+### Files as resources
+
+Every file attached to a post is also an MCP resource, at
+`mattermost://<your server>/files/<file id>`, from a template mm-mcp lists
+([ADR-029](adr/029-files-reach-the-model-as-content-and-the-disk-only-locally.md)).
+A client can read one when it needs it, and some let you attach one to the
+conversation or save it. It reads as [`read_file`](#read_file) reads the file,
+but whole: text, a Word, PowerPoint or Excel file's text and an archive's
+listing as text, an image as the image `read_file` returns, and anything else
+as itself, up to 3.6 MiB; a longer text is read with `read_file`, in windows.
+Each post's files, and each file `search_files` finds, give the address, the
+answer links each file as a resource, and every `file_id` takes the address. A
+client that completes resource addresses offers, as you type part of a file's
+name, the ids of the files that match. Threads and conversations are not
+resources: a conversation has no end to read it whole to.
 
 ### Page sizes
 

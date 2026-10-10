@@ -25,10 +25,14 @@ type Team struct {
 	DisplayName string `json:"display_name"`
 	Description string `json:"description,omitempty"`
 	Open        bool   `json:"open" jsonschema:"whether anyone on the server may join it, rather than by invitation only"`
+	URL         string `json:"url" jsonschema:"the team's link, which opens it in Mattermost"`
 }
 
-func toTeam(team *model.Team) Team {
-	return Team{ID: team.Id, Name: team.Name, DisplayName: team.DisplayName, Description: team.Description, Open: team.Type == model.TeamOpen && team.AllowOpenInvite}
+func toTeam(client *mattermost.Client, team *model.Team) Team {
+	return Team{
+		ID: team.Id, Name: team.Name, DisplayName: team.DisplayName, Description: team.Description,
+		Open: team.Type == model.TeamOpen && team.AllowOpenInvite, URL: teamLink(client, team),
+	}
 }
 
 // Teams is a page of teams.
@@ -80,9 +84,9 @@ func getUserTeamsSpec() Spec {
 				}
 				all := make([]Team, 0, len(teams))
 				for _, team := range teams {
-					all = append(all, toTeam(team))
+					all = append(all, toTeam(client, team))
 				}
-				slices.SortFunc(all, func(a, b Team) int { return strings.Compare(a.DisplayName, b.DisplayName) })
+				slices.SortFunc(all, func(a, b Team) int { return teamOrder(a.DisplayName, a.Name, b.DisplayName, b.Name) })
 				page, next := offsetPage(all, at, limit)
 				return nil, Teams{Teams: page, pageInfo: pageInfo{NextCursor: next}}, nil
 			}
@@ -91,14 +95,14 @@ func getUserTeamsSpec() Spec {
 }
 
 type getTeamInfoInput struct {
-	Team string `json:"team" jsonschema:"the team's id, or its name: its display name or the name in its address, whole or in part, in any case"`
+	Team string `json:"team" jsonschema:"the team's id, its name: its display name or the name in its address, whole or in part, in any case, or a link to it or into it"`
 }
 
 func getTeamInfoSpec() Spec {
 	return toolSpec(
 		&mcp.Tool{
 			Name: "get_team_info",
-			Description: "Find a team by its id or its name. A name matches the user's teams whole or in part, in any case; an open team " +
+			Description: "Find a team by its id, its name or a link into it. A name matches the user's teams whole or in part, in any case; an open team " +
 				"the user is not in is found by the exact name in its address. An ambiguous name is refused with every team it could mean.",
 			Annotations: readOnly("Get team"),
 		},
@@ -124,17 +128,22 @@ func getTeamInfoSpec() Spec {
 				if err != nil {
 					return nil, Team{}, err
 				}
-				return nil, toTeam(team), nil
+				return nil, toTeam(client, team), nil
 			}
 		},
 	)
 }
 
-// findTeam is the team an id or a name means.
+// findTeam is the team an id, a name or a link means.
 func findTeam(ctx context.Context, client *mattermost.Client, name string) (*model.Team, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("give the team's id or name")
+	}
+	if l, ok, err := parseLink(client, name); err != nil {
+		return nil, err
+	} else if ok {
+		return teamByLink(ctx, client, l)
 	}
 	if mattermostID.MatchString(name) {
 		team, err := client.Team(ctx, name)
@@ -171,6 +180,28 @@ func findTeam(ctx context.Context, client *mattermost.Client, name string) (*mod
 	return nil, matchErr
 }
 
+// teamByLink is the team a link is in: one of the user's teams, or another
+// Mattermost finds by the exact name in its address. A link's name is never
+// matched in part, which could find another team.
+func teamByLink(ctx context.Context, client *mattermost.Client, l link) (*model.Team, error) {
+	name, err := teamOfLink(l)
+	if err != nil {
+		return nil, err
+	}
+	teams, err := client.Teams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if team := teamNamed(teams, name); team != nil {
+		return team, nil
+	}
+	team, err := client.TeamByName(ctx, strings.ToLower(name))
+	if notFound(err) {
+		return nil, fmt.Errorf("no team is at %s, or the user cannot see it; get_user_teams lists the user's teams", l.given)
+	}
+	return team, err
+}
+
 // notFound reports whether err is Mattermost answering that nothing has that
 // id, after which a string shaped like an id may still be a name.
 func notFound(err error) bool {
@@ -191,6 +222,7 @@ type Channel struct {
 	Header      string `json:"header,omitempty"`
 	LastPostAt  string `json:"last_post_at,omitempty"`
 	Archived    bool   `json:"archived,omitempty" jsonschema:"an archived channel can be read but not posted in"`
+	URL         string `json:"url,omitempty" jsonschema:"the channel's link, which opens it in Mattermost; a direct or group message's opens in the first of the person's teams"`
 	// Member says whether the user belongs to the channel; nil when the tool
 	// did not look.
 	Member *bool `json:"member,omitempty" jsonschema:"whether the user belongs to the channel"`
@@ -322,10 +354,13 @@ func getUserChannelsSpec() Spec {
 // myChannels is the channels the user belongs to, with what names them: their
 // teams, and the other side of each direct message.
 type myChannels struct {
+	client   *mattermost.Client
 	self     *model.User
 	channels []*model.Channel
 	teams    map[string]*model.Team
-	people   map[string]string
+	// home is the team the links of direct and group messages open in.
+	home   *model.Team
+	people map[string]string
 }
 
 // readMyChannels reads the user's channels and what names them.
@@ -343,7 +378,7 @@ func readMyChannels(ctx context.Context, client *mattermost.Client) (myChannels,
 	if err != nil {
 		return myChannels{}, err
 	}
-	mine := myChannels{self: self, channels: channels, teams: map[string]*model.Team{}}
+	mine := myChannels{client: client, self: self, channels: channels, teams: map[string]*model.Team{}, home: homeTeam(teams)}
 	for _, team := range teams {
 		mine.teams[team.Id] = team
 	}
@@ -362,9 +397,11 @@ func readMyChannels(ctx context.Context, client *mattermost.Client) (myChannels,
 // describe is one channel as a tool returns it, named as the person knows it.
 func (m myChannels) describe(channel *model.Channel) Channel {
 	out := toChannel(channel, m.self.Id, m.people, zoneOf(m.self))
-	if team := m.teams[channel.TeamId]; team != nil {
+	team := m.teams[channel.TeamId]
+	if team != nil {
 		out.Team = team.DisplayName
 	}
+	out.URL = channelLink(m.client, channel, team, m.home, m.people[otherInDirect(channel, m.self.Id)])
 	return out
 }
 
@@ -405,7 +442,7 @@ func toChannel(channel *model.Channel, self string, names map[string]string, zon
 // channelLookupUses are the operations findChannel calls, for a channel given
 // by the argument arg.
 func channelLookupUses(arg string, team Coverage) []Use {
-	return []Use{
+	return append([]Use{
 		{Operation: "GetChannel", Params: map[string]Coverage{"channel_id": SetBy(arg)}},
 		{
 			Operation: "SearchChannels",
@@ -414,6 +451,20 @@ func channelLookupUses(arg string, team Coverage) []Use {
 				"body.term": SetBy(arg),
 			},
 		},
+		{
+			Operation: "GetChannelByNameForTeamName",
+			Params: map[string]Coverage{
+				"team_name":       SetBy(arg),
+				"channel_name":    SetBy(arg),
+				"include_deleted": Fixed("true", "a link to an archived channel finds it, as it opens in Mattermost; it can be read but not posted in"),
+			},
+		},
+	}, myChannelsUses()...)
+}
+
+// myChannelsUses are the operations readMyChannels calls.
+func myChannelsUses() []Use {
+	return []Use{
 		{
 			Operation: "GetUser",
 			Params:    map[string]Coverage{"user_id": Fixed("me", "the user's own id tells which side of a direct message is the other person")},
@@ -428,7 +479,7 @@ func channelLookupUses(arg string, team Coverage) []Use {
 		},
 		{
 			Operation: "GetTeamsForUser",
-			Params:    map[string]Coverage{"user_id": Fixed("me", "public channels are searched in each of the user's teams, and each channel names its team")},
+			Params:    map[string]Coverage{"user_id": Fixed("me", "public channels are searched in each of the user's teams, each channel names its team, and a direct or group message's link opens in the first of them")},
 		},
 		{
 			Operation: "GetUsersByIds",
@@ -484,8 +535,12 @@ func channelCandidates(ctx context.Context, client *mattermost.Client, mine myCh
 	return out, nil
 }
 
-// findChannel is the channel an id or a name means.
+// findChannel is the channel an id, a name or a link means.
 func findChannel(ctx context.Context, client *mattermost.Client, name, teamID string) (Channel, error) {
+	l, isLink, err := parseLink(client, name)
+	if err != nil {
+		return Channel{}, err
+	}
 	name = bareName(name)
 	if name == "" {
 		return Channel{}, fmt.Errorf("give the channel's id or name")
@@ -493,6 +548,10 @@ func findChannel(ctx context.Context, client *mattermost.Client, name, teamID st
 	mine, err := readMyChannels(ctx, client)
 	if err != nil {
 		return Channel{}, err
+	}
+	if isLink {
+		// A link names its own team.
+		return channelByLink(ctx, client, mine, l)
 	}
 	if mattermostID.MatchString(name) {
 		channel, err := client.Channel(ctx, name)
@@ -514,7 +573,7 @@ func findChannel(ctx context.Context, client *mattermost.Client, name, teamID st
 }
 
 type getChannelInfoInput struct {
-	Channel string `json:"channel" jsonschema:"the channel's id, or its name: its display name or the name in its address, whole or in part, in any case"`
+	Channel string `json:"channel" jsonschema:"the channel's id, its name: its display name or the name in its address, whole or in part, in any case, or its link, a direct or group message's included"`
 	TeamID  string `json:"team_id,omitempty" jsonschema:"look for the name in this team only; in every team of the user's when not given"`
 }
 
@@ -522,7 +581,7 @@ func getChannelInfoSpec() Spec {
 	return toolSpec(
 		&mcp.Tool{
 			Name: "get_channel_info",
-			Description: "Find a channel by its id or its name, among the user's own channels, private ones and direct messages included, " +
+			Description: "Find a channel by its id, its name or its link, among the user's own channels, private ones and direct messages included, " +
 				"and the public channels of their teams. A name matches whole or in part, in any case. An ambiguous name is refused with " +
 				"every channel it could mean, an unknown one with the closest names. Says whether the user belongs to the channel and whether it is archived.",
 			Annotations: readOnly("Get channel"),
@@ -563,7 +622,7 @@ func searchChannelsSpec() Spec {
 				"team_id":   SetBy("team_id"),
 				"body.term": SetBy("term"),
 			},
-		}}, channelLookupUses("term", SetBy("team_id"))[2:]),
+		}}, myChannelsUses()),
 		func(clientFor ClientFor) mcp.ToolHandlerFor[searchChannelsInput, Channels] {
 			return func(ctx context.Context, request *mcp.CallToolRequest, input searchChannelsInput) (*mcp.CallToolResult, Channels, error) {
 				term := bareName(input.Term)
@@ -680,6 +739,7 @@ func teamChannelsSpec(name, title, description, operation string, list func(cont
 				for _, channel := range channels {
 					listed := toChannel(channel, "", nil, zone)
 					listed.Team = team.DisplayName
+					listed.URL = channelLink(client, channel, team, nil, "")
 					out.Channels = append(out.Channels, listed)
 				}
 				return nil, out, nil
